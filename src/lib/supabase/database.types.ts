@@ -262,6 +262,7 @@ export type Database = {
           term_id: string
           title: string | null
           transcript_source: string | null
+          transcript_status: string
           video_url: string | null
         }
         Insert: {
@@ -272,6 +273,7 @@ export type Database = {
           term_id: string
           title?: string | null
           transcript_source?: string | null
+          transcript_status?: string
           video_url?: string | null
         }
         Update: {
@@ -282,6 +284,7 @@ export type Database = {
           term_id?: string
           title?: string | null
           transcript_source?: string | null
+          transcript_status?: string
           video_url?: string | null
         }
         Relationships: [

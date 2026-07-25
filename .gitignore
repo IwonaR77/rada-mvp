@@ -44,5 +44,5 @@ supabase/.branches
 *.tsbuildinfo
 next-env.d.ts
 
-# standalone transcription scripts (run on separate server, not part of the app)
+# whisper/: working files for the transcription pipeline, not part of the project
 /whisper
