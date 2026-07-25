@@ -43,3 +43,6 @@ supabase/.branches
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# standalone transcription scripts (run on separate server, not part of the app)
+/whisper
