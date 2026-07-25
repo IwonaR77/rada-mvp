@@ -257,34 +257,40 @@ export type Database = {
         Row: {
           created_at: string
           date: string
+          esesja_id: string | null
           id: string
           meeting_type: string
           term_id: string
           title: string | null
           transcript_source: string | null
           transcript_status: string
+          video_downloaded: boolean
           video_url: string | null
         }
         Insert: {
           created_at?: string
           date: string
+          esesja_id?: string | null
           id?: string
           meeting_type: string
           term_id: string
           title?: string | null
           transcript_source?: string | null
           transcript_status?: string
+          video_downloaded?: boolean
           video_url?: string | null
         }
         Update: {
           created_at?: string
           date?: string
+          esesja_id?: string | null
           id?: string
           meeting_type?: string
           term_id?: string
           title?: string | null
           transcript_source?: string | null
           transcript_status?: string
+          video_downloaded?: boolean
           video_url?: string | null
         }
         Relationships: [
