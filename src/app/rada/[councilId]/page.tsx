@@ -91,7 +91,7 @@ export default async function CouncilDashboardPage({
         <p className="text-zinc-500">{council.city?.name}</p>
       </div>
 
-      {stats.length === 0 ? (
+      {stats.every((c) => c.totalSeconds === 0) ? (
         <p className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-zinc-500 dark:border-zinc-700">
           Jeszcze brak danych z sesji dla tej rady. Ranking pojawi się, gdy
           zostaną wgrane transkrypcje i sesje.

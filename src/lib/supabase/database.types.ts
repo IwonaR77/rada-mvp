@@ -140,6 +140,7 @@ export type Database = {
           mandate_end_date: string | null
           mandate_start_date: string
           party: string | null
+          role: string | null
           term_id: string
         }
         Insert: {
@@ -150,6 +151,7 @@ export type Database = {
           mandate_end_date?: string | null
           mandate_start_date: string
           party?: string | null
+          role?: string | null
           term_id: string
         }
         Update: {
@@ -160,6 +162,7 @@ export type Database = {
           mandate_end_date?: string | null
           mandate_start_date?: string
           party?: string | null
+          role?: string | null
           term_id?: string
         }
         Relationships: [
