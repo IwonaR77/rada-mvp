@@ -46,3 +46,6 @@ next-env.d.ts
 
 # whisper/: working files for the transcription pipeline, not part of the project
 /whisper
+
+# run2/: transcription output dumps from the old script, not part of the project
+/run2
