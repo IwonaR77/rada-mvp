@@ -31,6 +31,7 @@ export function SessionPlayer({
   councilors,
   officials,
   isAdmin,
+  initialSeek,
 }: {
   meetingId: string;
   videoUrl: string;
@@ -38,12 +39,15 @@ export function SessionPlayer({
   councilors: Person[];
   officials: { id: string; full_name: string; role: string }[];
   isAdmin: boolean;
+  initialSeek?: number;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const activeRowRef = useRef<HTMLLIElement>(null);
+  const hasAppliedInitialSeek = useRef(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<"all" | "unassigned">("all");
+  const [query, setQuery] = useState("");
   const [isPending, startTransition] = useTransition();
 
   const activeSegment = segments.find(
@@ -53,8 +57,18 @@ export function SessionPlayer({
   const isUnassigned = (s: Segment) =>
     !s.confirmed_councilor_id && !s.confirmed_official_id;
   const unassignedCount = segments.filter(isUnassigned).length;
-  const visibleSegments =
-    filter === "unassigned" ? segments.filter(isUnassigned) : segments;
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleSegments = segments
+    .filter((s) => (filter === "unassigned" ? isUnassigned(s) : true))
+    .filter((s) =>
+      normalizedQuery ? s.text.toLowerCase().includes(normalizedQuery) : true
+    );
+
+  function handleLoadedMetadata() {
+    if (hasAppliedInitialSeek.current || initialSeek === undefined) return;
+    hasAppliedInitialSeek.current = true;
+    handleSeek(initialSeek);
+  }
 
   const peopleById = new Map<string, string>();
   councilors.forEach((c) => peopleById.set(c.id, c.name));
@@ -98,10 +112,18 @@ export function SessionPlayer({
           src={videoUrl}
           controls
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+          onLoadedMetadata={handleLoadedMetadata}
           style={{ width: "100%", height: "auto", aspectRatio: "16/9" }}
         />
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Szukaj w tej sesji..."
+            className="rounded-full border border-zinc-300 bg-white px-4 py-1.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500"
+          />
           <div className="inline-flex rounded-full border border-zinc-200 p-0.5 text-sm dark:border-zinc-800">
             <button
               onClick={() => setFilter("all")}
@@ -129,9 +151,11 @@ export function SessionPlayer({
         <ul className="flex max-h-[32rem] flex-col gap-1 overflow-y-auto rounded-2xl border border-zinc-200 p-2 dark:border-zinc-800">
           {visibleSegments.length === 0 && (
             <li className="p-4 text-center text-zinc-500">
-              {filter === "unassigned"
-                ? "Wszystkie segmenty mają przypisanego mówcę."
-                : "Brak segmentów dla tej sesji."}
+              {normalizedQuery
+                ? `Brak wyników dla „${query}".`
+                : filter === "unassigned"
+                  ? "Wszystkie segmenty mają przypisanego mówcę."
+                  : "Brak segmentów dla tej sesji."}
             </li>
           )}
           {visibleSegments.map((s) => {

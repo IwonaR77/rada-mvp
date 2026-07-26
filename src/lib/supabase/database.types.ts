@@ -334,6 +334,7 @@ export type Database = {
           finalized_by: string | null
           id: string
           meeting_id: string
+          search_vector: unknown
           start_time: number
           status: string
           text: string
@@ -347,6 +348,7 @@ export type Database = {
           finalized_by?: string | null
           id?: string
           meeting_id: string
+          search_vector?: unknown
           start_time: number
           status?: string
           text: string
@@ -360,6 +362,7 @@ export type Database = {
           finalized_by?: string | null
           id?: string
           meeting_id?: string
+          search_vector?: unknown
           start_time?: number
           status?: string
           text?: string
@@ -534,6 +537,17 @@ export type Database = {
     }
     Functions: {
       is_moderator: { Args: { uid: string }; Returns: boolean }
+      search_segments: {
+        Args: { search_query: string }
+        Returns: {
+          headline: string
+          id: string
+          meeting_date: string
+          meeting_id: string
+          meeting_title: string
+          start_time: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

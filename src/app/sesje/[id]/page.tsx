@@ -5,10 +5,14 @@ import { SessionPlayer } from "@/components/session-player";
 
 export default async function SessionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ t?: string }>;
 }) {
   const { id } = await params;
+  const { t } = await searchParams;
+  const initialSeek = t ? Number(t) : undefined;
   const supabase = await createClient();
 
   const { data: meeting } = await supabase
@@ -78,6 +82,7 @@ export default async function SessionPage({
         councilors={councilors}
         officials={officials ?? []}
         isAdmin={isAdmin}
+        initialSeek={initialSeek}
       />
     </div>
   );
