@@ -43,11 +43,18 @@ export function SessionPlayer({
   const activeRowRef = useRef<HTMLLIElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<"all" | "unassigned">("all");
   const [isPending, startTransition] = useTransition();
 
   const activeSegment = segments.find(
     (s) => currentTime >= s.start_time && currentTime < s.end_time
   );
+
+  const isUnassigned = (s: Segment) =>
+    !s.confirmed_councilor_id && !s.confirmed_official_id;
+  const unassignedCount = segments.filter(isUnassigned).length;
+  const visibleSegments =
+    filter === "unassigned" ? segments.filter(isUnassigned) : segments;
 
   const peopleById = new Map<string, string>();
   councilors.forEach((c) => peopleById.set(c.id, c.name));
@@ -94,13 +101,40 @@ export function SessionPlayer({
           style={{ width: "100%", height: "auto", aspectRatio: "16/9" }}
         />
 
+        <div className="flex items-center gap-2">
+          <div className="inline-flex rounded-full border border-zinc-200 p-0.5 text-sm dark:border-zinc-800">
+            <button
+              onClick={() => setFilter("all")}
+              className={`rounded-full px-3 py-1 transition-colors ${
+                filter === "all"
+                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                  : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+              }`}
+            >
+              Wszystkie
+            </button>
+            <button
+              onClick={() => setFilter("unassigned")}
+              className={`rounded-full px-3 py-1 transition-colors ${
+                filter === "unassigned"
+                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                  : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+              }`}
+            >
+              Nieustalone{unassignedCount > 0 && ` (${unassignedCount})`}
+            </button>
+          </div>
+        </div>
+
         <ul className="flex max-h-[32rem] flex-col gap-1 overflow-y-auto rounded-2xl border border-zinc-200 p-2 dark:border-zinc-800">
-          {segments.length === 0 && (
+          {visibleSegments.length === 0 && (
             <li className="p-4 text-center text-zinc-500">
-              Brak segmentów dla tej sesji.
+              {filter === "unassigned"
+                ? "Wszystkie segmenty mają przypisanego mówcę."
+                : "Brak segmentów dla tej sesji."}
             </li>
           )}
-          {segments.map((s) => {
+          {visibleSegments.map((s) => {
             const isActive = activeSegment?.id === s.id;
             const assignedId = s.confirmed_councilor_id ?? s.confirmed_official_id;
             return (
@@ -110,7 +144,9 @@ export function SessionPlayer({
                 className={`flex items-start gap-2 rounded-xl px-2 py-2 transition-colors ${
                   isActive
                     ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                    : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    : !assignedId
+                      ? "bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
+                      : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 }`}
               >
                 {isAdmin && (
