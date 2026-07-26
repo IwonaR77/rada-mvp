@@ -50,3 +50,6 @@ next-env.d.ts
 # run1/, run2/: transcription output dumps, not part of the project
 /run1
 /run2
+
+# summary/: manually generated session summaries, not part of the project
+/summary

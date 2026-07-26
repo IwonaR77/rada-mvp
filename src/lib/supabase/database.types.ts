@@ -260,6 +260,7 @@ export type Database = {
           esesja_id: string | null
           id: string
           meeting_type: string
+          summary: string | null
           term_id: string
           title: string | null
           transcript_source: string | null
@@ -273,6 +274,7 @@ export type Database = {
           esesja_id?: string | null
           id?: string
           meeting_type: string
+          summary?: string | null
           term_id: string
           title?: string | null
           transcript_source?: string | null
@@ -286,6 +288,7 @@ export type Database = {
           esesja_id?: string | null
           id?: string
           meeting_type?: string
+          summary?: string | null
           term_id?: string
           title?: string | null
           transcript_source?: string | null

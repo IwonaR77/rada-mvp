@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import ReactPlayer from "react-player";
+import ReactMarkdown from "react-markdown";
 import { assignSegments } from "@/app/sesje/[id]/actions";
 
 type Segment = {
@@ -24,8 +25,50 @@ function formatTime(seconds: number) {
     : `${m}:${String(s).padStart(2, "0")}`;
 }
 
+function toSrtTimestamp(seconds: number) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.round((seconds - Math.floor(seconds)) * 1000);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
+}
+
+function buildSrt(segments: Segment[]) {
+  return segments
+    .map(
+      (s, i) =>
+        `${i + 1}\n${toSrtTimestamp(s.start_time)} --> ${toSrtTimestamp(s.end_time)}\n${s.text}\n`
+    )
+    .join("\n");
+}
+
+function buildPlainText(segments: Segment[]) {
+  return segments.map((s) => s.text).join("\n\n");
+}
+
+function downloadFile(filename: string, content: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function slugify(text: string) {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
 export function SessionPlayer({
   meetingId,
+  meetingTitle,
+  summary,
   videoUrl,
   segments,
   councilors,
@@ -34,6 +77,8 @@ export function SessionPlayer({
   initialSeek,
 }: {
   meetingId: string;
+  meetingTitle: string;
+  summary: string | null;
   videoUrl: string;
   segments: Segment[];
   councilors: Person[];
@@ -106,6 +151,36 @@ export function SessionPlayer({
 
   return (
     <div className="flex flex-col gap-6 lg:flex-row">
+      {summary && (
+        <div className="flex w-full flex-col gap-3 lg:order-first lg:flex-1">
+          <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Podsumowanie
+          </h2>
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-zinc-200 p-4 text-sm leading-relaxed text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
+            <ReactMarkdown
+              components={{
+                h1: (props) => (
+                  <h3 className="mb-2 mt-4 text-base font-semibold text-zinc-900 first:mt-0 dark:text-zinc-100" {...props} />
+                ),
+                h2: (props) => (
+                  <h3 className="mb-2 mt-4 text-sm font-semibold text-zinc-900 first:mt-0 dark:text-zinc-100" {...props} />
+                ),
+                h3: (props) => (
+                  <h4 className="mb-1 mt-3 text-sm font-semibold text-zinc-900 dark:text-zinc-100" {...props} />
+                ),
+                p: (props) => <p className="mb-3 last:mb-0" {...props} />,
+                ul: (props) => <ul className="mb-3 list-disc space-y-1 pl-5" {...props} />,
+                ol: (props) => <ol className="mb-3 list-decimal space-y-1 pl-5" {...props} />,
+                li: (props) => <li {...props} />,
+                strong: (props) => <strong className="font-semibold text-zinc-900 dark:text-zinc-100" {...props} />,
+              }}
+            >
+              {summary}
+            </ReactMarkdown>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-1 flex-col gap-6">
         <ReactPlayer
           ref={videoRef}
@@ -144,6 +219,35 @@ export function SessionPlayer({
               }`}
             >
               Nieustalone{unassignedCount > 0 && ` (${unassignedCount})`}
+            </button>
+          </div>
+
+          <div className="ml-auto flex gap-2">
+            <button
+              disabled={segments.length === 0}
+              onClick={() =>
+                downloadFile(
+                  `${slugify(meetingTitle)}.txt`,
+                  buildPlainText(segments),
+                  "text/plain;charset=utf-8"
+                )
+              }
+              className="rounded-full border border-zinc-300 px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Pobierz .txt
+            </button>
+            <button
+              disabled={segments.length === 0}
+              onClick={() =>
+                downloadFile(
+                  `${slugify(meetingTitle)}.srt`,
+                  buildSrt(segments),
+                  "application/x-subrip;charset=utf-8"
+                )
+              }
+              className="rounded-full border border-zinc-300 px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Pobierz .srt
             </button>
           </div>
         </div>

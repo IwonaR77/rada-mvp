@@ -18,7 +18,7 @@ export default async function SessionPage({
   const { data: meeting } = await supabase
     .from("meeting")
     .select(
-      "id, title, date, video_url, term_id, term:term_id(council:council_id(id, name))"
+      "id, title, date, video_url, summary, term_id, term:term_id(council:council_id(id, name))"
     )
     .eq("id", id)
     .maybeSingle();
@@ -59,7 +59,7 @@ export default async function SessionPage({
   const council = meeting.term?.council;
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-12">
+    <div className="mx-auto flex w-full max-w-[110rem] flex-1 flex-col gap-6 px-6 py-12">
       <div>
         {council && (
           <Link
@@ -77,6 +77,8 @@ export default async function SessionPage({
 
       <SessionPlayer
         meetingId={meeting.id}
+        meetingTitle={meeting.title ?? meeting.id}
+        summary={meeting.summary}
         videoUrl={meeting.video_url}
         segments={segments ?? []}
         councilors={councilors}

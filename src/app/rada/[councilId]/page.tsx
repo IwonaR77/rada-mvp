@@ -10,9 +10,14 @@ type CouncilorStat = {
 };
 
 function formatDuration(totalSeconds: number) {
-  const minutes = Math.round(totalSeconds / 60);
-  if (minutes < 60) return `${minutes} min`;
-  return `${Math.floor(minutes / 60)} godz. ${minutes % 60} min`;
+  const total = Math.round(totalSeconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+
+  if (hours > 0) return `${hours} godz. ${minutes} min`;
+  if (minutes > 0) return `${minutes} min ${seconds} s`;
+  return `${seconds} s`;
 }
 
 export default async function CouncilDashboardPage({
