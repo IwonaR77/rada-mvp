@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { SessionPlayer } from "@/components/session-player";
+import { SessionNeighborNav } from "@/components/session-neighbor-nav";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 
 export default async function SessionPage({
   params,
@@ -18,7 +20,7 @@ export default async function SessionPage({
   const { data: meeting } = await supabase
     .from("meeting")
     .select(
-      "id, title, date, video_url, summary, term_id, term:term_id(council:council_id(id, name))"
+      "id, title, date, esesja_id, video_url, summary, term_id, term:term_id(council:council_id(id, name))"
     )
     .eq("id", id)
     .maybeSingle();
@@ -33,19 +35,31 @@ export default async function SessionPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: segments }, { data: roster }, { data: officials }, { data: termMeetings }] =
+  const councilId = meeting.term?.council?.id;
+
+  const [segments, { data: roster }, { data: officials }, { data: termMeetings }, { data: topicRows }] =
     await Promise.all([
-      supabase
-        .from("segment")
-        .select(
-          "id, start_time, end_time, text, confirmed_councilor_id, confirmed_official_id"
-        )
-        .eq("meeting_id", id)
-        .order("start_time", { ascending: true })
-        // Supabase/PostgREST silently caps unranged selects (default 1000
-        // rows) — a single long session can already exceed that, so this
-        // must be explicit rather than relying on the default.
-        .range(0, 9999),
+      // PostgREST enforces a server-side max-rows cap that a single
+      // .range() request can't exceed regardless of how wide a range is
+      // requested — paginate until a page comes back short instead of
+      // guessing the cap's value. Long sessions can have 1000+ segments.
+      fetchAllRows<{
+        id: string;
+        start_time: number;
+        end_time: number;
+        text: string;
+        confirmed_councilor_id: string | null;
+        confirmed_official_id: string | null;
+      }>((from, to) =>
+        supabase
+          .from("segment")
+          .select(
+            "id, start_time, end_time, text, confirmed_councilor_id, confirmed_official_id"
+          )
+          .eq("meeting_id", id)
+          .order("start_time", { ascending: true })
+          .range(from, to)
+      ),
       supabase
         .from("councilor_term")
         .select("councilor:councilor_id(id, full_name)")
@@ -61,7 +75,21 @@ export default async function SessionPage({
         .select("id, date, video_url")
         .eq("term_id", meeting.term_id)
         .order("date", { ascending: true }),
+      // Every topic tag used anywhere in this council's sessions (any
+      // term) — embedded in the .txt export so the summary prompt reuses
+      // existing tags instead of coining near-duplicate variants.
+      councilId
+        ? supabase
+            .from("meeting")
+            .select("topics, term:term_id!inner(council_id)")
+            .eq("term.council_id", councilId)
+            .not("topics", "is", null)
+        : Promise.resolve({ data: null }),
     ]);
+
+  const allTopics = [
+    ...new Set((topicRows ?? []).flatMap((r) => r.topics ?? [])),
+  ].sort((a, b) => a.localeCompare(b, "pl"));
 
   let isAdmin = false;
   if (user) {
@@ -81,58 +109,28 @@ export default async function SessionPage({
 
   const orderedMeetings = termMeetings ?? [];
   const currentIndex = orderedMeetings.findIndex((m) => m.id === meeting.id);
-  // A generous window rather than a fixed handful — the row wraps
-  // (flex-wrap) rather than scrolling, so it naturally fills however much
-  // width is available instead of hardcoding a pill count.
-  const NEIGHBOR_RADIUS = 10;
+  // The whole term, not a fixed handful — the row stays single-line and
+  // centers on the current session (justify-center + overflow-hidden), so
+  // it clips symmetrically on both ends instead of stopping abruptly
+  // partway across the width like a fixed ±N window did.
   const neighborWindow =
     currentIndex === -1
       ? []
-      : orderedMeetings
-          .slice(
-            Math.max(0, currentIndex - NEIGHBOR_RADIUS),
-            currentIndex + NEIGHBOR_RADIUS + 1
-          )
-          .map((m, i) => ({
-            id: m.id,
-            date: m.date,
-            hasVideo: Boolean(m.video_url),
-            number: Math.max(0, currentIndex - NEIGHBOR_RADIUS) + i + 1,
-          }));
+      : orderedMeetings.map((m, i) => ({
+          id: m.id,
+          date: m.date,
+          hasVideo: Boolean(m.video_url),
+          number: i + 1,
+        }));
   // Newest first (leftmost), matching the timeline's reading direction.
   const neighborsNewestFirst = [...neighborWindow].reverse();
 
   return (
     <div className="mx-auto flex w-full max-w-[110rem] flex-1 flex-col gap-6 px-6 py-12">
-      {neighborsNewestFirst.length > 1 && (
-        <nav className="flex flex-wrap items-center gap-1.5 text-sm">
-          {neighborsNewestFirst.map((m) =>
-            m.hasVideo ? (
-              <Link
-                key={m.id}
-                href={`/sesje/${m.id}`}
-                prefetch={false}
-                title={m.date}
-                className={`rounded-full px-3 py-1 transition-colors ${
-                  m.id === meeting.id
-                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                    : "border border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
-                }`}
-              >
-                {m.number}
-              </Link>
-            ) : (
-              <span
-                key={m.id}
-                title={`${m.date} — brak nagrania/transkrypcji`}
-                className="cursor-default rounded-full border border-dashed border-zinc-200 px-3 py-1 text-zinc-300 dark:border-zinc-800 dark:text-zinc-700"
-              >
-                {m.number}
-              </span>
-            )
-          )}
-        </nav>
-      )}
+      <SessionNeighborNav
+        meetings={neighborsNewestFirst}
+        currentId={meeting.id}
+      />
 
       <div>
         {council && (
@@ -152,6 +150,9 @@ export default async function SessionPage({
       <SessionPlayer
         meetingId={meeting.id}
         meetingTitle={meeting.title ?? meeting.id}
+        esesjaId={meeting.esesja_id}
+        meetingDate={meeting.date}
+        existingTopics={allTopics}
         summary={meeting.summary}
         videoUrl={meeting.video_url}
         segments={segments ?? []}

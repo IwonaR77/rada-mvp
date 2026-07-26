@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { PolandMap } from "@/components/poland-map";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
@@ -7,67 +8,6 @@ function formatKadencjaDate(dateStr: string) {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("pl-PL", {
     year: "numeric",
   });
-}
-
-function SpeechGraphic() {
-  return (
-    <svg
-      viewBox="0 0 320 260"
-      className="h-full w-full max-w-sm text-zinc-300 dark:text-zinc-700"
-      fill="none"
-    >
-      <rect
-        x="20"
-        y="30"
-        width="150"
-        height="90"
-        rx="18"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        d="M55 120 L55 150 L90 120"
-        stroke="currentColor"
-        strokeWidth="4"
-        strokeLinejoin="round"
-      />
-      <rect
-        x="150"
-        y="140"
-        width="150"
-        height="90"
-        rx="18"
-        stroke="currentColor"
-        strokeWidth="4"
-        className="text-zinc-400 dark:text-zinc-600"
-      />
-      <path
-        d="M265 230 L265 200 L230 230"
-        stroke="currentColor"
-        strokeWidth="4"
-        strokeLinejoin="round"
-        className="text-zinc-400 dark:text-zinc-600"
-      />
-      <line
-        x1="45"
-        y1="55"
-        x2="140"
-        y2="55"
-        stroke="currentColor"
-        strokeWidth="4"
-        strokeLinecap="round"
-      />
-      <line
-        x1="45"
-        y1="75"
-        x2="110"
-        y2="75"
-        stroke="currentColor"
-        strokeWidth="4"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
 }
 
 export default async function Home({
@@ -84,8 +24,15 @@ export default async function Home({
   if (!user) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-12 bg-zinc-50 px-6 py-16 dark:bg-black lg:flex-row lg:gap-16">
-        <div className="flex w-full max-w-sm items-center justify-center">
-          <SpeechGraphic />
+        <div className="w-full max-w-sm overflow-hidden rounded-2xl shadow-lg">
+          <Image
+            src="/homepage-hero.png"
+            alt="Pusta sala obrad rady"
+            width={1024}
+            height={1400}
+            priority
+            className="h-auto w-full object-cover"
+          />
         </div>
 
         <div className="flex w-full max-w-md flex-col gap-6">

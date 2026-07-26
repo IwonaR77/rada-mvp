@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { SpeakingHeatmap } from "@/components/speaking-heatmap";
 import { FavoriteCouncilButton } from "@/components/favorite-council-button";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 
 type CouncilorStat = {
   id: string;
@@ -96,7 +97,7 @@ export default async function CouncilDashboardPage({
 
   const { data: council } = await supabase
     .from("council")
-    .select("id, name, city:city_id(name)")
+    .select("id, name, city:city_id(name, coat_of_arms_url)")
     .eq("id", councilId)
     .maybeSingle();
 
@@ -156,22 +157,30 @@ export default async function CouncilDashboardPage({
   const heatmapMatrix: Record<string, Record<string, number>> = {};
 
   if (selectedTermId) {
-    const [{ data: roster }, { data: segments }, { data: meetingRows }] =
+    const [{ data: roster }, segments, { data: meetingRows }] =
       await Promise.all([
         supabase
           .from("councilor_term")
           .select("party, councilor:councilor_id(id, full_name)")
           .eq("term_id", selectedTermId),
-        supabase
-          .from("segment")
-          .select(
-            "confirmed_councilor_id, meeting_id, start_time, end_time, meeting:meeting_id!inner(term_id)"
-          )
-          .eq("status", "finalized")
-          .eq("meeting.term_id", selectedTermId)
-          // See the same note in /sesje/[id]/page.tsx — unranged selects
-          // silently cap at Supabase/PostgREST's default row limit.
-          .range(0, 9999),
+        // See the same note in /sesje/[id]/page.tsx — a single .range()
+        // request can't exceed PostgREST's server-side max-rows cap no
+        // matter how wide a range is asked for; paginate instead.
+        fetchAllRows<{
+          confirmed_councilor_id: string | null;
+          meeting_id: string;
+          start_time: number;
+          end_time: number;
+        }>((from, to) =>
+          supabase
+            .from("segment")
+            .select(
+              "confirmed_councilor_id, meeting_id, start_time, end_time, meeting:meeting_id!inner(term_id)"
+            )
+            .eq("status", "finalized")
+            .eq("meeting.term_id", selectedTermId)
+            .range(from, to)
+        ),
         supabase
           .from("meeting")
           .select(
@@ -233,7 +242,15 @@ export default async function CouncilDashboardPage({
         <Link href="/" className="text-sm text-zinc-500 hover:underline">
           ← Mapa
         </Link>
-        <div className="mt-2 flex items-center gap-2">
+        <div className="mt-2 flex items-center gap-3">
+          {council.city?.coat_of_arms_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={council.city.coat_of_arms_url}
+              alt={`Herb: ${council.city.name}`}
+              className="h-12 w-auto"
+            />
+          )}
           <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
             {council.name}
           </h1>

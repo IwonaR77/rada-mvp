@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { parseVtt } from "@/lib/vtt";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 
 type AssignTarget =
   | { type: "councilor"; id: string }
@@ -60,25 +61,32 @@ export async function importTranscript(
     return { error: "Brak uprawnień" };
   }
 
-  const { data: existing } = await supabase
-    .from("segment")
-    .select("id, status")
-    .eq("meeting_id", meetingId);
+  // A single .range() request can't exceed PostgREST's server-side
+  // max-rows cap — for a large session (1000+ segments) an unranged
+  // select would silently undercount, potentially missing finalized
+  // segments and letting an import through that should have been
+  // blocked. Paginate to get the true count.
+  const existing = await fetchAllRows<{ id: string; status: string }>(
+    (from, to) =>
+      supabase
+        .from("segment")
+        .select("id, status")
+        .eq("meeting_id", meetingId)
+        .range(from, to)
+  );
 
-  const finalizedCount = (existing ?? []).filter(
-    (s) => s.status === "finalized"
-  ).length;
+  const finalizedCount = existing.filter((s) => s.status === "finalized").length;
   if (finalizedCount > 0) {
     return {
       error: `Ta sesja ma już ${finalizedCount} oznaczonych segmentów — import odrzucony, żeby nic nie skasować.`,
     };
   }
-  if ((existing ?? []).length > 0 && !force) {
+  if (existing.length > 0 && !force) {
     return {
-      error: `Ta sesja ma już ${existing!.length} segmentów. Zaznacz "force", by je zastąpić.`,
+      error: `Ta sesja ma już ${existing.length} segmentów. Zaznacz "force", by je zastąpić.`,
     };
   }
-  if ((existing ?? []).length > 0 && force) {
+  if (existing.length > 0 && force) {
     const { error: deleteError } = await supabase
       .from("segment")
       .delete()

@@ -43,8 +43,30 @@ function buildSrt(segments: Segment[]) {
     .join("\n");
 }
 
-function buildPlainText(segments: Segment[]) {
-  return segments.map((s) => s.text).join("\n\n");
+function buildPlainText(
+  segments: Segment[],
+  meta: {
+    esesjaId: string | null;
+    date: string;
+    title: string;
+    existingTopics: string[];
+  }
+) {
+  // A header up front so pasting this file straight into the summary
+  // prompt already carries the esesja_id/date/existing-tags it needs —
+  // no separate manual "fill in METADANE" step, no back-and-forth asking
+  // for it, and no drifting tag vocabulary across sessions.
+  const header = [
+    meta.esesjaId ? `esesja_id: ${meta.esesjaId}` : null,
+    `data: ${meta.date}`,
+    `tytuł: ${meta.title}`,
+    meta.existingTopics.length > 0
+      ? `tagi: ${meta.existingTopics.join(", ")}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return `${header}\n\n${segments.map((s) => s.text).join("\n\n")}`;
 }
 
 function downloadFile(filename: string, content: string, mimeType: string) {
@@ -69,6 +91,9 @@ function slugify(text: string) {
 export function SessionPlayer({
   meetingId,
   meetingTitle,
+  esesjaId,
+  meetingDate,
+  existingTopics,
   summary,
   videoUrl,
   segments,
@@ -79,6 +104,9 @@ export function SessionPlayer({
 }: {
   meetingId: string;
   meetingTitle: string;
+  esesjaId: string | null;
+  meetingDate: string;
+  existingTopics: string[];
   summary: string | null;
   videoUrl: string;
   segments: Segment[];
@@ -273,7 +301,12 @@ export function SessionPlayer({
               onClick={() =>
                 downloadFile(
                   `${slugify(meetingTitle)}.txt`,
-                  buildPlainText(segments),
+                  buildPlainText(segments, {
+                    esesjaId,
+                    date: meetingDate,
+                    title: meetingTitle,
+                    existingTopics,
+                  }),
                   "text/plain;charset=utf-8"
                 )
               }

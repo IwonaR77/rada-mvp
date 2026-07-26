@@ -73,6 +73,7 @@ export type Database = {
       }
       city: {
         Row: {
+          coat_of_arms_url: string | null
           created_at: string
           id: string
           lat: number | null
@@ -80,6 +81,7 @@ export type Database = {
           name: string
         }
         Insert: {
+          coat_of_arms_url?: string | null
           created_at?: string
           id?: string
           lat?: number | null
@@ -87,6 +89,7 @@ export type Database = {
           name: string
         }
         Update: {
+          coat_of_arms_url?: string | null
           created_at?: string
           id?: string
           lat?: number | null
@@ -287,6 +290,7 @@ export type Database = {
           summary: string | null
           term_id: string
           title: string | null
+          topics: string[] | null
           transcript_source: string | null
           transcript_status: string
           video_downloaded: boolean
@@ -301,6 +305,7 @@ export type Database = {
           summary?: string | null
           term_id: string
           title?: string | null
+          topics?: string[] | null
           transcript_source?: string | null
           transcript_status?: string
           video_downloaded?: boolean
@@ -315,6 +320,7 @@ export type Database = {
           summary?: string | null
           term_id?: string
           title?: string | null
+          topics?: string[] | null
           transcript_source?: string | null
           transcript_status?: string
           video_downloaded?: boolean
