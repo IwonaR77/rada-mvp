@@ -25,7 +25,15 @@ export default async function SessionPage({
 
   if (!meeting || !meeting.video_url) notFound();
 
-  const [{ data: segments }, { data: roster }, { data: officials }, { data: auth }] =
+  // Must run before the Promise.all below, not inside it — concurrent calls
+  // sharing one client can each try to refresh an expired access token with
+  // the same (single-use) refresh token, and all but the first fail with
+  // "Invalid Refresh Token: Already Used".
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const [{ data: segments }, { data: roster }, { data: officials }] =
     await Promise.all([
       supabase
         .from("segment")
@@ -39,15 +47,14 @@ export default async function SessionPage({
         .select("councilor:councilor_id(id, full_name)")
         .eq("term_id", meeting.term_id),
       supabase.from("official").select("id, full_name, role"),
-      supabase.auth.getUser(),
     ]);
 
   let isAdmin = false;
-  if (auth?.user) {
+  if (user) {
     const { data: appUser } = await supabase
       .from("app_user")
       .select("role")
-      .eq("id", auth.user.id)
+      .eq("id", user.id)
       .maybeSingle();
     isAdmin = appUser?.role === "admin" || appUser?.role === "moderator";
   }

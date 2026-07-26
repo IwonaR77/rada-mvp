@@ -20,6 +20,7 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          last_viewed_term_id: string | null
           reputation: number
           role: string
           votes_correct: number
@@ -30,6 +31,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id: string
+          last_viewed_term_id?: string | null
           reputation?: number
           role?: string
           votes_correct?: number
@@ -40,12 +42,21 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          last_viewed_term_id?: string | null
           reputation?: number
           role?: string
           votes_correct?: number
           votes_total?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "app_user_last_viewed_term_id_fkey"
+            columns: ["last_viewed_term_id"]
+            isOneToOne: false
+            referencedRelation: "term"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       city: {
         Row: {
