@@ -33,7 +33,7 @@ export default async function SessionPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: segments }, { data: roster }, { data: officials }] =
+  const [{ data: segments }, { data: roster }, { data: officials }, { data: termMeetings }] =
     await Promise.all([
       supabase
         .from("segment")
@@ -51,6 +51,16 @@ export default async function SessionPage({
         .select("councilor:councilor_id(id, full_name)")
         .eq("term_id", meeting.term_id),
       supabase.from("official").select("id, full_name, role"),
+      // Chronological position within the term (ascending, ALL sessions —
+      // not just ones with a resolved video_url) matches the real Sesja
+      // Nr N numbering used in official documents — verified against two
+      // known sessions (86312 → 32 "Sesja XXXII", 87170 → 33 "Sesja
+      // XXXIII") before relying on it here.
+      supabase
+        .from("meeting")
+        .select("id, date, video_url")
+        .eq("term_id", meeting.term_id)
+        .order("date", { ascending: true }),
     ]);
 
   let isAdmin = false;
@@ -69,8 +79,61 @@ export default async function SessionPage({
 
   const council = meeting.term?.council;
 
+  const orderedMeetings = termMeetings ?? [];
+  const currentIndex = orderedMeetings.findIndex((m) => m.id === meeting.id);
+  // A generous window rather than a fixed handful — the row wraps
+  // (flex-wrap) rather than scrolling, so it naturally fills however much
+  // width is available instead of hardcoding a pill count.
+  const NEIGHBOR_RADIUS = 10;
+  const neighborWindow =
+    currentIndex === -1
+      ? []
+      : orderedMeetings
+          .slice(
+            Math.max(0, currentIndex - NEIGHBOR_RADIUS),
+            currentIndex + NEIGHBOR_RADIUS + 1
+          )
+          .map((m, i) => ({
+            id: m.id,
+            date: m.date,
+            hasVideo: Boolean(m.video_url),
+            number: Math.max(0, currentIndex - NEIGHBOR_RADIUS) + i + 1,
+          }));
+  // Newest first (leftmost), matching the timeline's reading direction.
+  const neighborsNewestFirst = [...neighborWindow].reverse();
+
   return (
     <div className="mx-auto flex w-full max-w-[110rem] flex-1 flex-col gap-6 px-6 py-12">
+      {neighborsNewestFirst.length > 1 && (
+        <nav className="flex flex-wrap items-center gap-1.5 text-sm">
+          {neighborsNewestFirst.map((m) =>
+            m.hasVideo ? (
+              <Link
+                key={m.id}
+                href={`/sesje/${m.id}`}
+                prefetch={false}
+                title={m.date}
+                className={`rounded-full px-3 py-1 transition-colors ${
+                  m.id === meeting.id
+                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    : "border border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {m.number}
+              </Link>
+            ) : (
+              <span
+                key={m.id}
+                title={`${m.date} — brak nagrania/transkrypcji`}
+                className="cursor-default rounded-full border border-dashed border-zinc-200 px-3 py-1 text-zinc-300 dark:border-zinc-800 dark:text-zinc-700"
+              >
+                {m.number}
+              </span>
+            )
+          )}
+        </nav>
+      )}
+
       <div>
         {council && (
           <Link

@@ -22,6 +22,7 @@ export type Database = {
           favorite_council_id: string | null
           id: string
           last_viewed_term_id: string | null
+          preferred_term_start_date: string | null
           reputation: number
           role: string
           votes_correct: number
@@ -34,6 +35,7 @@ export type Database = {
           favorite_council_id?: string | null
           id: string
           last_viewed_term_id?: string | null
+          preferred_term_start_date?: string | null
           reputation?: number
           role?: string
           votes_correct?: number
@@ -46,6 +48,7 @@ export type Database = {
           favorite_council_id?: string | null
           id?: string
           last_viewed_term_id?: string | null
+          preferred_term_start_date?: string | null
           reputation?: number
           role?: string
           votes_correct?: number

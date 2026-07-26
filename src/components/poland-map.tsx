@@ -10,7 +10,12 @@ type CouncilPin = {
   cityName: string;
   lat: number;
   lng: number;
+  termId: string | null;
 };
+
+function councilHref(c: CouncilPin) {
+  return c.termId ? `/rada/${c.id}?kadencja=${c.termId}` : `/rada/${c.id}`;
+}
 
 export function PolandMap({ councils }: { councils: CouncilPin[] }) {
   const router = useRouter();
@@ -42,7 +47,7 @@ export function PolandMap({ councils }: { councils: CouncilPin[] }) {
             {matches.map((c) => (
               <li key={c.id}>
                 <button
-                  onClick={() => router.push(`/rada/${c.id}`)}
+                  onClick={() => router.push(councilHref(c))}
                   className="block w-full px-5 py-2.5 text-left text-sm text-zinc-800 hover:bg-zinc-50 dark:text-zinc-100 dark:hover:bg-zinc-800"
                 >
                   {c.councilName} <span className="text-zinc-400">— {c.cityName}</span>
@@ -66,7 +71,7 @@ export function PolandMap({ councils }: { councils: CouncilPin[] }) {
           return (
             <button
               key={c.id}
-              onClick={() => router.push(`/rada/${c.id}`)}
+              onClick={() => router.push(councilHref(c))}
               onMouseEnter={() => setHoveredId(c.id)}
               onMouseLeave={() => setHoveredId(null)}
               style={{ left: `${x}%`, top: `${y}%` }}

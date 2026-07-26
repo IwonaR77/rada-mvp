@@ -297,46 +297,6 @@ export function SessionPlayer({
           </div>
         </div>
 
-        {isAdmin && (
-          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-zinc-300 p-6 text-center dark:border-zinc-700">
-            {segments.length === 0 ? (
-              <p className="text-sm text-zinc-500">
-                Ta sesja nie ma jeszcze zaimportowanego transkryptu.
-              </p>
-            ) : (
-              <p className="text-sm text-zinc-500">
-                Ta sesja ma już {segments.length} segment(ów) — zaznacz
-                &bdquo;force&rdquo;, by je zastąpić nowym importem.
-              </p>
-            )}
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              <label className="cursor-pointer rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300">
-                {isImporting ? "Importowanie..." : "Wybierz plik .vtt"}
-                <input
-                  type="file"
-                  accept=".vtt"
-                  onChange={handleImportFile}
-                  disabled={isImporting}
-                  className="hidden"
-                />
-              </label>
-              <label className="flex items-center gap-1.5 text-sm text-zinc-600 dark:text-zinc-400">
-                <input
-                  type="checkbox"
-                  checked={forceReimport}
-                  onChange={(e) => setForceReimport(e.target.checked)}
-                />
-                force
-              </label>
-            </div>
-            {importError && (
-              <p className="text-sm text-red-600 dark:text-red-400">
-                {importError}
-              </p>
-            )}
-          </div>
-        )}
-
         <ul className="flex max-h-[32rem] flex-col gap-1 overflow-y-auto rounded-2xl border border-zinc-200 p-2 dark:border-zinc-800">
           {visibleSegments.length === 0 && (
             <li className="p-4 text-center text-zinc-500">
@@ -400,6 +360,46 @@ export function SessionPlayer({
             );
           })}
         </ul>
+
+        {isAdmin && (
+          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-zinc-300 p-6 text-center dark:border-zinc-700">
+            {segments.length === 0 ? (
+              <p className="text-sm text-zinc-500">
+                Ta sesja nie ma jeszcze zaimportowanego transkryptu.
+              </p>
+            ) : (
+              <p className="text-sm text-zinc-500">
+                Ta sesja ma już {segments.length} segment(ów) — zaznacz
+                &bdquo;force&rdquo;, by je zastąpić nowym importem.
+              </p>
+            )}
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <label className="cursor-pointer rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300">
+                {isImporting ? "Importowanie..." : "Wybierz plik .vtt"}
+                <input
+                  type="file"
+                  accept=".vtt"
+                  onChange={handleImportFile}
+                  disabled={isImporting}
+                  className="hidden"
+                />
+              </label>
+              <label className="flex items-center gap-1.5 text-sm text-zinc-600 dark:text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={forceReimport}
+                  onChange={(e) => setForceReimport(e.target.checked)}
+                />
+                force
+              </label>
+            </div>
+            {importError && (
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {importError}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {isAdmin && (
