@@ -168,7 +168,10 @@ export default async function CouncilDashboardPage({
             "confirmed_councilor_id, meeting_id, start_time, end_time, meeting:meeting_id!inner(term_id)"
           )
           .eq("status", "finalized")
-          .eq("meeting.term_id", selectedTermId),
+          .eq("meeting.term_id", selectedTermId)
+          // See the same note in /sesje/[id]/page.tsx — unranged selects
+          // silently cap at Supabase/PostgREST's default row limit.
+          .range(0, 9999),
         supabase
           .from("meeting")
           .select(
@@ -184,7 +187,6 @@ export default async function CouncilDashboardPage({
       .map((r) => ({ id: r.councilor!.id, fullName: r.councilor!.full_name }));
 
     const totals = new Map<string, number>();
-    const meetingIdsWithData = new Set<string>();
     for (const s of segments ?? []) {
       if (!s.confirmed_councilor_id) continue;
       const duration = Number(s.end_time) - Number(s.start_time);
@@ -192,14 +194,16 @@ export default async function CouncilDashboardPage({
         s.confirmed_councilor_id,
         (totals.get(s.confirmed_councilor_id) ?? 0) + duration
       );
-      meetingIdsWithData.add(s.meeting_id);
       heatmapMatrix[s.confirmed_councilor_id] ??= {};
       heatmapMatrix[s.confirmed_councilor_id][s.meeting_id] =
         (heatmapMatrix[s.confirmed_councilor_id][s.meeting_id] ?? 0) +
         duration;
     }
+    // A session shows up as a column as soon as its transcript is imported
+    // (transcript_status "rozpisana"), even before anyone's been tagged —
+    // it just renders fully gray until tagging starts filling it in.
     heatmapMeetings = (meetingRows ?? [])
-      .filter((m) => meetingIdsWithData.has(m.id))
+      .filter((m) => m.transcript_status === "rozpisana")
       .map((m) => ({ id: m.id, date: m.date, title: m.title }));
 
     stats = (roster ?? [])

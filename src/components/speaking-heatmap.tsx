@@ -193,11 +193,11 @@ export function SpeakingHeatmap({
           <div className="flex items-center gap-2 pt-1">
             <span className="w-40 shrink-0" />
             <div className="flex gap-[2px]">
-              {orderedMeetings.map((m, i) => (
+              {orderedMeetings.map((m) => (
                 <span
                   key={m.id}
-                  className="w-4 shrink-0 origin-top-left -rotate-45 whitespace-nowrap text-[10px] text-zinc-400"
-                  style={{ marginTop: i % 2 === 0 ? 0 : 6 }}
+                  className="w-4 shrink-0 whitespace-nowrap text-[10px] text-zinc-400"
+                  style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
                 >
                   {formatShortDate(m.date)}
                 </span>

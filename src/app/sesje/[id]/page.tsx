@@ -41,7 +41,11 @@ export default async function SessionPage({
           "id, start_time, end_time, text, confirmed_councilor_id, confirmed_official_id"
         )
         .eq("meeting_id", id)
-        .order("start_time", { ascending: true }),
+        .order("start_time", { ascending: true })
+        // Supabase/PostgREST silently caps unranged selects (default 1000
+        // rows) — a single long session can already exceed that, so this
+        // must be explicit rather than relying on the default.
+        .range(0, 9999),
       supabase
         .from("councilor_term")
         .select("councilor:councilor_id(id, full_name)")
