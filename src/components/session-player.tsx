@@ -93,6 +93,7 @@ export function SessionPlayer({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<"all" | "unassigned">("all");
   const [query, setQuery] = useState("");
+  const [speakerFilter, setSpeakerFilter] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
 
   const activeSegment = segments.find(
@@ -101,13 +102,24 @@ export function SessionPlayer({
 
   const isUnassigned = (s: Segment) =>
     !s.confirmed_councilor_id && !s.confirmed_official_id;
+  const getAssignedId = (s: Segment) =>
+    s.confirmed_councilor_id ?? s.confirmed_official_id;
   const unassignedCount = segments.filter(isUnassigned).length;
   const normalizedQuery = query.trim().toLowerCase();
   const visibleSegments = segments
     .filter((s) => (filter === "unassigned" ? isUnassigned(s) : true))
     .filter((s) =>
       normalizedQuery ? s.text.toLowerCase().includes(normalizedQuery) : true
-    );
+    )
+    .filter((s) => {
+      if (speakerFilter.size === 0) return true;
+      const assignedId = getAssignedId(s);
+      return assignedId ? speakerFilter.has(assignedId) : false;
+    });
+
+  const speakingIds = new Set(
+    segments.map(getAssignedId).filter((id): id is string => Boolean(id))
+  );
 
   function handleLoadedMetadata() {
     if (hasAppliedInitialSeek.current || initialSeek === undefined) return;
@@ -135,6 +147,15 @@ export function SessionPlayer({
 
   function toggleSelected(id: string) {
     setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSpeakerFilter(id: string) {
+    setSpeakerFilter((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -257,9 +278,11 @@ export function SessionPlayer({
             <li className="p-4 text-center text-zinc-500">
               {normalizedQuery
                 ? `Brak wyników dla „${query}".`
-                : filter === "unassigned"
-                  ? "Wszystkie segmenty mają przypisanego mówcę."
-                  : "Brak segmentów dla tej sesji."}
+                : speakerFilter.size > 0
+                  ? "Brak wypowiedzi zaznaczonych mówców w tej sesji."
+                  : filter === "unassigned"
+                    ? "Wszystkie segmenty mają przypisanego mówcę."
+                    : "Brak segmentów dla tej sesji."}
             </li>
           )}
           {visibleSegments.map((s) => {
@@ -321,17 +344,46 @@ export function SessionPlayer({
             Zaznaczono: {selected.size} segment(ów)
           </p>
 
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Filtruj po mówcy
+            </h3>
+            {speakerFilter.size > 0 && (
+              <button
+                onClick={() => setSpeakerFilter(new Set())}
+                className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
+              >
+                Wyświetl wszystko
+              </button>
+            )}
+          </div>
+
           <div>
             <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
               Radni
             </h3>
             <ul className="flex flex-col gap-1">
               {councilors.map((c) => (
-                <li key={c.id}>
+                <li
+                  key={c.id}
+                  className={`flex items-center gap-2 rounded-lg px-2 py-0.5 ${
+                    speakingIds.has(c.id)
+                      ? "bg-emerald-50 dark:bg-emerald-950/30"
+                      : ""
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={speakerFilter.has(c.id)}
+                    onChange={() => toggleSpeakerFilter(c.id)}
+                    className="shrink-0"
+                  />
                   <button
                     disabled={selected.size === 0 || isPending}
                     onClick={() => assignTo({ type: "councilor", id: c.id })}
-                    className="w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-zinc-100 disabled:opacity-40 dark:hover:bg-zinc-800"
+                    className={`w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-zinc-100 disabled:opacity-40 dark:hover:bg-zinc-800 ${
+                      speakingIds.has(c.id) ? "font-semibold" : ""
+                    }`}
                   >
                     {c.name}
                   </button>
@@ -347,11 +399,26 @@ export function SessionPlayer({
               </h3>
               <ul className="flex flex-col gap-1">
                 {officials.map((o) => (
-                  <li key={o.id}>
+                  <li
+                    key={o.id}
+                    className={`flex items-center gap-2 rounded-lg px-2 py-0.5 ${
+                      speakingIds.has(o.id)
+                        ? "bg-emerald-50 dark:bg-emerald-950/30"
+                        : ""
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={speakerFilter.has(o.id)}
+                      onChange={() => toggleSpeakerFilter(o.id)}
+                      className="shrink-0"
+                    />
                     <button
                       disabled={selected.size === 0 || isPending}
                       onClick={() => assignTo({ type: "official", id: o.id })}
-                      className="w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-zinc-100 disabled:opacity-40 dark:hover:bg-zinc-800"
+                      className={`w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-zinc-100 disabled:opacity-40 dark:hover:bg-zinc-800 ${
+                        speakingIds.has(o.id) ? "font-semibold" : ""
+                      }`}
                     >
                       {o.full_name}
                       <span className="text-zinc-400"> — {o.role}</span>

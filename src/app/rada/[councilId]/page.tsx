@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { SpeakingHeatmap } from "@/components/speaking-heatmap";
 
 type CouncilorStat = {
   id: string;
@@ -147,6 +148,9 @@ export default async function CouncilDashboardPage({
     transcript_status: string;
   }[] = [];
   let councilors: { id: string; fullName: string }[] = [];
+  let heatmapMeetings: { id: string; date: string; title: string | null }[] =
+    [];
+  const heatmapMatrix: Record<string, Record<string, number>> = {};
 
   if (selectedTermId) {
     const [{ data: roster }, { data: segments }, { data: meetingRows }] =
@@ -158,7 +162,7 @@ export default async function CouncilDashboardPage({
         supabase
           .from("segment")
           .select(
-            "confirmed_councilor_id, start_time, end_time, meeting:meeting_id!inner(term_id)"
+            "confirmed_councilor_id, meeting_id, start_time, end_time, meeting:meeting_id!inner(term_id)"
           )
           .eq("status", "finalized")
           .eq("meeting.term_id", selectedTermId),
@@ -177,6 +181,7 @@ export default async function CouncilDashboardPage({
       .map((r) => ({ id: r.councilor!.id, fullName: r.councilor!.full_name }));
 
     const totals = new Map<string, number>();
+    const meetingIdsWithData = new Set<string>();
     for (const s of segments ?? []) {
       if (!s.confirmed_councilor_id) continue;
       const duration = Number(s.end_time) - Number(s.start_time);
@@ -184,7 +189,15 @@ export default async function CouncilDashboardPage({
         s.confirmed_councilor_id,
         (totals.get(s.confirmed_councilor_id) ?? 0) + duration
       );
+      meetingIdsWithData.add(s.meeting_id);
+      heatmapMatrix[s.confirmed_councilor_id] ??= {};
+      heatmapMatrix[s.confirmed_councilor_id][s.meeting_id] =
+        (heatmapMatrix[s.confirmed_councilor_id][s.meeting_id] ?? 0) +
+        duration;
     }
+    heatmapMeetings = (meetingRows ?? [])
+      .filter((m) => meetingIdsWithData.has(m.id))
+      .map((m) => ({ id: m.id, date: m.date, title: m.title }));
 
     stats = (roster ?? [])
       .filter((r) => r.councilor)
@@ -306,6 +319,17 @@ export default async function CouncilDashboardPage({
                 </div>
               </div>
             )}
+          </section>
+
+          <section>
+            <h3 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
+              Aktywność na sesjach
+            </h3>
+            <SpeakingHeatmap
+              councilors={councilors}
+              meetings={heatmapMeetings}
+              matrix={heatmapMatrix}
+            />
           </section>
 
           <section className="grid gap-6 sm:grid-cols-2">
