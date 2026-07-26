@@ -19,6 +19,7 @@ export type Database = {
           avatar_url: string | null
           created_at: string
           display_name: string | null
+          favorite_council_id: string | null
           id: string
           last_viewed_term_id: string | null
           reputation: number
@@ -30,6 +31,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           display_name?: string | null
+          favorite_council_id?: string | null
           id: string
           last_viewed_term_id?: string | null
           reputation?: number
@@ -41,6 +43,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           display_name?: string | null
+          favorite_council_id?: string | null
           id?: string
           last_viewed_term_id?: string | null
           reputation?: number
@@ -49,6 +52,13 @@ export type Database = {
           votes_total?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "app_user_favorite_council_id_fkey"
+            columns: ["favorite_council_id"]
+            isOneToOne: false
+            referencedRelation: "council"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "app_user_last_viewed_term_id_fkey"
             columns: ["last_viewed_term_id"]

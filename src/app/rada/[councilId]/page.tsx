@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { SpeakingHeatmap } from "@/components/speaking-heatmap";
+import { FavoriteCouncilButton } from "@/components/favorite-council-button";
 
 type CouncilorStat = {
   id: string;
@@ -114,13 +115,15 @@ export default async function CouncilDashboardPage({
   } = await supabase.auth.getUser();
 
   let savedTermId: string | null = null;
+  let isFavoriteCouncil = false;
   if (user) {
     const { data: appUser } = await supabase
       .from("app_user")
-      .select("last_viewed_term_id")
+      .select("last_viewed_term_id, favorite_council_id")
       .eq("id", user.id)
       .maybeSingle();
     savedTermId = appUser?.last_viewed_term_id ?? null;
+    isFavoriteCouncil = appUser?.favorite_council_id === councilId;
   }
 
   const selectedTermId =
@@ -226,9 +229,17 @@ export default async function CouncilDashboardPage({
         <Link href="/" className="text-sm text-zinc-500 hover:underline">
           ← Mapa
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
-          {council.name}
-        </h1>
+        <div className="mt-2 flex items-center gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+            {council.name}
+          </h1>
+          {user && (
+            <FavoriteCouncilButton
+              councilId={council.id}
+              initialIsFavorite={isFavoriteCouncil}
+            />
+          )}
+        </div>
         <p className="text-zinc-500">{council.city?.name}</p>
       </div>
 

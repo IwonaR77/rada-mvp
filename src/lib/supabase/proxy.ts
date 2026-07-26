@@ -27,7 +27,9 @@ export async function updateSession(request: NextRequest) {
 
   // Refreshes the auth token if expired — required for Server Components,
   // which cannot write cookies themselves.
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  return response;
+  return { response, user };
 }
