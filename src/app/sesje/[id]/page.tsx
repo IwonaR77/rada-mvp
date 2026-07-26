@@ -13,17 +13,44 @@ export default async function SessionPage({
 
   const { data: meeting } = await supabase
     .from("meeting")
-    .select("id, title, date, video_url, term:term_id(council:council_id(id, name))")
+    .select(
+      "id, title, date, video_url, term_id, term:term_id(council:council_id(id, name))"
+    )
     .eq("id", id)
     .maybeSingle();
 
   if (!meeting || !meeting.video_url) notFound();
 
-  const { data: segments } = await supabase
-    .from("segment")
-    .select("id, start_time, end_time, text")
-    .eq("meeting_id", id)
-    .order("start_time", { ascending: true });
+  const [{ data: segments }, { data: roster }, { data: officials }, { data: auth }] =
+    await Promise.all([
+      supabase
+        .from("segment")
+        .select(
+          "id, start_time, end_time, text, confirmed_councilor_id, confirmed_official_id"
+        )
+        .eq("meeting_id", id)
+        .order("start_time", { ascending: true }),
+      supabase
+        .from("councilor_term")
+        .select("councilor:councilor_id(id, full_name)")
+        .eq("term_id", meeting.term_id),
+      supabase.from("official").select("id, full_name, role"),
+      supabase.auth.getUser(),
+    ]);
+
+  let isAdmin = false;
+  if (auth?.user) {
+    const { data: appUser } = await supabase
+      .from("app_user")
+      .select("role")
+      .eq("id", auth.user.id)
+      .maybeSingle();
+    isAdmin = appUser?.role === "admin" || appUser?.role === "moderator";
+  }
+
+  const councilors = (roster ?? [])
+    .filter((r) => r.councilor)
+    .map((r) => ({ id: r.councilor!.id, name: r.councilor!.full_name }));
 
   const council = meeting.term?.council;
 
@@ -44,7 +71,14 @@ export default async function SessionPage({
         <p className="text-zinc-500">{meeting.date}</p>
       </div>
 
-      <SessionPlayer videoUrl={meeting.video_url} segments={segments ?? []} />
+      <SessionPlayer
+        meetingId={meeting.id}
+        videoUrl={meeting.video_url}
+        segments={segments ?? []}
+        councilors={councilors}
+        officials={officials ?? []}
+        isAdmin={isAdmin}
+      />
     </div>
   );
 }

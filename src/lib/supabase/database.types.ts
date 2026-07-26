@@ -303,9 +303,31 @@ export type Database = {
           },
         ]
       }
+      official: {
+        Row: {
+          created_at: string
+          full_name: string
+          id: string
+          role: string
+        }
+        Insert: {
+          created_at?: string
+          full_name: string
+          id?: string
+          role: string
+        }
+        Update: {
+          created_at?: string
+          full_name?: string
+          id?: string
+          role?: string
+        }
+        Relationships: []
+      }
       segment: {
         Row: {
           confirmed_councilor_id: string | null
+          confirmed_official_id: string | null
           created_at: string
           end_time: number
           finalized_at: string | null
@@ -318,6 +340,7 @@ export type Database = {
         }
         Insert: {
           confirmed_councilor_id?: string | null
+          confirmed_official_id?: string | null
           created_at?: string
           end_time: number
           finalized_at?: string | null
@@ -330,6 +353,7 @@ export type Database = {
         }
         Update: {
           confirmed_councilor_id?: string | null
+          confirmed_official_id?: string | null
           created_at?: string
           end_time?: number
           finalized_at?: string | null
@@ -346,6 +370,13 @@ export type Database = {
             columns: ["confirmed_councilor_id"]
             isOneToOne: false
             referencedRelation: "councilor"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segment_confirmed_official_id_fkey"
+            columns: ["confirmed_official_id"]
+            isOneToOne: false
+            referencedRelation: "official"
             referencedColumns: ["id"]
           },
           {
