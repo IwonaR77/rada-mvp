@@ -18,6 +18,15 @@ const STATUS_DOT_CLASS: Record<string, string> = {
   rozpisana: "bg-emerald-500",
 };
 
+// Same hues as STATUS_DOT_CLASS, as a border instead of a fill — used for
+// sessions without a summary yet, so a hollow vs. filled dot communicates
+// "has summary" at a glance instead of only in the hover tooltip.
+const STATUS_DOT_BORDER_CLASS: Record<string, string> = {
+  "nie rozpisana": "border-zinc-300 dark:border-zinc-700",
+  "w trakcie": "border-amber-400",
+  rozpisana: "border-emerald-500",
+};
+
 function formatDuration(totalSeconds: number) {
   const total = Math.round(totalSeconds);
   const hours = Math.floor(total / 3600);
@@ -456,9 +465,13 @@ export default async function CouncilDashboardPage({
                             </svg>
                           )}
                           <span
-                            className={`relative z-10 h-3.5 w-3.5 rounded-full ring-2 ring-white dark:ring-black ${STATUS_DOT_CLASS[status] ?? STATUS_DOT_CLASS["nie rozpisana"]} ${
+                            className={`relative z-10 h-3.5 w-3.5 rounded-full ring-2 ring-white dark:ring-black ${
+                              hasSummary
+                                ? (STATUS_DOT_CLASS[status] ?? STATUS_DOT_CLASS["nie rozpisana"])
+                                : `bg-white dark:bg-black border-2 ${STATUS_DOT_BORDER_CLASS[status] ?? STATUS_DOT_BORDER_CLASS["nie rozpisana"]}`
+                            } ${
                               selectedTag && matchesTag
-                                ? "outline outline-2 outline-offset-2 outline-rose-500"
+                                ? "outline outline-2 outline-offset-2 outline-zinc-900 dark:outline-zinc-100"
                                 : ""
                             }`}
                           />
