@@ -20,7 +20,7 @@ export default async function SessionPage({
   const { data: meeting } = await supabase
     .from("meeting")
     .select(
-      "id, title, date, esesja_id, video_url, summary, term_id, term:term_id(council:council_id(id, name))"
+      "id, title, date, esesja_id, video_url, summary, topics, term_id, term:term_id(council:council_id(id, name))"
     )
     .eq("id", id)
     .maybeSingle();
@@ -145,6 +145,20 @@ export default async function SessionPage({
           {meeting.title}
         </h1>
         <p className="text-zinc-500">{meeting.date}</p>
+        {council && meeting.topics && meeting.topics.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {meeting.topics.map((tag) => (
+              <Link
+                key={tag}
+                href={`/rada/${council.id}?temat=${encodeURIComponent(tag)}`}
+                prefetch={false}
+                className="rounded-full border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              >
+                {tag}
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
       <SessionPlayer

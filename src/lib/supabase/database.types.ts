@@ -570,6 +570,14 @@ export type Database = {
     }
     Functions: {
       is_moderator: { Args: { uid: string }; Returns: boolean }
+      meeting_tagging_progress: {
+        Args: { p_term_id: string }
+        Returns: {
+          finalized: number
+          meeting_id: string
+          total: number
+        }[]
+      }
       search_segments: {
         Args: { search_query: string }
         Returns: {

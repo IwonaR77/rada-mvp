@@ -89,10 +89,10 @@ export default async function CouncilDashboardPage({
   searchParams,
 }: {
   params: Promise<{ councilId: string }>;
-  searchParams: Promise<{ kadencja?: string }>;
+  searchParams: Promise<{ kadencja?: string; temat?: string }>;
 }) {
   const { councilId } = await params;
-  const { kadencja } = await searchParams;
+  const { kadencja, temat } = await searchParams;
   const supabase = await createClient();
 
   const { data: council } = await supabase
@@ -150,15 +150,24 @@ export default async function CouncilDashboardPage({
     video_url: string | null;
     video_downloaded: boolean;
     transcript_status: string;
+    topics: string[] | null;
+    summary: string | null;
   }[] = [];
+  let allTags: string[] = [];
+  let selectedTag: string | null = null;
+  let taggingProgress = new Map<string, number>();
   let councilors: { id: string; fullName: string }[] = [];
   let heatmapMeetings: { id: string; date: string; title: string | null }[] =
     [];
   const heatmapMatrix: Record<string, Record<string, number>> = {};
 
   if (selectedTermId) {
-    const [{ data: roster }, segments, { data: meetingRows }] =
-      await Promise.all([
+    const [
+      { data: roster },
+      segments,
+      { data: meetingRows },
+      { data: progressRows, error: progressError },
+    ] = await Promise.all([
         supabase
           .from("councilor_term")
           .select("party, councilor:councilor_id(id, full_name)")
@@ -184,13 +193,31 @@ export default async function CouncilDashboardPage({
         supabase
           .from("meeting")
           .select(
-            "id, date, title, video_url, video_downloaded, transcript_status"
+            "id, date, title, video_url, video_downloaded, transcript_status, topics, summary"
           )
           .eq("term_id", selectedTermId)
           .order("date", { ascending: false }),
+        // Per-session tagging progress (finalized/total segments) for the
+        // timeline's progress ring — a grouped aggregate, done server-side
+        // via RPC rather than fetching every segment just to count them.
+        supabase.rpc("meeting_tagging_progress", { p_term_id: selectedTermId }),
       ]);
 
+    if (progressError) {
+      console.error("meeting_tagging_progress RPC failed:", progressError);
+    }
     meetings = meetingRows ?? [];
+    taggingProgress = new Map(
+      (progressRows ?? []).map((r) => [
+        r.meeting_id,
+        r.total > 0 ? r.finalized / r.total : 0,
+      ])
+    );
+    allTags = [
+      ...new Set(meetings.flatMap((m) => m.topics ?? [])),
+    ].sort((a, b) => a.localeCompare(b, "pl"));
+    selectedTag = temat && allTags.includes(temat) ? temat : null;
+
     councilors = (roster ?? [])
       .filter((r) => r.councilor)
       .map((r) => ({ id: r.councilor!.id, fullName: r.councilor!.full_name }));
@@ -303,6 +330,47 @@ export default async function CouncilDashboardPage({
             </div>
           )}
 
+          {allTags.length > 0 && (
+            <section>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
+                  Tematy
+                </h3>
+                {selectedTag && (
+                  <Link
+                    href={`/rada/${council.id}${selectedTermId ? `?kadencja=${selectedTermId}` : ""}`}
+                    prefetch={false}
+                    className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
+                  >
+                    Wyczyść filtr
+                  </Link>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {allTags.map((tag) => {
+                  const isActive = tag === selectedTag;
+                  const params = new URLSearchParams();
+                  if (selectedTermId) params.set("kadencja", selectedTermId);
+                  if (!isActive) params.set("temat", tag);
+                  return (
+                    <Link
+                      key={tag}
+                      href={`/rada/${council.id}?${params.toString()}`}
+                      prefetch={false}
+                      className={`rounded-full px-3 py-1 text-sm transition-colors ${
+                        isActive
+                          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                          : "border border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                      }`}
+                    >
+                      {tag}
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           <section>
             <h3 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
               Oś czasu sesji
@@ -314,15 +382,87 @@ export default async function CouncilDashboardPage({
             ) : (
               <div className="overflow-x-auto pb-2">
                 <div className="relative flex min-w-max items-start gap-7 px-2 pt-2">
-                  <div className="absolute left-2 right-2 top-[9px] h-px bg-zinc-200 dark:bg-zinc-800" />
+                  <div className="absolute left-2 right-2 top-[13px] h-px bg-zinc-200 dark:bg-zinc-800" />
                   {meetings.map((m) => {
                     const hasContent = Boolean(m.video_url);
                     const status = m.transcript_status ?? "nie rozpisana";
+                    const matchesTag = selectedTag
+                      ? (m.topics ?? []).includes(selectedTag)
+                      : true;
+                    const progress =
+                      status === "rozpisana"
+                        ? taggingProgress.get(m.id)
+                        : undefined;
+                    const hasSummary = Boolean(m.summary);
+                    const tooltipParts = [m.title ?? undefined];
+                    if (progress !== undefined) {
+                      tooltipParts.push(
+                        `otagowane: ${Math.round(progress * 100)}%`
+                      );
+                    }
+                    if (hasSummary) tooltipParts.push("ma podsumowanie");
+                    const tooltip = tooltipParts.filter(Boolean).join(" — ");
+
+                    // A thin radial progress ring around the status dot —
+                    // one hue (emerald, "done" semantics), only shown once
+                    // a session is transcribed, so untranscribed sessions
+                    // keep the plain, uncluttered dot. Radius must clear the
+                    // dot's white/black halo ring (ring-2, outer edge ~r=9)
+                    // with a visible gap, or the opaque halo paints over the
+                    // thin arc entirely — confirmed via screenshot that r=9
+                    // with ring-4 fully occluded it.
+                    const RADIUS = 11;
+                    const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+                    const BOX = 26;
+                    const CENTER = BOX / 2;
                     const marker = (
-                      <div className="flex flex-col items-center gap-2">
-                        <span
-                          className={`relative z-10 h-3.5 w-3.5 rounded-full ring-4 ring-white dark:ring-black ${STATUS_DOT_CLASS[status] ?? STATUS_DOT_CLASS["nie rozpisana"]}`}
-                        />
+                      <div
+                        className={`flex flex-col items-center gap-2 transition-opacity ${
+                          matchesTag ? "" : "opacity-25"
+                        }`}
+                      >
+                        <div
+                          className="relative flex items-center justify-center"
+                          style={{ height: BOX, width: BOX }}
+                        >
+                          {progress !== undefined && (
+                            <svg
+                              viewBox={`0 0 ${BOX} ${BOX}`}
+                              width={BOX}
+                              height={BOX}
+                              className="absolute inset-0 -rotate-90"
+                            >
+                              <circle
+                                cx={CENTER}
+                                cy={CENTER}
+                                r={RADIUS}
+                                fill="none"
+                                strokeWidth="2"
+                                className="stroke-zinc-300 dark:stroke-zinc-600"
+                              />
+                              <circle
+                                cx={CENTER}
+                                cy={CENTER}
+                                r={RADIUS}
+                                fill="none"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeDasharray={CIRCUMFERENCE}
+                                strokeDashoffset={
+                                  CIRCUMFERENCE * (1 - progress)
+                                }
+                                className="stroke-emerald-600 dark:stroke-emerald-400 transition-[stroke-dashoffset]"
+                              />
+                            </svg>
+                          )}
+                          <span
+                            className={`relative z-10 h-3.5 w-3.5 rounded-full ring-2 ring-white dark:ring-black ${STATUS_DOT_CLASS[status] ?? STATUS_DOT_CLASS["nie rozpisana"]} ${
+                              selectedTag && matchesTag
+                                ? "outline outline-2 outline-offset-2 outline-rose-500"
+                                : ""
+                            }`}
+                          />
+                        </div>
                         <span className="whitespace-nowrap text-xs text-zinc-500">
                           {formatShortDate(m.date)}
                         </span>
@@ -333,7 +473,7 @@ export default async function CouncilDashboardPage({
                         key={m.id}
                         href={`/sesje/${m.id}`}
                         prefetch={false}
-                        title={m.title ?? undefined}
+                        title={tooltip || undefined}
                         className="shrink-0 hover:opacity-70"
                       >
                         {marker}
@@ -341,7 +481,7 @@ export default async function CouncilDashboardPage({
                     ) : (
                       <div
                         key={m.id}
-                        title={m.title ?? undefined}
+                        title={tooltip || undefined}
                         className="shrink-0"
                       >
                         {marker}
