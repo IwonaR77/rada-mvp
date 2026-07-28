@@ -14,6 +14,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_unit: {
+        Row: {
+          created_at: string
+          id: string
+          level: Database["public"]["Enums"]["admin_unit_level"]
+          name: string
+          parent_id: string | null
+          path: unknown
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          level: Database["public"]["Enums"]["admin_unit_level"]
+          name: string
+          parent_id?: string | null
+          path?: unknown
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          level?: Database["public"]["Enums"]["admin_unit_level"]
+          name?: string
+          parent_id?: string | null
+          path?: unknown
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_unit_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "admin_unit"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       app_user: {
         Row: {
           avatar_url: string | null
@@ -73,6 +108,7 @@ export type Database = {
       }
       city: {
         Row: {
+          admin_unit_id: string | null
           coat_of_arms_url: string | null
           created_at: string
           id: string
@@ -81,6 +117,7 @@ export type Database = {
           name: string
         }
         Insert: {
+          admin_unit_id?: string | null
           coat_of_arms_url?: string | null
           created_at?: string
           id?: string
@@ -89,6 +126,7 @@ export type Database = {
           name: string
         }
         Update: {
+          admin_unit_id?: string | null
           coat_of_arms_url?: string | null
           created_at?: string
           id?: string
@@ -96,7 +134,15 @@ export type Database = {
           lng?: number | null
           name?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "city_admin_unit_id_fkey"
+            columns: ["admin_unit_id"]
+            isOneToOne: false
+            referencedRelation: "admin_unit"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       council: {
         Row: {
@@ -471,7 +517,9 @@ export type Database = {
           app_user_id: string
           created_at: string
           id: string
+          permissions: string[]
           role: string
+          scope_admin_unit_id: string | null
           scope_city_id: string | null
           scope_council_id: string | null
         }
@@ -479,7 +527,9 @@ export type Database = {
           app_user_id: string
           created_at?: string
           id?: string
+          permissions?: string[]
           role: string
+          scope_admin_unit_id?: string | null
           scope_city_id?: string | null
           scope_council_id?: string | null
         }
@@ -487,7 +537,9 @@ export type Database = {
           app_user_id?: string
           created_at?: string
           id?: string
+          permissions?: string[]
           role?: string
+          scope_admin_unit_id?: string | null
           scope_city_id?: string | null
           scope_council_id?: string | null
         }
@@ -497,6 +549,13 @@ export type Database = {
             columns: ["app_user_id"]
             isOneToOne: false
             referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_role_scope_admin_unit_id_fkey"
+            columns: ["scope_admin_unit_id"]
+            isOneToOne: false
+            referencedRelation: "admin_unit"
             referencedColumns: ["id"]
           },
           {
@@ -569,6 +628,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_unit_is_ancestor_or_self: {
+        Args: { ancestor_id: string; unit_id: string }
+        Returns: boolean
+      }
       is_moderator: { Args: { uid: string }; Returns: boolean }
       meeting_tagging_progress: {
         Args: { p_term_id: string }
@@ -589,9 +652,19 @@ export type Database = {
           start_time: number
         }[]
       }
+      text2ltree: { Args: { "": string }; Returns: unknown }
+      user_has_permission: {
+        Args: {
+          perm: string
+          target_city_id?: string
+          target_council_id?: string
+          uid: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      admin_unit_level: "kraj" | "wojewodztwo" | "powiat" | "gmina"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -718,6 +791,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      admin_unit_level: ["kraj", "wojewodztwo", "powiat", "gmina"],
+    },
   },
 } as const

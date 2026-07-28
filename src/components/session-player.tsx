@@ -13,6 +13,7 @@ type Segment = {
   text: string;
   confirmed_councilor_id: string | null;
   confirmed_official_id: string | null;
+  status: string;
 };
 
 type Person = { id: string; name: string; role?: string };
@@ -100,6 +101,8 @@ export function SessionPlayer({
   councilors,
   officials,
   isAdmin,
+  canAssign,
+  canDownloadTranscript,
   initialSeek,
 }: {
   meetingId: string;
@@ -113,6 +116,8 @@ export function SessionPlayer({
   councilors: Person[];
   officials: { id: string; full_name: string; role: string }[];
   isAdmin: boolean;
+  canAssign: boolean;
+  canDownloadTranscript: boolean;
   initialSeek?: number;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -296,37 +301,41 @@ export function SessionPlayer({
           </div>
 
           <div className="ml-auto flex gap-2">
-            <button
-              disabled={segments.length === 0}
-              onClick={() =>
-                downloadFile(
-                  `${slugify(meetingTitle)}.txt`,
-                  buildPlainText(segments, {
-                    esesjaId,
-                    date: meetingDate,
-                    title: meetingTitle,
-                    existingTopics,
-                  }),
-                  "text/plain;charset=utf-8"
-                )
-              }
-              className="rounded-full border border-zinc-300 px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              Pobierz .txt
-            </button>
-            <button
-              disabled={segments.length === 0}
-              onClick={() =>
-                downloadFile(
-                  `${slugify(meetingTitle)}.srt`,
-                  buildSrt(segments),
-                  "application/x-subrip;charset=utf-8"
-                )
-              }
-              className="rounded-full border border-zinc-300 px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              Pobierz .srt
-            </button>
+            {canDownloadTranscript && (
+              <>
+                <button
+                  disabled={segments.length === 0}
+                  onClick={() =>
+                    downloadFile(
+                      `${slugify(meetingTitle)}.txt`,
+                      buildPlainText(segments, {
+                        esesjaId,
+                        date: meetingDate,
+                        title: meetingTitle,
+                        existingTopics,
+                      }),
+                      "text/plain;charset=utf-8"
+                    )
+                  }
+                  className="rounded-full border border-zinc-300 px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  Pobierz .txt
+                </button>
+                <button
+                  disabled={segments.length === 0}
+                  onClick={() =>
+                    downloadFile(
+                      `${slugify(meetingTitle)}.srt`,
+                      buildSrt(segments),
+                      "application/x-subrip;charset=utf-8"
+                    )
+                  }
+                  className="rounded-full border border-zinc-300 px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  Pobierz .srt
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -345,6 +354,7 @@ export function SessionPlayer({
           {visibleSegments.map((s) => {
             const isActive = activeSegment?.id === s.id;
             const assignedId = s.confirmed_councilor_id ?? s.confirmed_official_id;
+            const isProposed = Boolean(assignedId) && s.status === "proposed";
             return (
               <li
                 key={s.id}
@@ -354,10 +364,12 @@ export function SessionPlayer({
                     ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                     : !assignedId
                       ? "bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
-                      : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                      : isProposed
+                        ? "bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/30 dark:hover:bg-blue-950/50"
+                        : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 }`}
               >
-                {isAdmin && (
+                {canAssign && (
                   <input
                     type="checkbox"
                     checked={selected.has(s.id)}
@@ -382,10 +394,15 @@ export function SessionPlayer({
                   {assignedId && (
                     <span
                       className={`text-xs ${
-                        isActive ? "text-zinc-300" : "text-zinc-400"
+                        isActive
+                          ? "text-zinc-300"
+                          : isProposed
+                            ? "text-blue-700 dark:text-blue-400"
+                            : "text-zinc-400"
                       }`}
                     >
                       {peopleById.get(assignedId) ?? "?"}
+                      {isProposed && " — propozycja, czeka na zatwierdzenie"}
                     </span>
                   )}
                 </button>
@@ -435,7 +452,7 @@ export function SessionPlayer({
         )}
       </div>
 
-      {isAdmin && (
+      {canAssign && (
         <div className="flex w-full flex-col gap-4 lg:w-64">
           <p className="text-sm text-zinc-500">
             Zaznaczono: {selected.size} segment(ów)

@@ -23,18 +23,41 @@ export async function assignSegments(
 
   if (!user) return { error: "Musisz być zalogowana" };
 
-  const { error } = await supabase
+  const { data: meeting } = await supabase
+    .from("meeting")
+    .select("term:term_id(council_id)")
+    .eq("id", meetingId)
+    .maybeSingle();
+  const councilId = meeting?.term?.council_id ?? null;
+
+  // Editors can only propose (segment stays reviewable); moderators finalize
+  // it outright. The action must pick the status itself — RLS silently
+  // no-ops an UPDATE whose target status doesn't match what the caller's
+  // permission allows, so sending the wrong one looks like success but
+  // changes nothing (see feedback_rls_silent_denial).
+  const { data: canFinalize } = await supabase.rpc("user_has_permission", {
+    uid: user.id,
+    perm: "finalize_vote",
+    target_council_id: councilId ?? undefined,
+  });
+  const targetStatus = canFinalize ? "finalized" : "proposed";
+
+  const { error, count } = await supabase
     .from("segment")
-    .update({
-      confirmed_councilor_id: target.type === "councilor" ? target.id : null,
-      confirmed_official_id: target.type === "official" ? target.id : null,
-      status: "finalized",
-      finalized_by: user.id,
-      finalized_at: new Date().toISOString(),
-    })
+    .update(
+      {
+        confirmed_councilor_id: target.type === "councilor" ? target.id : null,
+        confirmed_official_id: target.type === "official" ? target.id : null,
+        status: targetStatus,
+        finalized_by: user.id,
+        finalized_at: targetStatus === "finalized" ? new Date().toISOString() : null,
+      },
+      { count: "exact" }
+    )
     .in("id", segmentIds);
 
   if (error) return { error: error.message };
+  if (count === 0) return { error: "Brak uprawnień do tej zmiany" };
 
   revalidatePath(`/sesje/${meetingId}`);
   return { error: null };

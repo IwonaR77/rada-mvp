@@ -50,11 +50,12 @@ export default async function SessionPage({
         text: string;
         confirmed_councilor_id: string | null;
         confirmed_official_id: string | null;
+        status: string;
       }>((from, to) =>
         supabase
           .from("segment")
           .select(
-            "id, start_time, end_time, text, confirmed_councilor_id, confirmed_official_id"
+            "id, start_time, end_time, text, confirmed_councilor_id, confirmed_official_id, status"
           )
           .eq("meeting_id", id)
           .order("start_time", { ascending: true })
@@ -92,6 +93,8 @@ export default async function SessionPage({
   ].sort((a, b) => a.localeCompare(b, "pl"));
 
   let isAdmin = false;
+  let canAssign = false;
+  let canDownloadTranscript = false;
   if (user) {
     const { data: appUser } = await supabase
       .from("app_user")
@@ -99,6 +102,27 @@ export default async function SessionPage({
       .eq("id", user.id)
       .maybeSingle();
     isAdmin = appUser?.role === "admin" || appUser?.role === "moderator";
+
+    const [{ data: canVote }, { data: canFinalize }, { data: canDownload }] =
+      await Promise.all([
+        supabase.rpc("user_has_permission", {
+          uid: user.id,
+          perm: "vote",
+          target_council_id: councilId ?? undefined,
+        }),
+        supabase.rpc("user_has_permission", {
+          uid: user.id,
+          perm: "finalize_vote",
+          target_council_id: councilId ?? undefined,
+        }),
+        supabase.rpc("user_has_permission", {
+          uid: user.id,
+          perm: "download_txt_srt",
+          target_council_id: councilId ?? undefined,
+        }),
+      ]);
+    canAssign = Boolean(canVote) || Boolean(canFinalize);
+    canDownloadTranscript = Boolean(canDownload);
   }
 
   const councilors = (roster ?? [])
@@ -173,6 +197,8 @@ export default async function SessionPage({
         councilors={councilors}
         officials={officials ?? []}
         isAdmin={isAdmin}
+        canAssign={canAssign}
+        canDownloadTranscript={canDownloadTranscript}
         initialSeek={initialSeek}
       />
     </div>
