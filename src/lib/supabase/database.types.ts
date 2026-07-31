@@ -340,6 +340,7 @@ export type Database = {
           council_id: string
           created_at: string
           esesja_id: string
+          full_text: string | null
           id: string
           pdf_url: string | null
           response_author_name: string | null
@@ -347,6 +348,7 @@ export type Database = {
           response_pdf_url: string | null
           response_text: string | null
           submitted_date: string | null
+          summary: string | null
           title: string
         }
         Insert: {
@@ -356,6 +358,7 @@ export type Database = {
           council_id: string
           created_at?: string
           esesja_id: string
+          full_text?: string | null
           id?: string
           pdf_url?: string | null
           response_author_name?: string | null
@@ -363,6 +366,7 @@ export type Database = {
           response_pdf_url?: string | null
           response_text?: string | null
           submitted_date?: string | null
+          summary?: string | null
           title: string
         }
         Update: {
@@ -372,6 +376,7 @@ export type Database = {
           council_id?: string
           created_at?: string
           esesja_id?: string
+          full_text?: string | null
           id?: string
           pdf_url?: string | null
           response_author_name?: string | null
@@ -379,6 +384,7 @@ export type Database = {
           response_pdf_url?: string | null
           response_text?: string | null
           submitted_date?: string | null
+          summary?: string | null
           title?: string
         }
         Relationships: [
@@ -406,6 +412,7 @@ export type Database = {
           id: string
           meeting_type: string
           summary: string | null
+          summary_prompt_version: number | null
           term_id: string
           title: string | null
           topics: string[] | null
@@ -421,6 +428,7 @@ export type Database = {
           id?: string
           meeting_type: string
           summary?: string | null
+          summary_prompt_version?: number | null
           term_id: string
           title?: string | null
           topics?: string[] | null
@@ -436,6 +444,7 @@ export type Database = {
           id?: string
           meeting_type?: string
           summary?: string | null
+          summary_prompt_version?: number | null
           term_id?: string
           title?: string | null
           topics?: string[] | null

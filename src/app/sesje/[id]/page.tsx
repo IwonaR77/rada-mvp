@@ -3,7 +3,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { SessionPlayer } from "@/components/session-player";
 import { SessionNeighborNav } from "@/components/session-neighbor-nav";
+import { LiveMeetingRefresh } from "@/components/live-meeting-refresh";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
+import { CURRENT_SUMMARY_PROMPT_VERSION } from "@/lib/summary-prompt-version";
 
 export default async function SessionPage({
   params,
@@ -79,7 +81,9 @@ export default async function SessionPage({
       // XXXIII") before relying on it here.
       supabase
         .from("meeting")
-        .select("id, date, video_url, summary, transcript_status")
+        .select(
+          "id, date, video_url, summary, summary_prompt_version, transcript_status"
+        )
         .eq("term_id", meeting.term_id)
         .order("date", { ascending: true }),
       // Every topic tag used anywhere in this council's sessions (any
@@ -172,6 +176,9 @@ export default async function SessionPage({
             progress:
               status === "rozpisana" ? taggingProgress.get(m.id) : undefined,
             hasSummary: Boolean(m.summary),
+            summaryOutdated:
+              Boolean(m.summary) &&
+              (m.summary_prompt_version ?? 0) < CURRENT_SUMMARY_PROMPT_VERSION,
           };
         });
   // Newest first (leftmost), matching the timeline's reading direction.
@@ -179,6 +186,7 @@ export default async function SessionPage({
 
   return (
     <div className="mx-auto flex w-full max-w-[110rem] flex-1 flex-col gap-6 px-6 py-12">
+      <LiveMeetingRefresh termId={meeting.term_id} />
       <SessionNeighborNav
         meetings={neighborsNewestFirst}
         currentId={meeting.id}

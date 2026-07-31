@@ -11,6 +11,7 @@ type NeighborMeeting = {
   number: number;
   progress: number | undefined;
   hasSummary: boolean;
+  summaryOutdated: boolean;
 };
 
 export function SessionNeighborNav({
@@ -40,7 +41,13 @@ export function SessionNeighborNav({
         if (m.progress !== undefined) {
           tooltipParts.push(`otagowane: ${Math.round(m.progress * 100)}%`);
         }
-        if (m.hasSummary) tooltipParts.push("ma podsumowanie");
+        if (m.hasSummary) {
+          tooltipParts.push(
+            m.summaryOutdated
+              ? "ma podsumowanie (nieaktualna wersja promptu)"
+              : "ma podsumowanie"
+          );
+        }
         if (!m.hasVideo) tooltipParts.push("brak nagrania/transkrypcji");
 
         return (

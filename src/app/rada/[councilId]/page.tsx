@@ -4,7 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { SpeakingHeatmap } from "@/components/speaking-heatmap";
 import { FavoriteCouncilButton } from "@/components/favorite-council-button";
 import { SessionTimelinePill } from "@/components/session-timeline-pill";
+import { LiveMeetingRefresh } from "@/components/live-meeting-refresh";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
+import { CURRENT_SUMMARY_PROMPT_VERSION } from "@/lib/summary-prompt-version";
 
 type CouncilorStat = {
   id: string;
@@ -140,6 +142,7 @@ export default async function CouncilDashboardPage({
     transcript_status: string;
     topics: string[] | null;
     summary: string | null;
+    summary_prompt_version: number | null;
   }[] = [];
   let allTags: string[] = [];
   let selectedTag: string | null = null;
@@ -188,7 +191,7 @@ export default async function CouncilDashboardPage({
         supabase
           .from("meeting")
           .select(
-            "id, date, title, video_url, video_downloaded, transcript_status, topics, summary"
+            "id, date, title, video_url, video_downloaded, transcript_status, topics, summary, summary_prompt_version"
           )
           .eq("term_id", selectedTermId)
           .order("date", { ascending: false }),
@@ -312,6 +315,7 @@ export default async function CouncilDashboardPage({
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-10 px-6 py-16">
+      {selectedTermId && <LiveMeetingRefresh termId={selectedTermId} />}
       <div>
         <Link href="/" className="text-sm text-zinc-500 hover:underline">
           ← Mapa
@@ -439,13 +443,23 @@ export default async function CouncilDashboardPage({
                         ? taggingProgress.get(m.id)
                         : undefined;
                     const hasSummary = Boolean(m.summary);
+                    const summaryOutdated =
+                      hasSummary &&
+                      (m.summary_prompt_version ?? 0) <
+                        CURRENT_SUMMARY_PROMPT_VERSION;
                     const tooltipParts = [m.title ?? undefined];
                     if (progress !== undefined) {
                       tooltipParts.push(
                         `otagowane: ${Math.round(progress * 100)}%`
                       );
                     }
-                    if (hasSummary) tooltipParts.push("ma podsumowanie");
+                    if (hasSummary) {
+                      tooltipParts.push(
+                        summaryOutdated
+                          ? "ma podsumowanie (nieaktualna wersja promptu)"
+                          : "ma podsumowanie"
+                      );
+                    }
                     const tooltip = tooltipParts.filter(Boolean).join(" — ");
 
                     return (
@@ -459,6 +473,7 @@ export default async function CouncilDashboardPage({
                           number: meetingNumbers.get(m.id) ?? 0,
                           progress,
                           hasSummary,
+                          summaryOutdated,
                         }}
                         dimmed={!matchesTag}
                         emphasized={Boolean(selectedTag && matchesTag)}

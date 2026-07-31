@@ -12,6 +12,10 @@ export type TimelineMeeting = {
   // segments exist) — the pill's border then stays its plain gray.
   progress: number | undefined;
   hasSummary: boolean;
+  // True when hasSummary is true but the summary was generated with an
+  // older summary/prompt.md version than CURRENT_SUMMARY_PROMPT_VERSION —
+  // meaningless when hasSummary is false.
+  summaryOutdated: boolean;
 };
 
 function formatShortDate(dateStr: string) {
@@ -21,7 +25,7 @@ function formatShortDate(dateStr: string) {
   });
 }
 
-// Tints the pill's own border proportionally green as segments get assigned
+// Tints the pill's own border proportionally blue as segments get assigned
 // to speakers, instead of adding any separate ring/badge — a conic-gradient
 // ring masked down to just the border's width, with border-radius: inherit
 // so it traces this pill's shape exactly. Transparent for the un-filled
@@ -33,7 +37,7 @@ function ProgressBorder({ progress }: { progress: number }) {
       aria-hidden
       className="pointer-events-none absolute inset-0 rounded-[inherit] p-px"
       style={{
-        background: `conic-gradient(#10b981 ${progress * 100}%, transparent 0)`,
+        background: `conic-gradient(#3b82f6 ${progress * 100}%, transparent 0)`,
         WebkitMask:
           "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
         WebkitMaskComposite: "xor",
@@ -59,8 +63,16 @@ export const SessionTimelinePill = forwardRef<
   { meeting, isCurrent = false, dimmed = false, emphasized = false, title },
   ref
 ) {
-  const { id, date, hasVideo, hasTranscript, number, progress, hasSummary } =
-    meeting;
+  const {
+    id,
+    date,
+    hasVideo,
+    hasTranscript,
+    number,
+    progress,
+    hasSummary,
+    summaryOutdated,
+  } = meeting;
 
   const className = `relative flex w-16 shrink-0 flex-col items-center rounded-2xl px-2.5 py-1 leading-tight transition-colors ${
     dimmed ? "opacity-25" : ""
@@ -86,10 +98,14 @@ export const SessionTimelinePill = forwardRef<
 
   // The current pill is already max-contrast (white on dark, or vice
   // versa) — the summary highlight only means something against the
-  // muted default number color the other pills use.
+  // muted default number color the other pills use. Red overrides the
+  // usual "has summary" dark highlight when that summary predates the
+  // current summary/prompt.md version — a nudge to regenerate it.
   const numberClassName =
     !isCurrent && hasSummary
-      ? "font-semibold text-zinc-900 dark:text-zinc-100"
+      ? summaryOutdated
+        ? "font-semibold text-red-600 dark:text-red-500"
+        : "font-semibold text-zinc-900 dark:text-zinc-100"
       : undefined;
 
   const showProgress =
