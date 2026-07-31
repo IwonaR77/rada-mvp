@@ -4,7 +4,11 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import ReactPlayer from "react-player";
 import ReactMarkdown from "react-markdown";
-import { assignSegments, importTranscript } from "@/app/sesje/[id]/actions";
+import {
+  assignSegments,
+  acceptProposedSegments,
+  importTranscript,
+} from "@/app/sesje/[id]/actions";
 
 type Segment = {
   id: string;
@@ -102,6 +106,7 @@ export function SessionPlayer({
   officials,
   isAdmin,
   canAssign,
+  canFinalize,
   canDownloadTranscript,
   initialSeek,
 }: {
@@ -117,6 +122,7 @@ export function SessionPlayer({
   officials: { id: string; full_name: string; role: string }[];
   isAdmin: boolean;
   canAssign: boolean;
+  canFinalize: boolean;
   canDownloadTranscript: boolean;
   initialSeek?: number;
 }) {
@@ -157,6 +163,11 @@ export function SessionPlayer({
 
   const speakingIds = new Set(
     segments.map(getAssignedId).filter((id): id is string => Boolean(id))
+  );
+
+  const proposedSegments = segments.filter((s) => s.status === "proposed");
+  const selectedProposedIds = Array.from(selected).filter((id) =>
+    proposedSegments.some((s) => s.id === id)
   );
 
   function handleLoadedMetadata() {
@@ -204,6 +215,30 @@ export function SessionPlayer({
   function assignTo(target: { type: "councilor" | "official"; id: string }) {
     startTransition(async () => {
       await assignSegments(meetingId, Array.from(selected), target);
+      setSelected(new Set());
+    });
+  }
+
+  function acceptSelected() {
+    startTransition(async () => {
+      await acceptProposedSegments(meetingId, selectedProposedIds);
+      setSelected(new Set());
+    });
+  }
+
+  function acceptAll() {
+    if (
+      !window.confirm(
+        `Zatwierdzić wszystkie ${proposedSegments.length} propozycji w tej sesji?`
+      )
+    ) {
+      return;
+    }
+    startTransition(async () => {
+      await acceptProposedSegments(
+        meetingId,
+        proposedSegments.map((s) => s.id)
+      );
       setSelected(new Set());
     });
   }
@@ -457,6 +492,29 @@ export function SessionPlayer({
           <p className="text-sm text-zinc-500">
             Zaznaczono: {selected.size} segment(ów)
           </p>
+
+          {canFinalize && proposedSegments.length > 0 && (
+            <div className="flex flex-col gap-2 rounded-2xl border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/30">
+              <p className="text-xs text-blue-700 dark:text-blue-400">
+                Propozycji do zatwierdzenia: {proposedSegments.length}
+              </p>
+              <button
+                disabled={selectedProposedIds.length === 0 || isPending}
+                onClick={acceptSelected}
+                className="rounded-full bg-blue-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-800 disabled:opacity-40 dark:bg-blue-600 dark:hover:bg-blue-500"
+              >
+                Zaakceptuj wybrane propozycje
+                {selectedProposedIds.length > 0 && ` (${selectedProposedIds.length})`}
+              </button>
+              <button
+                disabled={isPending}
+                onClick={acceptAll}
+                className="rounded-full border border-blue-700 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-40 dark:border-blue-500 dark:text-blue-400 dark:hover:bg-blue-950/50"
+              >
+                Zaakceptuj wszystkie propozycje ({proposedSegments.length})
+              </button>
+            </div>
+          )}
 
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-500">

@@ -84,10 +84,17 @@ WHISPER_LANGUAGE = "pl"
 SAMPLE_RATE = 16000
 
 # Próg podobieństwa kosinusowego, powyżej którego uznajemy dopasowanie za pewne.
-# 0.75 to bezpieczny punkt startowy dla ECAPA-TDNN — skalibruj na własnych danych:
-# policz similarity dla par (ten sam mówca) i (różni mówcy) na kilku sesjach
-# i wybierz próg, który je najlepiej rozdziela.
-SIMILARITY_THRESHOLD = 0.75
+# Skalibrowany na realnych danych (2026-07-30, sesja 85096, 28 maja, 4071
+# segmentów): 0.85 dało ZERO dopasowań (realny sufit ~0.836); 0.75 dało 67
+# czystych trafień, ale zbyt zachowawczo odcinało prawdziwe wypowiedzi.
+# Ręczna inspekcja pasm confidence pokazała, że fałszywe trafienia (inni
+# mówcy — merytoryczne wypowiedzi w pierwszej osobie, nie styl prowadzącej)
+# zaczynają się dopiero poniżej 0.60; pasmo 0.60–0.75 to wciąż w większości
+# rozpoznawalny wzorzec przewodniczącej ("Pan/Pani radny X, proszę",
+# "Zamykam/otwieram dyskusję", ogłaszanie wyników głosowań). Ustawione na
+# 0.65 jako rozsądny kompromis: wyraźnie więcej pokrycia niż 0.75, wciąż z
+# marginesem przed granicą fałszywych trafień przy ~0.55-0.60.
+SIMILARITY_THRESHOLD = 0.65
 
 VOICEPRINTS_PATH = Path("voiceprints.json")
 

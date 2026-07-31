@@ -169,6 +169,12 @@ export default async function CouncilDashboardPage({
   let heatmapMeetings: { id: string; date: string; title: string | null }[] =
     [];
   const heatmapMatrix: Record<string, Record<string, number>> = {};
+  let heatmapExtraRows: { id: string; fullName: string }[] = [];
+  let meetingNumbers = new Map<string, number>();
+
+  const { data: officials } = await supabase
+    .from("official")
+    .select("id, full_name, role");
 
   if (selectedTermId) {
     const [
@@ -186,6 +192,7 @@ export default async function CouncilDashboardPage({
         // matter how wide a range is asked for; paginate instead.
         fetchAllRows<{
           confirmed_councilor_id: string | null;
+          confirmed_official_id: string | null;
           meeting_id: string;
           start_time: number;
           end_time: number;
@@ -193,7 +200,7 @@ export default async function CouncilDashboardPage({
           supabase
             .from("segment")
             .select(
-              "confirmed_councilor_id, meeting_id, start_time, end_time, meeting:meeting_id!inner(term_id)"
+              "confirmed_councilor_id, confirmed_official_id, meeting_id, start_time, end_time, meeting:meeting_id!inner(term_id)"
             )
             .eq("status", "finalized")
             .eq("meeting.term_id", selectedTermId)
@@ -216,6 +223,14 @@ export default async function CouncilDashboardPage({
       console.error("meeting_tagging_progress RPC failed:", progressError);
     }
     meetings = meetingRows ?? [];
+    // Chronological "Sesja Nr N" position — same computation and verified
+    // numbering as SessionNeighborNav on /sesje/[id], so a session's number
+    // reads the same on both pages instead of only existing once you click in.
+    meetingNumbers = new Map(
+      [...meetings]
+        .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+        .map((m, i) => [m.id, i + 1])
+    );
     taggingProgress = new Map(
       (progressRows ?? []).map((r) => [
         r.meeting_id,
@@ -244,6 +259,54 @@ export default async function CouncilDashboardPage({
         (heatmapMatrix[s.confirmed_councilor_id][s.meeting_id] ?? 0) +
         duration;
     }
+
+    // Burmistrz and his deputy get their own heatmap rows (they're frequent,
+    // named participants); every other official (skarbnik, sekretarz,
+    // naczelnicy, urzędnicy odpowiadający na interpelacje, ...) is folded
+    // into one combined "Pozostali urzędnicy" row so the heatmap doesn't
+    // grow a long tail of near-empty rows for people who spoke once or twice.
+    const officialRows = officials ?? [];
+    const burmistrz = officialRows.find((o) =>
+      o.role.toLowerCase().startsWith("burmistrz")
+    );
+    const zastepcaBurmistrza = officialRows.find((o) =>
+      o.role.toLowerCase().startsWith("zastępca burmistrza")
+    );
+    const POZOSTALI_URZEDNICY_ID = "__pozostali_urzednicy__";
+    const pozostaliIds = new Set(
+      officialRows
+        .filter((o) => o.id !== burmistrz?.id && o.id !== zastepcaBurmistrza?.id)
+        .map((o) => o.id)
+    );
+    let pozostaliHasData = false;
+
+    for (const s of segments ?? []) {
+      if (!s.confirmed_official_id) continue;
+      const duration = Number(s.end_time) - Number(s.start_time);
+      const key =
+        s.confirmed_official_id === burmistrz?.id
+          ? burmistrz.id
+          : s.confirmed_official_id === zastepcaBurmistrza?.id
+            ? zastepcaBurmistrza.id
+            : pozostaliIds.has(s.confirmed_official_id)
+              ? POZOSTALI_URZEDNICY_ID
+              : null;
+      if (!key) continue;
+      if (key === POZOSTALI_URZEDNICY_ID) pozostaliHasData = true;
+      heatmapMatrix[key] ??= {};
+      heatmapMatrix[key][s.meeting_id] =
+        (heatmapMatrix[key][s.meeting_id] ?? 0) + duration;
+    }
+
+    heatmapExtraRows = [
+      ...(burmistrz ? [{ id: burmistrz.id, fullName: burmistrz.full_name }] : []),
+      ...(zastepcaBurmistrza
+        ? [{ id: zastepcaBurmistrza.id, fullName: zastepcaBurmistrza.full_name }]
+        : []),
+      ...(pozostaliHasData
+        ? [{ id: POZOSTALI_URZEDNICY_ID, fullName: "Pozostali urzędnicy" }]
+        : []),
+    ];
     // A session shows up as a column as soon as its transcript is imported
     // (transcript_status "rozpisana"), even before anyone's been tagged —
     // it just renders fully gray until tagging starts filling it in.
@@ -260,10 +323,6 @@ export default async function CouncilDashboardPage({
         totalSeconds: totals.get(r.councilor!.id) ?? 0,
       }));
   }
-
-  const { data: officials } = await supabase
-    .from("official")
-    .select("id, full_name, role");
 
   const mostActive = [...stats]
     .sort((a, b) => b.totalSeconds - a.totalSeconds)
@@ -391,7 +450,7 @@ export default async function CouncilDashboardPage({
             ) : (
               <div className="overflow-x-auto pb-2">
                 <div className="relative flex min-w-max items-start gap-7 px-2 pt-2">
-                  <div className="absolute left-2 right-2 top-[13px] h-px bg-zinc-200 dark:bg-zinc-800" />
+                  <div className="absolute left-2 right-2 top-[18px] h-px bg-zinc-200 dark:bg-zinc-800" />
                   {meetings.map((m) => {
                     const hasContent = Boolean(m.video_url);
                     const status = m.transcript_status ?? "nie rozpisana";
@@ -416,14 +475,18 @@ export default async function CouncilDashboardPage({
                     // one hue (emerald, "done" semantics), only shown once
                     // a session is transcribed, so untranscribed sessions
                     // keep the plain, uncluttered dot. Radius must clear the
-                    // dot's white/black halo ring (ring-2, outer edge ~r=9)
-                    // with a visible gap, or the opaque halo paints over the
-                    // thin arc entirely — confirmed via screenshot that r=9
-                    // with ring-4 fully occluded it.
-                    const RADIUS = 11;
+                    // dot's white/black halo ring (ring-2, outer edge ~r=14
+                    // now that the dot is big enough to hold the session
+                    // number) with a visible gap, or the opaque halo paints
+                    // over the thin arc entirely — confirmed via screenshot
+                    // that too small a gap here fully occludes it.
+                    const RADIUS = 16;
                     const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-                    const BOX = 26;
+                    const BOX = 36;
                     const CENTER = BOX / 2;
+                    const dotTextClass = hasSummary
+                      ? "text-white"
+                      : "text-zinc-900 dark:text-zinc-100";
                     const marker = (
                       <div
                         className={`flex flex-col items-center gap-2 transition-opacity ${
@@ -465,7 +528,7 @@ export default async function CouncilDashboardPage({
                             </svg>
                           )}
                           <span
-                            className={`relative z-10 h-3.5 w-3.5 rounded-full ring-2 ring-white dark:ring-black ${
+                            className={`relative z-10 flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold leading-none ring-2 ring-white dark:ring-black ${dotTextClass} ${
                               hasSummary
                                 ? (STATUS_DOT_CLASS[status] ?? STATUS_DOT_CLASS["nie rozpisana"])
                                 : `bg-white dark:bg-black border-2 ${STATUS_DOT_BORDER_CLASS[status] ?? STATUS_DOT_BORDER_CLASS["nie rozpisana"]}`
@@ -474,7 +537,9 @@ export default async function CouncilDashboardPage({
                                 ? "outline outline-2 outline-offset-2 outline-zinc-900 dark:outline-zinc-100"
                                 : ""
                             }`}
-                          />
+                          >
+                            {meetingNumbers.get(m.id)}
+                          </span>
                         </div>
                         <span className="whitespace-nowrap text-xs text-zinc-500">
                           {formatShortDate(m.date)}
@@ -511,7 +576,10 @@ export default async function CouncilDashboardPage({
               Aktywność na sesjach
             </h3>
             <SpeakingHeatmap
-              councilors={councilors}
+              councilors={[
+                ...councilors.map((c) => ({ ...c, href: `/radny/${c.id}` })),
+                ...heatmapExtraRows,
+              ]}
               meetings={heatmapMeetings}
               matrix={heatmapMatrix}
             />

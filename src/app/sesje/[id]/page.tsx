@@ -94,6 +94,7 @@ export default async function SessionPage({
 
   let isAdmin = false;
   let canAssign = false;
+  let finalizePermission = false;
   let canDownloadTranscript = false;
   if (user) {
     const { data: appUser } = await supabase
@@ -122,6 +123,7 @@ export default async function SessionPage({
         }),
       ]);
     canAssign = Boolean(canVote) || Boolean(canFinalize);
+    finalizePermission = Boolean(canFinalize);
     canDownloadTranscript = Boolean(canDownload);
   }
 
@@ -198,6 +200,7 @@ export default async function SessionPage({
         officials={officials ?? []}
         isAdmin={isAdmin}
         canAssign={canAssign}
+        canFinalize={finalizePermission}
         canDownloadTranscript={canDownloadTranscript}
         initialSeek={initialSeek}
       />

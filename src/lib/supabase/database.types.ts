@@ -188,18 +188,24 @@ export type Database = {
           created_at: string
           full_name: string
           id: string
+          interpellation_synthesis: string | null
+          interpellation_synthesis_updated_at: string | null
           photo_url: string | null
         }
         Insert: {
           created_at?: string
           full_name: string
           id?: string
+          interpellation_synthesis?: string | null
+          interpellation_synthesis_updated_at?: string | null
           photo_url?: string | null
         }
         Update: {
           created_at?: string
           full_name?: string
           id?: string
+          interpellation_synthesis?: string | null
+          interpellation_synthesis_updated_at?: string | null
           photo_url?: string | null
         }
         Relationships: []
@@ -326,6 +332,72 @@ export type Database = {
           },
         ]
       }
+      interpellation: {
+        Row: {
+          author_councilor_id: string | null
+          author_name_raw: string | null
+          body_text: string | null
+          council_id: string
+          created_at: string
+          esesja_id: string
+          id: string
+          pdf_url: string | null
+          response_author_name: string | null
+          response_date: string | null
+          response_pdf_url: string | null
+          response_text: string | null
+          submitted_date: string | null
+          title: string
+        }
+        Insert: {
+          author_councilor_id?: string | null
+          author_name_raw?: string | null
+          body_text?: string | null
+          council_id: string
+          created_at?: string
+          esesja_id: string
+          id?: string
+          pdf_url?: string | null
+          response_author_name?: string | null
+          response_date?: string | null
+          response_pdf_url?: string | null
+          response_text?: string | null
+          submitted_date?: string | null
+          title: string
+        }
+        Update: {
+          author_councilor_id?: string | null
+          author_name_raw?: string | null
+          body_text?: string | null
+          council_id?: string
+          created_at?: string
+          esesja_id?: string
+          id?: string
+          pdf_url?: string | null
+          response_author_name?: string | null
+          response_date?: string | null
+          response_pdf_url?: string | null
+          response_text?: string | null
+          submitted_date?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interpellation_author_councilor_id_fkey"
+            columns: ["author_councilor_id"]
+            isOneToOne: false
+            referencedRelation: "councilor"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interpellation_council_id_fkey"
+            columns: ["council_id"]
+            isOneToOne: false
+            referencedRelation: "council"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meeting: {
         Row: {
           created_at: string
@@ -402,6 +474,83 @@ export type Database = {
           role?: string
         }
         Relationships: []
+      }
+      resolution: {
+        Row: {
+          created_at: string
+          esesja_glosowanie_id: string | null
+          esesja_number: string | null
+          id: string
+          meeting_id: string | null
+          pdf_url: string | null
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          esesja_glosowanie_id?: string | null
+          esesja_number?: string | null
+          id?: string
+          meeting_id?: string | null
+          pdf_url?: string | null
+          title: string
+        }
+        Update: {
+          created_at?: string
+          esesja_glosowanie_id?: string | null
+          esesja_number?: string | null
+          id?: string
+          meeting_id?: string | null
+          pdf_url?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resolution_meeting_id_fkey"
+            columns: ["meeting_id"]
+            isOneToOne: false
+            referencedRelation: "meeting"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      resolution_vote: {
+        Row: {
+          choice: string
+          councilor_id: string
+          created_at: string
+          id: string
+          resolution_id: string
+        }
+        Insert: {
+          choice: string
+          councilor_id: string
+          created_at?: string
+          id?: string
+          resolution_id: string
+        }
+        Update: {
+          choice?: string
+          councilor_id?: string
+          created_at?: string
+          id?: string
+          resolution_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resolution_vote_councilor_id_fkey"
+            columns: ["councilor_id"]
+            isOneToOne: false
+            referencedRelation: "councilor"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "resolution_vote_resolution_id_fkey"
+            columns: ["resolution_id"]
+            isOneToOne: false
+            referencedRelation: "resolution"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       segment: {
         Row: {
@@ -631,6 +780,15 @@ export type Database = {
       admin_unit_is_ancestor_or_self: {
         Args: { ancestor_id: string; unit_id: string }
         Returns: boolean
+      }
+      councilor_voting_similarity: {
+        Args: { target_id: string }
+        Returns: {
+          agreement_pct: number
+          common_votes: number
+          councilor_id: string
+          full_name: string
+        }[]
       }
       is_moderator: { Args: { uid: string }; Returns: boolean }
       meeting_tagging_progress: {

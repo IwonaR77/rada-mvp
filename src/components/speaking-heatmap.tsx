@@ -12,6 +12,9 @@ type HeatmapMeeting = {
 type HeatmapCouncilor = {
   id: string;
   fullName: string;
+  // Absent for non-councilor rows (burmistrz, jego zastępca, "Pozostali
+  // urzędnicy") — there's no profile page to link to for those yet.
+  href?: string;
 };
 
 // Sequential blue ramp, lightest → darkest (references/palette.md "Sequential hue").
@@ -62,6 +65,67 @@ function colorFor(value: number, max: number) {
   return SEQUENTIAL_STEPS[index];
 }
 
+type ActiveCell = {
+  councilor: HeatmapCouncilor;
+  meeting: HeatmapMeeting;
+  seconds: number;
+};
+
+function HeatmapRow({
+  councilor: c,
+  meetings,
+  matrix,
+  max,
+  onActivate,
+  onDeactivate,
+}: {
+  councilor: HeatmapCouncilor;
+  meetings: HeatmapMeeting[];
+  matrix: Record<string, Record<string, number>>;
+  max: number;
+  onActivate: (cell: ActiveCell) => void;
+  onDeactivate: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      {c.href ? (
+        <Link
+          href={c.href}
+          prefetch={false}
+          className="w-40 shrink-0 truncate text-xs text-zinc-600 hover:underline dark:text-zinc-400"
+        >
+          {c.fullName}
+        </Link>
+      ) : (
+        <span className="w-40 shrink-0 truncate text-xs text-zinc-600 dark:text-zinc-400">
+          {c.fullName}
+        </span>
+      )}
+      <div className="flex gap-[2px]">
+        {meetings.map((m) => {
+          const seconds = matrix[c.id]?.[m.id] ?? 0;
+          return (
+            <div
+              key={m.id}
+              tabIndex={0}
+              role="button"
+              aria-label={`${c.fullName}, ${formatShortDate(m.date)}: ${formatDuration(seconds)}`}
+              onMouseEnter={() => onActivate({ councilor: c, meeting: m, seconds })}
+              onFocus={() => onActivate({ councilor: c, meeting: m, seconds })}
+              onMouseLeave={onDeactivate}
+              onBlur={onDeactivate}
+              className={`h-4 w-4 shrink-0 cursor-pointer rounded-[3px] outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100 ${seconds <= 0 ? ZERO_CELL_CLASS : ""}`}
+              style={
+                seconds > 0 ? { backgroundColor: colorFor(seconds, max) } : undefined
+              }
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function SpeakingHeatmap({
   councilors,
   meetings,
@@ -89,11 +153,16 @@ export function SpeakingHeatmap({
   const orderedMeetings = [...meetings].sort((a, b) =>
     a.date < b.date ? 1 : a.date > b.date ? -1 : 0
   );
-  const orderedCouncilors = [...councilors].sort((a, b) => {
-    const totalA = meetings.reduce((sum, m) => sum + (matrix[a.id]?.[m.id] ?? 0), 0);
-    const totalB = meetings.reduce((sum, m) => sum + (matrix[b.id]?.[m.id] ?? 0), 0);
-    return totalB - totalA;
-  });
+  const totalFor = (c: HeatmapCouncilor) =>
+    meetings.reduce((sum, m) => sum + (matrix[c.id]?.[m.id] ?? 0), 0);
+  const byTotalDesc = (a: HeatmapCouncilor, b: HeatmapCouncilor) =>
+    totalFor(b) - totalFor(a);
+  // Radni first (sorted by activity), then a divider, then urzędnicy — rather
+  // than one global ranking where e.g. a quiet burmistrz would otherwise land
+  // in the middle of the radni.
+  const orderedCouncilorRows = councilors.filter((c) => c.href).sort(byTotalDesc);
+  const orderedOfficialRows = councilors.filter((c) => !c.href).sort(byTotalDesc);
+  const orderedCouncilors = [...orderedCouncilorRows, ...orderedOfficialRows];
 
   if (meetings.length === 0 || councilors.length === 0) {
     return (
@@ -156,39 +225,30 @@ export function SpeakingHeatmap({
 
       <div className="overflow-x-auto pb-2">
         <div className="inline-flex flex-col gap-[2px]">
-          {orderedCouncilors.map((c) => (
-            <div key={c.id} className="flex items-center gap-2">
-              <span className="w-40 shrink-0 truncate text-xs text-zinc-600 dark:text-zinc-400">
-                {c.fullName}
-              </span>
-              <div className="flex gap-[2px]">
-                {orderedMeetings.map((m) => {
-                  const seconds = matrix[c.id]?.[m.id] ?? 0;
-                  return (
-                    <div
-                      key={m.id}
-                      tabIndex={0}
-                      role="button"
-                      aria-label={`${c.fullName}, ${formatShortDate(m.date)}: ${formatDuration(seconds)}`}
-                      onMouseEnter={() =>
-                        setActive({ councilor: c, meeting: m, seconds })
-                      }
-                      onFocus={() =>
-                        setActive({ councilor: c, meeting: m, seconds })
-                      }
-                      onMouseLeave={() => setActive(null)}
-                      onBlur={() => setActive(null)}
-                      className={`h-4 w-4 shrink-0 cursor-pointer rounded-[3px] outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100 ${seconds <= 0 ? ZERO_CELL_CLASS : ""}`}
-                      style={
-                        seconds > 0
-                          ? { backgroundColor: colorFor(seconds, max) }
-                          : undefined
-                      }
-                    />
-                  );
-                })}
-              </div>
-            </div>
+          {orderedCouncilorRows.map((c) => (
+            <HeatmapRow
+              key={c.id}
+              councilor={c}
+              meetings={orderedMeetings}
+              matrix={matrix}
+              max={max}
+              onActivate={setActive}
+              onDeactivate={() => setActive(null)}
+            />
+          ))}
+          {orderedCouncilorRows.length > 0 && orderedOfficialRows.length > 0 && (
+            <div className="my-1 border-t border-zinc-200 dark:border-zinc-800" />
+          )}
+          {orderedOfficialRows.map((c) => (
+            <HeatmapRow
+              key={c.id}
+              councilor={c}
+              meetings={orderedMeetings}
+              matrix={matrix}
+              max={max}
+              onActivate={setActive}
+              onDeactivate={() => setActive(null)}
+            />
           ))}
           <div className="flex items-center gap-2 pt-1">
             <span className="w-40 shrink-0" />
@@ -230,21 +290,37 @@ export function SpeakingHeatmap({
               </tr>
             </thead>
             <tbody>
-              {orderedCouncilors.map((c) => (
-                <tr key={c.id}>
-                  <th scope="row" className="border-b border-zinc-100 p-2 text-left font-normal dark:border-zinc-900">
-                    {c.fullName}
-                  </th>
-                  {orderedMeetings.map((m) => (
-                    <td
-                      key={m.id}
-                      className="border-b border-zinc-100 p-2 text-zinc-600 dark:border-zinc-900 dark:text-zinc-400"
-                    >
-                      {formatDuration(matrix[c.id]?.[m.id] ?? 0)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              {orderedCouncilors.map((c, i) => {
+                // Thicker divider on the last radny row, marking the
+                // boundary before the urzędnicy rows begin.
+                const isLastCouncilor =
+                  i === orderedCouncilorRows.length - 1 &&
+                  orderedOfficialRows.length > 0;
+                const rowBorder = isLastCouncilor
+                  ? "border-b-2 border-zinc-300 dark:border-zinc-700"
+                  : "border-b border-zinc-100 dark:border-zinc-900";
+                return (
+                  <tr key={c.id}>
+                    <th scope="row" className={`${rowBorder} p-2 text-left font-normal`}>
+                      {c.href ? (
+                        <Link href={c.href} prefetch={false} className="hover:underline">
+                          {c.fullName}
+                        </Link>
+                      ) : (
+                        c.fullName
+                      )}
+                    </th>
+                    {orderedMeetings.map((m) => (
+                      <td
+                        key={m.id}
+                        className={`${rowBorder} p-2 text-zinc-600 dark:text-zinc-400`}
+                      >
+                        {formatDuration(matrix[c.id]?.[m.id] ?? 0)}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

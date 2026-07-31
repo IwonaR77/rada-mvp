@@ -63,6 +63,59 @@ export async function assignSegments(
   return { error: null };
 }
 
+// Moderators only — promotes already-proposed segments (editor-suggested or
+// LLM-suggested, see [[project_transcription_pipeline]] voice-embedding
+// work) to finalized. Never touches confirmed_councilor_id/confirmed_official_id
+// — it only accepts an assignment someone/something else already proposed.
+export async function acceptProposedSegments(
+  meetingId: string,
+  segmentIds: string[]
+) {
+  if (segmentIds.length === 0) return { error: "Brak zaznaczonych segmentów" };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Musisz być zalogowana" };
+
+  const { data: meeting } = await supabase
+    .from("meeting")
+    .select("term:term_id(council_id)")
+    .eq("id", meetingId)
+    .maybeSingle();
+  const councilId = meeting?.term?.council_id ?? null;
+
+  const { data: canFinalize } = await supabase.rpc("user_has_permission", {
+    uid: user.id,
+    perm: "finalize_vote",
+    target_council_id: councilId ?? undefined,
+  });
+  if (!canFinalize) return { error: "Brak uprawnień do zatwierdzania propozycji" };
+
+  const { error, count } = await supabase
+    .from("segment")
+    .update(
+      {
+        status: "finalized",
+        finalized_by: user.id,
+        finalized_at: new Date().toISOString(),
+      },
+      { count: "exact" }
+    )
+    .in("id", segmentIds)
+    .eq("status", "proposed");
+
+  if (error) return { error: error.message };
+  if (count === 0) {
+    return { error: "Brak propozycji do zatwierdzenia wśród zaznaczonych." };
+  }
+
+  revalidatePath(`/sesje/${meetingId}`);
+  return { error: null, count };
+}
+
 export async function importTranscript(
   meetingId: string,
   vttContent: string,
