@@ -37,8 +37,14 @@ export default async function SessionPage({
 
   const councilId = meeting.term?.council?.id;
 
-  const [segments, { data: roster }, { data: officials }, { data: termMeetings }, { data: topicRows }] =
-    await Promise.all([
+  const [
+    segments,
+    { data: roster },
+    { data: officials },
+    { data: termMeetings },
+    { data: topicRows },
+    { data: progressRows, error: progressError },
+  ] = await Promise.all([
       // PostgREST enforces a server-side max-rows cap that a single
       // .range() request can't exceed regardless of how wide a range is
       // requested — paginate until a page comes back short instead of
@@ -73,7 +79,7 @@ export default async function SessionPage({
       // XXXIII") before relying on it here.
       supabase
         .from("meeting")
-        .select("id, date, video_url")
+        .select("id, date, video_url, summary, transcript_status")
         .eq("term_id", meeting.term_id)
         .order("date", { ascending: true }),
       // Every topic tag used anywhere in this council's sessions (any
@@ -86,7 +92,20 @@ export default async function SessionPage({
             .eq("term.council_id", councilId)
             .not("topics", "is", null)
         : Promise.resolve({ data: null }),
+      // Per-session tagging progress for the neighbor nav's pills — same RPC
+      // and semantics as the /rada/[councilId] timeline.
+      supabase.rpc("meeting_tagging_progress", { p_term_id: meeting.term_id }),
     ]);
+
+  if (progressError) {
+    console.error("meeting_tagging_progress RPC failed:", progressError);
+  }
+  const taggingProgress = new Map(
+    (progressRows ?? []).map((r) => [
+      r.meeting_id,
+      r.total > 0 ? r.finalized / r.total : 0,
+    ])
+  );
 
   const allTopics = [
     ...new Set((topicRows ?? []).flatMap((r) => r.topics ?? [])),
@@ -142,12 +161,19 @@ export default async function SessionPage({
   const neighborWindow =
     currentIndex === -1
       ? []
-      : orderedMeetings.map((m, i) => ({
-          id: m.id,
-          date: m.date,
-          hasVideo: Boolean(m.video_url),
-          number: i + 1,
-        }));
+      : orderedMeetings.map((m, i) => {
+          const status = m.transcript_status ?? "nie rozpisana";
+          return {
+            id: m.id,
+            date: m.date,
+            hasVideo: Boolean(m.video_url),
+            number: i + 1,
+            hasTranscript: status === "rozpisana",
+            progress:
+              status === "rozpisana" ? taggingProgress.get(m.id) : undefined,
+            hasSummary: Boolean(m.summary),
+          };
+        });
   // Newest first (leftmost), matching the timeline's reading direction.
   const neighborsNewestFirst = [...neighborWindow].reverse();
 

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { SpeakingHeatmap } from "@/components/speaking-heatmap";
 import { FavoriteCouncilButton } from "@/components/favorite-council-button";
+import { SessionTimelinePill } from "@/components/session-timeline-pill";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 
 type CouncilorStat = {
@@ -10,21 +11,6 @@ type CouncilorStat = {
   fullName: string;
   party: string | null;
   totalSeconds: number;
-};
-
-const STATUS_DOT_CLASS: Record<string, string> = {
-  "nie rozpisana": "bg-zinc-300 dark:bg-zinc-700",
-  "w trakcie": "bg-amber-400",
-  rozpisana: "bg-emerald-500",
-};
-
-// Same hues as STATUS_DOT_CLASS, as a border instead of a fill — used for
-// sessions without a summary yet, so a hollow vs. filled dot communicates
-// "has summary" at a glance instead of only in the hover tooltip.
-const STATUS_DOT_BORDER_CLASS: Record<string, string> = {
-  "nie rozpisana": "border-zinc-300 dark:border-zinc-700",
-  "w trakcie": "border-amber-400",
-  rozpisana: "border-emerald-500",
 };
 
 function formatDuration(totalSeconds: number) {
@@ -43,13 +29,6 @@ function formatDate(dateStr: string) {
     day: "numeric",
     month: "long",
     year: "numeric",
-  });
-}
-
-function formatShortDate(dateStr: string) {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("pl-PL", {
-    day: "numeric",
-    month: "short",
   });
 }
 
@@ -449,10 +428,8 @@ export default async function CouncilDashboardPage({
               </p>
             ) : (
               <div className="overflow-x-auto pb-2">
-                <div className="relative flex min-w-max items-start gap-7 px-2 pt-2">
-                  <div className="absolute left-2 right-2 top-[18px] h-px bg-zinc-200 dark:bg-zinc-800" />
+                <div className="flex min-w-max items-start gap-1.5 px-2 pt-2">
                   {meetings.map((m) => {
-                    const hasContent = Boolean(m.video_url);
                     const status = m.transcript_status ?? "nie rozpisana";
                     const matchesTag = selectedTag
                       ? (m.topics ?? []).includes(selectedTag)
@@ -471,99 +448,22 @@ export default async function CouncilDashboardPage({
                     if (hasSummary) tooltipParts.push("ma podsumowanie");
                     const tooltip = tooltipParts.filter(Boolean).join(" — ");
 
-                    // A thin radial progress ring around the status dot —
-                    // one hue (emerald, "done" semantics), only shown once
-                    // a session is transcribed, so untranscribed sessions
-                    // keep the plain, uncluttered dot. Radius must clear the
-                    // dot's white/black halo ring (ring-2, outer edge ~r=14
-                    // now that the dot is big enough to hold the session
-                    // number) with a visible gap, or the opaque halo paints
-                    // over the thin arc entirely — confirmed via screenshot
-                    // that too small a gap here fully occludes it.
-                    const RADIUS = 16;
-                    const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-                    const BOX = 36;
-                    const CENTER = BOX / 2;
-                    const dotTextClass = hasSummary
-                      ? "text-white"
-                      : "text-zinc-900 dark:text-zinc-100";
-                    const marker = (
-                      <div
-                        className={`flex flex-col items-center gap-2 transition-opacity ${
-                          matchesTag ? "" : "opacity-25"
-                        }`}
-                      >
-                        <div
-                          className="relative flex items-center justify-center"
-                          style={{ height: BOX, width: BOX }}
-                        >
-                          {progress !== undefined && (
-                            <svg
-                              viewBox={`0 0 ${BOX} ${BOX}`}
-                              width={BOX}
-                              height={BOX}
-                              className="absolute inset-0 -rotate-90"
-                            >
-                              <circle
-                                cx={CENTER}
-                                cy={CENTER}
-                                r={RADIUS}
-                                fill="none"
-                                strokeWidth="2"
-                                className="stroke-zinc-300 dark:stroke-zinc-600"
-                              />
-                              <circle
-                                cx={CENTER}
-                                cy={CENTER}
-                                r={RADIUS}
-                                fill="none"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeDasharray={CIRCUMFERENCE}
-                                strokeDashoffset={
-                                  CIRCUMFERENCE * (1 - progress)
-                                }
-                                className="stroke-emerald-600 dark:stroke-emerald-400 transition-[stroke-dashoffset]"
-                              />
-                            </svg>
-                          )}
-                          <span
-                            className={`relative z-10 flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold leading-none ring-2 ring-white dark:ring-black ${dotTextClass} ${
-                              hasSummary
-                                ? (STATUS_DOT_CLASS[status] ?? STATUS_DOT_CLASS["nie rozpisana"])
-                                : `bg-white dark:bg-black border-2 ${STATUS_DOT_BORDER_CLASS[status] ?? STATUS_DOT_BORDER_CLASS["nie rozpisana"]}`
-                            } ${
-                              selectedTag && matchesTag
-                                ? "outline outline-2 outline-offset-2 outline-zinc-900 dark:outline-zinc-100"
-                                : ""
-                            }`}
-                          >
-                            {meetingNumbers.get(m.id)}
-                          </span>
-                        </div>
-                        <span className="whitespace-nowrap text-xs text-zinc-500">
-                          {formatShortDate(m.date)}
-                        </span>
-                      </div>
-                    );
-                    return hasContent ? (
-                      <Link
+                    return (
+                      <SessionTimelinePill
                         key={m.id}
-                        href={`/sesje/${m.id}`}
-                        prefetch={false}
+                        meeting={{
+                          id: m.id,
+                          date: m.date,
+                          hasVideo: Boolean(m.video_url),
+                          hasTranscript: status === "rozpisana",
+                          number: meetingNumbers.get(m.id) ?? 0,
+                          progress,
+                          hasSummary,
+                        }}
+                        dimmed={!matchesTag}
+                        emphasized={Boolean(selectedTag && matchesTag)}
                         title={tooltip || undefined}
-                        className="shrink-0 hover:opacity-70"
-                      >
-                        {marker}
-                      </Link>
-                    ) : (
-                      <div
-                        key={m.id}
-                        title={tooltip || undefined}
-                        className="shrink-0"
-                      >
-                        {marker}
-                      </div>
+                      />
                     );
                   })}
                 </div>
