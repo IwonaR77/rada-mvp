@@ -3,4 +3,4 @@
 // summary_prompt_version is lower then read as "generated with an older
 // prompt", which the timeline flags (red session number) as a reminder to
 // regenerate that session's summary.
-export const CURRENT_SUMMARY_PROMPT_VERSION = 2;
+export const CURRENT_SUMMARY_PROMPT_VERSION = 3;

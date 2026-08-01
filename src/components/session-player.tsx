@@ -8,6 +8,7 @@ import {
   assignSegments,
   acceptProposedSegments,
   importTranscript,
+  splitSegment,
 } from "@/app/sesje/[id]/actions";
 
 type Segment = {
@@ -72,6 +73,20 @@ function buildPlainText(
     .filter(Boolean)
     .join("\n");
   return `${header}\n\n${segments.map((s) => s.text).join("\n\n")}`;
+}
+
+// Splits s.text into words tagged with their character offset in the
+// original string, so clicking a word can tell the split action exactly
+// where to cut ("split before this word") without re-deriving it from
+// rendered text (which would break on repeated words/whitespace).
+function wordsWithOffsets(text: string) {
+  const words: { word: string; offset: number }[] = [];
+  const re = /\S+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    words.push({ word: m[0], offset: m.index });
+  }
+  return words;
 }
 
 function downloadFile(filename: string, content: string, mimeType: string) {
@@ -169,6 +184,8 @@ export function SessionPlayer({
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [forceReimport, setForceReimport] = useState(false);
+  const [splittingId, setSplittingId] = useState<string | null>(null);
+  const [splitError, setSplitError] = useState<string | null>(null);
   const router = useRouter();
 
   const activeSegment = segments.find(
@@ -271,6 +288,18 @@ export function SessionPlayer({
         proposedSegments.map((s) => s.id)
       );
       setSelected(new Set());
+    });
+  }
+
+  function handleSplit(segmentId: string, offset: number) {
+    setSplitError(null);
+    startTransition(async () => {
+      const result = await splitSegment(meetingId, segmentId, offset);
+      if (result.error) setSplitError(result.error);
+      else {
+        setSplittingId(null);
+        router.refresh();
+      }
     });
   }
 
@@ -440,7 +469,7 @@ export function SessionPlayer({
                         : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 }`}
               >
-                {canAssign && (
+                {canAssign && splittingId !== s.id && (
                   <input
                     type="checkbox"
                     checked={selected.has(s.id)}
@@ -448,39 +477,89 @@ export function SessionPlayer({
                     className="mt-1 shrink-0"
                   />
                 )}
-                <button
-                  onClick={() => handleSeek(s.start_time)}
-                  className="flex flex-1 flex-col gap-0.5 text-left text-sm"
-                >
-                  <div className="flex gap-3">
-                    <span
-                      className={`shrink-0 font-mono ${
-                        isActive ? "" : "text-zinc-400"
-                      }`}
+                {splittingId === s.id ? (
+                  <div className="flex flex-1 flex-col gap-1 text-sm">
+                    <p className="text-xs text-zinc-500">
+                      Kliknij słowo, od którego zaczyna się druga wypowiedź:
+                    </p>
+                    <div className="flex flex-wrap gap-x-1">
+                      {wordsWithOffsets(s.text).map(({ word, offset }, i) =>
+                        i === 0 ? (
+                          <span key={offset}>{word}</span>
+                        ) : (
+                          <button
+                            key={offset}
+                            disabled={isPending}
+                            onClick={() => handleSplit(s.id, offset)}
+                            className="rounded hover:bg-blue-200 hover:underline dark:hover:bg-blue-900"
+                          >
+                            {word}
+                          </button>
+                        )
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setSplittingId(null)}
+                      className="self-start text-xs text-zinc-500 underline"
                     >
-                      {formatTime(s.start_time)}
-                    </span>
-                    <span>{s.text}</span>
+                      Anuluj
+                    </button>
                   </div>
-                  {assignedId && (
-                    <span
-                      className={`text-xs ${
-                        isActive
-                          ? "text-zinc-300"
-                          : isProposed
-                            ? "text-blue-700 dark:text-blue-400"
-                            : "text-zinc-400"
-                      }`}
+                ) : (
+                  <>
+                    <button
+                      onClick={() => handleSeek(s.start_time)}
+                      className="flex flex-1 flex-col gap-0.5 text-left text-sm"
                     >
-                      {peopleById.get(assignedId) ?? "?"}
-                      {isProposed && " — propozycja, czeka na zatwierdzenie"}
-                    </span>
-                  )}
-                </button>
+                      <div className="flex gap-3">
+                        <span
+                          className={`shrink-0 font-mono ${
+                            isActive ? "" : "text-zinc-400"
+                          }`}
+                        >
+                          {formatTime(s.start_time)}
+                        </span>
+                        <span>{s.text}</span>
+                      </div>
+                      {assignedId && (
+                        <span
+                          className={`text-xs ${
+                            isActive
+                              ? "text-zinc-300"
+                              : isProposed
+                                ? "text-blue-700 dark:text-blue-400"
+                                : "text-zinc-400"
+                          }`}
+                        >
+                          {peopleById.get(assignedId) ?? "?"}
+                          {isProposed && " — propozycja, czeka na zatwierdzenie"}
+                        </span>
+                      )}
+                    </button>
+                    {canFinalize && (
+                      <button
+                        onClick={() => setSplittingId(s.id)}
+                        title="Podziel segment (dwóch mówców w jednym segmencie)"
+                        className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${
+                          isActive
+                            ? "hover:bg-zinc-700 dark:hover:bg-zinc-300"
+                            : "text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                        }`}
+                      >
+                        ✂️
+                      </button>
+                    )}
+                  </>
+                )}
               </li>
             );
           })}
         </ul>
+        {splitError && (
+          <p className="text-sm text-red-600 dark:text-red-400">
+            {splitError}
+          </p>
+        )}
 
         {isAdmin && (
           <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-zinc-300 p-6 text-center dark:border-zinc-700">

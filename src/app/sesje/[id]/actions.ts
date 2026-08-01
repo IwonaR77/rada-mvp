@@ -116,6 +116,80 @@ export async function acceptProposedSegments(
   return { error: null, count };
 }
 
+// Moderators only — splits a segment that captured two speakers back-to-back
+// (whisperx segments on pause detection, not speaker changes, so this
+// happens whenever two people talk without a gap between them). splitOffset
+// is a character offset into the segment's text; the split time is
+// interpolated proportionally to text length on each side since we don't
+// have word-level timestamps, only per-segment start/end. Resets both
+// halves to unassigned/open since the original assignment (if any) can't
+// be safely assumed to belong to either speaker.
+export async function splitSegment(
+  meetingId: string,
+  segmentId: string,
+  splitOffset: number
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Musisz być zalogowana" };
+
+  const { data: appUser } = await supabase
+    .from("app_user")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (appUser?.role !== "admin" && appUser?.role !== "moderator") {
+    return { error: "Brak uprawnień" };
+  }
+
+  const { data: segment, error: fetchError } = await supabase
+    .from("segment")
+    .select("start_time, end_time, text")
+    .eq("id", segmentId)
+    .eq("meeting_id", meetingId)
+    .maybeSingle();
+  if (fetchError) return { error: fetchError.message };
+  if (!segment) return { error: "Nie znaleziono segmentu" };
+
+  const textA = segment.text.slice(0, splitOffset).trim();
+  const textB = segment.text.slice(splitOffset).trim();
+  if (!textA || !textB) {
+    return { error: "Podział musi zostawić tekst po obu stronach" };
+  }
+
+  const duration = segment.end_time - segment.start_time;
+  const ratio = splitOffset / segment.text.length;
+  const splitTime = segment.start_time + duration * ratio;
+
+  const { error: updateError } = await supabase
+    .from("segment")
+    .update({
+      end_time: splitTime,
+      text: textA,
+      status: "open",
+      confirmed_councilor_id: null,
+      confirmed_official_id: null,
+      finalized_by: null,
+      finalized_at: null,
+    })
+    .eq("id", segmentId);
+  if (updateError) return { error: updateError.message };
+
+  const { error: insertError } = await supabase.from("segment").insert({
+    meeting_id: meetingId,
+    start_time: splitTime,
+    end_time: segment.end_time,
+    text: textB,
+  });
+  if (insertError) return { error: insertError.message };
+
+  revalidatePath(`/sesje/${meetingId}`);
+  return { error: null };
+}
+
 export async function importTranscript(
   meetingId: string,
   vttContent: string,
