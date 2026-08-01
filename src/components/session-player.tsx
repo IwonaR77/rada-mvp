@@ -84,6 +84,18 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
+// Short attribution for an embedded third-party video, per the site's own
+// terms of use for embedding — the registrable domain (e.g. "esesja.tv"),
+// not the full CDN URL with its per-session path.
+function videoSourceLabel(url: string) {
+  try {
+    const parts = new URL(url).hostname.split(".");
+    return parts.length > 2 ? parts.slice(-2).join(".") : parts.join(".");
+  } catch {
+    return null;
+  }
+}
+
 function slugify(text: string) {
   return text
     .toLowerCase()
@@ -91,6 +103,25 @@ function slugify(text: string) {
     .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+}
+
+// Same sesja_<esesja_id>_<date> prefix as the transcription pipeline's
+// video/vtt files and the summary/*.md files it feeds — a downloaded
+// transcript named from the (long, freeform) meeting title instead made it
+// easy to lose track of which summary belongs to which session once both
+// sat in the same folder. The "_transkrypcja" suffix (paired with
+// "_podsumowanie" on the prompt-generated summary, see
+// summary/prompt.md's NAZEWNICTWO PLIKU) keeps the two tellable apart at a
+// glance too, not just by extension. Falls back to the old title-based
+// slug only for the rare meeting with no esesja_id.
+function sessionFileBase(
+  esesjaId: string | null,
+  date: string,
+  title: string
+) {
+  return esesjaId
+    ? `sesja_${esesjaId}_${date}_transkrypcja`
+    : slugify(title);
 }
 
 export function SessionPlayer({
@@ -303,6 +334,11 @@ export function SessionPlayer({
           onLoadedMetadata={handleLoadedMetadata}
           style={{ width: "100%", height: "auto", aspectRatio: "16/9" }}
         />
+        {videoSourceLabel(videoUrl) && (
+          <p className="-mt-4 text-xs text-zinc-400">
+            Źródło: {videoSourceLabel(videoUrl)}
+          </p>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -342,7 +378,7 @@ export function SessionPlayer({
                   disabled={segments.length === 0}
                   onClick={() =>
                     downloadFile(
-                      `${slugify(meetingTitle)}.txt`,
+                      `${sessionFileBase(esesjaId, meetingDate, meetingTitle)}.txt`,
                       buildPlainText(segments, {
                         esesjaId,
                         date: meetingDate,
@@ -360,7 +396,7 @@ export function SessionPlayer({
                   disabled={segments.length === 0}
                   onClick={() =>
                     downloadFile(
-                      `${slugify(meetingTitle)}.srt`,
+                      `${sessionFileBase(esesjaId, meetingDate, meetingTitle)}.srt`,
                       buildSrt(segments),
                       "application/x-subrip;charset=utf-8"
                     )

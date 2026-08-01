@@ -339,7 +339,15 @@ export default async function CouncilDashboardPage({
             />
           )}
         </div>
-        <p className="text-zinc-500">{council.city?.name}</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-zinc-500">{council.city?.name}</p>
+          <Link
+            href={`/sprawy?councilId=${council.id}`}
+            className="text-sm text-zinc-500 hover:underline"
+          >
+            Sprawy →
+          </Link>
+        </div>
       </div>
 
       {!terms || terms.length === 0 ? (

@@ -404,6 +404,181 @@ export type Database = {
           },
         ]
       }
+      matter: {
+        Row: {
+          category: string | null
+          council_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          status: string
+          title: string
+        }
+        Insert: {
+          category?: string | null
+          council_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          status?: string
+          title: string
+        }
+        Update: {
+          category?: string | null
+          council_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          status?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matter_council_id_fkey"
+            columns: ["council_id"]
+            isOneToOne: false
+            referencedRelation: "council"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      matter_participant: {
+        Row: {
+          councilor_id: string
+          created_at: string
+          id: string
+          matter_id: string
+          role: string
+        }
+        Insert: {
+          councilor_id: string
+          created_at?: string
+          id?: string
+          matter_id: string
+          role?: string
+        }
+        Update: {
+          councilor_id?: string
+          created_at?: string
+          id?: string
+          matter_id?: string
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matter_participant_councilor_id_fkey"
+            columns: ["councilor_id"]
+            isOneToOne: false
+            referencedRelation: "councilor"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matter_participant_matter_id_fkey"
+            columns: ["matter_id"]
+            isOneToOne: false
+            referencedRelation: "matter"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      matter_reference: {
+        Row: {
+          created_at: string
+          id: string
+          interpellation_id: string | null
+          matter_id: string
+          meeting_id: string | null
+          note: string | null
+          resolution_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          interpellation_id?: string | null
+          matter_id: string
+          meeting_id?: string | null
+          note?: string | null
+          resolution_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          interpellation_id?: string | null
+          matter_id?: string
+          meeting_id?: string | null
+          note?: string | null
+          resolution_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matter_reference_interpellation_id_fkey"
+            columns: ["interpellation_id"]
+            isOneToOne: false
+            referencedRelation: "interpellation"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matter_reference_matter_id_fkey"
+            columns: ["matter_id"]
+            isOneToOne: false
+            referencedRelation: "matter"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matter_reference_meeting_id_fkey"
+            columns: ["meeting_id"]
+            isOneToOne: false
+            referencedRelation: "meeting"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matter_reference_resolution_id_fkey"
+            columns: ["resolution_id"]
+            isOneToOne: false
+            referencedRelation: "resolution"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      matter_relation: {
+        Row: {
+          created_at: string
+          from_matter_id: string
+          id: string
+          relation_type: string
+          to_matter_id: string
+        }
+        Insert: {
+          created_at?: string
+          from_matter_id: string
+          id?: string
+          relation_type: string
+          to_matter_id: string
+        }
+        Update: {
+          created_at?: string
+          from_matter_id?: string
+          id?: string
+          relation_type?: string
+          to_matter_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matter_relation_from_matter_id_fkey"
+            columns: ["from_matter_id"]
+            isOneToOne: false
+            referencedRelation: "matter"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matter_relation_to_matter_id_fkey"
+            columns: ["to_matter_id"]
+            isOneToOne: false
+            referencedRelation: "matter"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meeting: {
         Row: {
           created_at: string
