@@ -60,3 +60,7 @@ next-env.d.ts
 # backups/: daily database dumps (scripts/backup-db.sh), never committed
 /backups
 /backup-db.log
+
+# python
+__pycache__/
+*.pyc
