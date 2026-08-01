@@ -406,30 +406,30 @@ export type Database = {
       }
       matter: {
         Row: {
-          category: string | null
           council_id: string
           created_at: string
           id: string
           notes: string | null
           status: string
+          thread_id: string | null
           title: string
         }
         Insert: {
-          category?: string | null
           council_id: string
           created_at?: string
           id?: string
           notes?: string | null
           status?: string
+          thread_id?: string | null
           title: string
         }
         Update: {
-          category?: string | null
           council_id?: string
           created_at?: string
           id?: string
           notes?: string | null
           status?: string
+          thread_id?: string | null
           title?: string
         }
         Relationships: [
@@ -438,6 +438,13 @@ export type Database = {
             columns: ["council_id"]
             isOneToOne: false
             referencedRelation: "council"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matter_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "matter_thread"
             referencedColumns: ["id"]
           },
         ]
@@ -575,6 +582,38 @@ export type Database = {
             columns: ["to_matter_id"]
             isOneToOne: false
             referencedRelation: "matter"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      matter_thread: {
+        Row: {
+          council_id: string
+          created_at: string
+          description: string | null
+          id: string
+          title: string
+        }
+        Insert: {
+          council_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          title: string
+        }
+        Update: {
+          council_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matter_thread_council_id_fkey"
+            columns: ["council_id"]
+            isOneToOne: false
+            referencedRelation: "council"
             referencedColumns: ["id"]
           },
         ]

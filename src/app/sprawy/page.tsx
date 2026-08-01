@@ -31,6 +31,7 @@ type Matter = {
   status: string;
   notes: string | null;
   council_id: string;
+  thread_id: string | null;
   matter_participant: {
     role: string;
     councilor: { id: string; full_name: string } | null;
@@ -42,6 +43,84 @@ type Matter = {
     interpellation: { id: string; title: string; pdf_url: string | null } | null;
   }[];
 };
+
+type Thread = { id: string; title: string; description: string | null };
+
+// Groups matters by thread, preserving each thread's first-appearance order
+// (matters arrive pre-sorted by created_at); matters without a thread are
+// kept in their own trailing, header-less group rather than forced under
+// a fake "inne" bucket — most matters won't have a thread, and that's fine.
+function groupByThread(matters: Matter[], threadsById: Map<string, Thread>) {
+  const groups: { thread: Thread | null; matters: Matter[] }[] = [];
+  const indexByThreadId = new Map<string, number>();
+  const untitled: Matter[] = [];
+
+  for (const m of matters) {
+    if (!m.thread_id) {
+      untitled.push(m);
+      continue;
+    }
+    const thread = threadsById.get(m.thread_id) ?? null;
+    if (!thread) {
+      untitled.push(m);
+      continue;
+    }
+    let idx = indexByThreadId.get(thread.id);
+    if (idx === undefined) {
+      idx = groups.length;
+      indexByThreadId.set(thread.id, idx);
+      groups.push({ thread, matters: [] });
+    }
+    groups[idx].matters.push(m);
+  }
+  if (untitled.length > 0) groups.push({ thread: null, matters: untitled });
+  return groups;
+}
+
+// Native <details>/<summary> — no client component or JS state needed for
+// a simple expand/collapse, and it's accessible/keyboard-operable for free.
+// The chevron rotates via the `group-open:` variant, which Tailwind maps to
+// the browser-native `details[open]` state.
+function ThreadGroup({
+  thread,
+  matters,
+  canApproveByCouncil,
+}: {
+  thread: Thread | null;
+  matters: Matter[];
+  canApproveByCouncil: Map<string, boolean>;
+}) {
+  return (
+    <details className="group">
+      <summary className="mb-2 flex cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden">
+        <svg
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400 transition-transform group-open:rotate-90"
+        >
+          <path d="M7.05 4.55a.75.75 0 0 1 1.06 0l5 5a.75.75 0 0 1 0 1.06l-5 5a.75.75 0 1 1-1.06-1.06L11.44 10 7.05 5.61a.75.75 0 0 1 0-1.06Z" />
+        </svg>
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+            {thread ? thread.title : "Pozostałe sprawy"} ({matters.length})
+          </h3>
+          {thread?.description && (
+            <p className="mt-0.5 text-xs text-zinc-500">{thread.description}</p>
+          )}
+        </div>
+      </summary>
+      <ul className="flex flex-col divide-y divide-zinc-200 rounded-2xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+        {matters.map((m) => (
+          <MatterCard
+            key={m.id}
+            matter={m}
+            canApprove={canApproveByCouncil.get(m.council_id) ?? false}
+          />
+        ))}
+      </ul>
+    </details>
+  );
+}
 
 function MatterCard({
   matter,
@@ -131,21 +210,29 @@ export default async function SprawyPage({
   let query = supabase
     .from("matter")
     .select(
-      `id, title, status, notes, council_id,
+      `id, title, status, notes, council_id, thread_id,
        matter_participant(role, councilor:councilor_id(id, full_name)),
        matter_reference(id, note, meeting:meeting_id(id, date), interpellation:interpellation_id(id, title, pdf_url))`
     )
     .order("created_at", { ascending: true });
   if (councilId) query = query.eq("council_id", councilId);
 
-  const [{ data: matters }, { data: council }] = await Promise.all([
-    query,
-    councilId
-      ? supabase.from("council").select("id, name").eq("id", councilId).maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
+  let threadsQuery = supabase
+    .from("matter_thread")
+    .select("id, title, description");
+  if (councilId) threadsQuery = threadsQuery.eq("council_id", councilId);
+
+  const [{ data: matters }, { data: council }, { data: threads }] =
+    await Promise.all([
+      query,
+      councilId
+        ? supabase.from("council").select("id, name").eq("id", councilId).maybeSingle()
+        : Promise.resolve({ data: null }),
+      threadsQuery,
+    ]);
 
   const rows = (matters ?? []) as unknown as Matter[];
+  const threadsById = new Map((threads ?? []).map((t) => [t.id, t as Thread]));
 
   const canApproveByCouncil = new Map<string, boolean>();
   if (user) {
@@ -194,15 +281,16 @@ export default async function SprawyPage({
         {approved.length === 0 ? (
           <p className="text-sm text-zinc-500">Brak zatwierdzonych spraw.</p>
         ) : (
-          <ul className="flex flex-col divide-y divide-zinc-200 rounded-2xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-            {approved.map((m) => (
-              <MatterCard
-                key={m.id}
-                matter={m}
-                canApprove={canApproveByCouncil.get(m.council_id) ?? false}
+          <div className="flex flex-col gap-3">
+            {groupByThread(approved, threadsById).map((group, i) => (
+              <ThreadGroup
+                key={group.thread?.id ?? `untitled-${i}`}
+                thread={group.thread}
+                matters={group.matters}
+                canApproveByCouncil={canApproveByCouncil}
               />
             ))}
-          </ul>
+          </div>
         )}
       </section>
 
@@ -213,15 +301,16 @@ export default async function SprawyPage({
         {proposed.length === 0 ? (
           <p className="text-sm text-zinc-500">Brak spraw oczekujących na akceptację.</p>
         ) : (
-          <ul className="flex flex-col divide-y divide-zinc-200 rounded-2xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-            {proposed.map((m) => (
-              <MatterCard
-                key={m.id}
-                matter={m}
-                canApprove={canApproveByCouncil.get(m.council_id) ?? false}
+          <div className="flex flex-col gap-3">
+            {groupByThread(proposed, threadsById).map((group, i) => (
+              <ThreadGroup
+                key={group.thread?.id ?? `untitled-${i}`}
+                thread={group.thread}
+                matters={group.matters}
+                canApproveByCouncil={canApproveByCouncil}
               />
             ))}
-          </ul>
+          </div>
         )}
       </section>
     </div>
