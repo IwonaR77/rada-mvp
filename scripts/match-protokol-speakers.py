@@ -75,7 +75,14 @@ KNOWN_ROLE_HOLDERS_2025 = {
     "Sekretarz": "Sebastian Litewnicki",
 }
 
-NAME_PART = r"[A-ZŁŚŻŹĆŃÓĄĘ][\wąćęłńóśźż.]*(?:\s+[A-ZŁŚŻŹĆŃÓĄĘ][\wąćęłńóśźż.-]*){0,4}"
+# Role+honorific+name prefixes can run long ("Skarbnik Gminy Grójec Pani
+# Mariola Komorowska", 6 words) and can contain a lowercase connector
+# ("Zastępca Komendanta Powiatowego Policji w Grójcu podinsp. Tomasz
+# Witkowski") -- an earlier version of this pattern capped at 5 words and
+# required every word capitalized, which silently failed to match these,
+# swallowing the whole speaker turn into whatever came before it (see
+# project_protokol_speaker_matching memory for the case that caught this).
+NAME_PART = r"[A-ZŁŚŻŹĆŃÓĄĘ][\wąćęłńóśźż.]*(?:\s+(?:[a-ząćęłńóśźż]{1,3}\s+)?[A-ZŁŚŻŹĆŃÓĄĘ][\wąćęłńóśźż.-]*){0,9}"
 NAME_RE = re.compile(rf"^({NAME_PART})\s+-\s+(.*)$")
 NAME_RE_DASH = re.compile(rf"^-\s+({NAME_PART}):\s+(.*)$")
 NAME_RE_COLON = re.compile(rf"^({NAME_PART}):\s+(.+)$")
@@ -161,13 +168,35 @@ def normalize_role_key(prefix):
     return None
 
 
+# "W dyskusji wzięli udział:" / "Oraz:" introduce a bullet list of
+# participant names (sometimes tagged "(Ad Vocem)") that uses the exact same
+# "- Role Name - marker" shape as a real speaker line -- rather than keep
+# guessing which "rest" shapes are fake (BARE_NAME_RE below catches the
+# plain-name case but not "(Ad Vocem)", which slipped through and corrupted
+# anchor ordering the same way the attendee list did), skip the whole
+# section structurally: every line until the next blank line is list body,
+# never a speaker turn.
+LIST_HEADER_RE = re.compile(r"^(W dyskusji wzięli udział:|Oraz:)$")
+BARE_NAME_RE = re.compile(r"^[A-ZŁŚŻŹĆŃÓĄĘ][\wąćęłńóśźż.-]*(?:\s+[A-ZŁŚŻŹĆŃÓĄĘ][\wąćęłńóśźż.-]*){0,3}$")
+
+
 def parse_blocks(text):
     blocks = []
     current = None
+    in_list = False
     for line in text.split("\n"):
         stripped = line.strip()
+        if LIST_HEADER_RE.match(stripped):
+            in_list = True
+            continue
+        if in_list:
+            if stripped == "":
+                in_list = False
+            continue
         m = (NAME_RE_DASH_BOTH.match(stripped) or NAME_RE_DASH.match(stripped)
              or NAME_RE_COLON.match(stripped) or NAME_RE.match(stripped))
+        if m and BARE_NAME_RE.match(m.group(2).strip()):
+            m = None
         if m:
             if current:
                 blocks.append(current)
@@ -201,15 +230,26 @@ def extract_session_date(text):
     return f"{year}-{month:02d}-{int(day):02d}" if month else None
 
 
-def find_anchor(block_tokens, seg_tokens, search_from, search_to, probe_segments=5):
+def find_anchor(block_tokens, seg_tokens, search_from, search_to, max_probe_segments=12):
+    """Score each candidate start position by comparing the block's opening
+    words against a window of segments grown to roughly the same length as
+    the probe (not a fixed segment count) -- segments here are often very
+    short (a single clause), so a fixed-size window can be far longer than
+    a short block's anchor text and dilute SequenceMatcher.ratio() (which is
+    penalized by the combined length of both sides) below any usable
+    threshold. This especially hurt short, generic chair interjections
+    ("Dziękuję. Czy jeszcze są pytania?") -- see project_protokol_speaker_matching
+    memory for a concrete case that motivated this fix."""
     probe = block_tokens[:40]
     if not probe:
         return None, 0.0
+    target_len = len(probe)
     best_idx, best_score = None, 0.0
     for start in range(search_from, search_to):
-        window = []
-        for j in range(start, min(start + probe_segments, len(seg_tokens))):
+        window, j = [], start
+        while len(window) < target_len and j < len(seg_tokens) and (j - start) < max_probe_segments:
             window.extend(seg_tokens[j])
+            j += 1
         if not window:
             continue
         score = difflib.SequenceMatcher(None, probe, window, autojunk=False).ratio()
