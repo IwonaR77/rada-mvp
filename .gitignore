@@ -57,6 +57,10 @@ next-env.d.ts
 # prompt/: periodic snapshots of a full build-prompt for model comparison, not part of the project
 /prompt
 
+# protokoly/: locally-dropped session protokół PDFs (from BIP or FOI requests),
+# fed to scripts/match-protokol-speakers.py -- source documents, not part of the project
+/protokoly
+
 # backups/: daily database dumps (scripts/backup-db.sh), never committed
 /backups
 /backup-db.log
