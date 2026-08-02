@@ -10,11 +10,10 @@ type CouncilPin = {
   cityName: string;
   lat: number;
   lng: number;
-  termId: string | null;
 };
 
 function councilHref(c: CouncilPin) {
-  return c.termId ? `/rada/${c.id}?kadencja=${c.termId}` : `/rada/${c.id}`;
+  return `/rada/${c.id}`;
 }
 
 export function PolandMap({ councils }: { councils: CouncilPin[] }) {

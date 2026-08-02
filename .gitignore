@@ -54,6 +54,10 @@ next-env.d.ts
 # summary/: manually generated session summaries, not part of the project
 /summary
 
+# radni/: versioned prompt + working notes for councilor session-activity
+# synthesis (mirrors summary/), not part of the project
+/radni
+
 # prompt/: periodic snapshots of a full build-prompt for model comparison, not part of the project
 /prompt
 

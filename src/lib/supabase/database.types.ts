@@ -191,6 +191,9 @@ export type Database = {
           interpellation_synthesis: string | null
           interpellation_synthesis_updated_at: string | null
           photo_url: string | null
+          session_activity_synthesis: string | null
+          session_activity_synthesis_prompt_version: number | null
+          session_activity_synthesis_updated_at: string | null
         }
         Insert: {
           created_at?: string
@@ -199,6 +202,9 @@ export type Database = {
           interpellation_synthesis?: string | null
           interpellation_synthesis_updated_at?: string | null
           photo_url?: string | null
+          session_activity_synthesis?: string | null
+          session_activity_synthesis_prompt_version?: number | null
+          session_activity_synthesis_updated_at?: string | null
         }
         Update: {
           created_at?: string
@@ -207,6 +213,9 @@ export type Database = {
           interpellation_synthesis?: string | null
           interpellation_synthesis_updated_at?: string | null
           photo_url?: string | null
+          session_activity_synthesis?: string | null
+          session_activity_synthesis_prompt_version?: number | null
+          session_activity_synthesis_updated_at?: string | null
         }
         Relationships: []
       }
@@ -580,6 +589,35 @@ export type Database = {
           {
             foreignKeyName: "matter_relation_to_matter_id_fkey"
             columns: ["to_matter_id"]
+            isOneToOne: false
+            referencedRelation: "matter"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      matter_tag: {
+        Row: {
+          created_at: string
+          id: string
+          matter_id: string
+          tag: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          matter_id: string
+          tag: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          matter_id?: string
+          tag?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matter_tag_matter_id_fkey"
+            columns: ["matter_id"]
             isOneToOne: false
             referencedRelation: "matter"
             referencedColumns: ["id"]
@@ -1031,6 +1069,23 @@ export type Database = {
           meeting_id: string
           meeting_title: string
           start_time: number
+        }[]
+      }
+      term_voting_correlation: {
+        Args: { p_term_id: string }
+        Returns: {
+          agreement_pct: number
+          common_votes: number
+          councilor_a: string
+          councilor_b: string
+        }[]
+      }
+      term_attendance_stats: {
+        Args: { p_term_id: string }
+        Returns: {
+          councilor_id: string
+          session_attendance_pct: number
+          vote_attendance_pct: number
         }[]
       }
       text2ltree: { Args: { "": string }; Returns: unknown }

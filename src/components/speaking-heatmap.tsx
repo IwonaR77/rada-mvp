@@ -76,6 +76,7 @@ function HeatmapRow({
   meetings,
   matrix,
   max,
+  total,
   onActivate,
   onDeactivate,
 }: {
@@ -83,6 +84,7 @@ function HeatmapRow({
   meetings: HeatmapMeeting[];
   matrix: Record<string, Record<string, number>>;
   max: number;
+  total: number;
   onActivate: (cell: ActiveCell) => void;
   onDeactivate: () => void;
 }) {
@@ -101,6 +103,9 @@ function HeatmapRow({
           {c.fullName}
         </span>
       )}
+      <span className="w-24 shrink-0 text-right text-xs text-zinc-500 dark:text-zinc-400">
+        {formatDuration(total)}
+      </span>
       <div className="flex gap-[2px]">
         {meetings.map((m) => {
           const seconds = matrix[c.id]?.[m.id] ?? 0;
@@ -225,6 +230,12 @@ export function SpeakingHeatmap({
 
       <div className="overflow-x-auto pb-2">
         <div className="inline-flex flex-col gap-[2px]">
+          <div className="flex items-center gap-2 pb-1">
+            <span className="w-40 shrink-0" />
+            <span className="w-24 shrink-0 text-right text-[10px] uppercase tracking-wide text-zinc-400">
+              Razem
+            </span>
+          </div>
           {orderedCouncilorRows.map((c) => (
             <HeatmapRow
               key={c.id}
@@ -232,6 +243,7 @@ export function SpeakingHeatmap({
               meetings={orderedMeetings}
               matrix={matrix}
               max={max}
+              total={totalFor(c)}
               onActivate={setActive}
               onDeactivate={() => setActive(null)}
             />
@@ -246,12 +258,14 @@ export function SpeakingHeatmap({
               meetings={orderedMeetings}
               matrix={matrix}
               max={max}
+              total={totalFor(c)}
               onActivate={setActive}
               onDeactivate={() => setActive(null)}
             />
           ))}
           <div className="flex items-center gap-2 pt-1">
             <span className="w-40 shrink-0" />
+            <span className="w-24 shrink-0" />
             <div className="flex gap-[2px]">
               {orderedMeetings.map((m) => (
                 <span
@@ -277,6 +291,9 @@ export function SpeakingHeatmap({
               <tr>
                 <th scope="col" className="border-b border-zinc-200 p-2 text-left dark:border-zinc-800">
                   Radny
+                </th>
+                <th scope="col" className="border-b border-zinc-200 p-2 text-left font-normal text-zinc-500 dark:border-zinc-800">
+                  Razem
                 </th>
                 {orderedMeetings.map((m) => (
                   <th
@@ -310,6 +327,9 @@ export function SpeakingHeatmap({
                         c.fullName
                       )}
                     </th>
+                    <td className={`${rowBorder} p-2 font-medium text-zinc-700 dark:text-zinc-300`}>
+                      {formatDuration(totalFor(c))}
+                    </td>
                     {orderedMeetings.map((m) => (
                       <td
                         key={m.id}
