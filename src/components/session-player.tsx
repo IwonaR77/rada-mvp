@@ -175,6 +175,11 @@ export function SessionPlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const activeRowRef = useRef<HTMLLIElement>(null);
   const hasAppliedInitialSeek = useRef(false);
+  // While the user is scrolling ahead of playback to pre-tag segments,
+  // don't yank them back to the currently playing row on every segment
+  // change. Resumes once they click a segment to seek — that's an
+  // explicit "take me here" action.
+  const followPlaybackRef = useRef(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<"all" | "unassigned">("all");
@@ -229,6 +234,7 @@ export function SessionPlayer({
   officials.forEach((o) => peopleById.set(o.id, `${o.full_name} (${o.role})`));
 
   useEffect(() => {
+    if (!followPlaybackRef.current) return;
     activeRowRef.current?.scrollIntoView({
       block: "nearest",
       behavior: "smooth",
@@ -236,6 +242,7 @@ export function SessionPlayer({
   }, [activeSegment?.id]);
 
   function handleSeek(startTime: number) {
+    followPlaybackRef.current = true;
     const video = videoRef.current;
     if (!video) return;
     video.currentTime = startTime;
@@ -439,7 +446,15 @@ export function SessionPlayer({
           </div>
         </div>
 
-        <ul className="flex max-h-[32rem] flex-col gap-1 overflow-y-auto rounded-2xl border border-zinc-200 p-2 dark:border-zinc-800">
+        <ul
+          onWheel={() => {
+            followPlaybackRef.current = false;
+          }}
+          onTouchMove={() => {
+            followPlaybackRef.current = false;
+          }}
+          className="flex max-h-[32rem] flex-col gap-1 overflow-y-auto overscroll-contain rounded-2xl border border-zinc-200 p-2 dark:border-zinc-800"
+        >
           {visibleSegments.length === 0 && (
             <li className="p-4 text-center text-zinc-500">
               {normalizedQuery
