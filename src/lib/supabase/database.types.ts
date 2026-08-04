@@ -14,6 +14,67 @@ export type Database = {
   }
   public: {
     Tables: {
+      access_request: {
+        Row: {
+          app_user_id: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          id: string
+          message: string | null
+          requested_level: string
+          scope_council_id: string | null
+          status: string
+        }
+        Insert: {
+          app_user_id: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          id?: string
+          message?: string | null
+          requested_level: string
+          scope_council_id?: string | null
+          status?: string
+        }
+        Update: {
+          app_user_id?: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          id?: string
+          message?: string | null
+          requested_level?: string
+          scope_council_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "access_request_app_user_id_fkey"
+            columns: ["app_user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_request_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_request_scope_council_id_fkey"
+            columns: ["scope_council_id"]
+            isOneToOne: false
+            referencedRelation: "council"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       admin_unit: {
         Row: {
           created_at: string
@@ -1051,6 +1112,7 @@ export type Database = {
           full_name: string
         }[]
       }
+      is_manager: { Args: { uid: string }; Returns: boolean }
       is_moderator: { Args: { uid: string }; Returns: boolean }
       meeting_tagging_progress: {
         Args: { p_term_id: string }
@@ -1071,6 +1133,14 @@ export type Database = {
           start_time: number
         }[]
       }
+      term_attendance_stats: {
+        Args: { p_term_id: string }
+        Returns: {
+          councilor_id: string
+          session_attendance_pct: number
+          vote_attendance_pct: number
+        }[]
+      }
       term_voting_correlation: {
         Args: { p_term_id: string }
         Returns: {
@@ -1078,14 +1148,6 @@ export type Database = {
           common_votes: number
           councilor_a: string
           councilor_b: string
-        }[]
-      }
-      term_attendance_stats: {
-        Args: { p_term_id: string }
-        Returns: {
-          councilor_id: string
-          session_attendance_pct: number
-          vote_attendance_pct: number
         }[]
       }
       text2ltree: { Args: { "": string }; Returns: unknown }

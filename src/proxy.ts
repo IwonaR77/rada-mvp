@@ -4,9 +4,10 @@ import { checkRateLimit, clientIp } from "@/lib/rate-limit";
 
 const SEARCH_RATE_LIMIT = { limit: 20, windowMs: 60_000 };
 
-// Pages reachable without a session — everything else requires login.
-const PUBLIC_PATHS = new Set(["/", "/auth/callback", "/auth/error", "/logout"]);
-
+// Content is public — no login required to browse. Real authorization for
+// contributing (tagging, finalizing, admin queues) lives in RLS policies
+// and per-page/per-action permission checks, not here; this only refreshes
+// the auth cookie so a logged-in session stays valid where it matters.
 export async function proxy(request: NextRequest) {
   if (request.nextUrl.pathname === "/szukaj") {
     const key = `szukaj:${clientIp(request.headers)}`;
@@ -25,12 +26,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  const { response, user } = await updateSession(request);
-
-  if (!user && !PUBLIC_PATHS.has(request.nextUrl.pathname)) {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
-
+  const { response } = await updateSession(request);
   return response;
 }
 

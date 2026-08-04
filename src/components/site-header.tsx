@@ -8,13 +8,25 @@ export async function SiteHeader() {
   } = await supabase.auth.getUser();
 
   let favoriteCouncil: { id: string; name: string } | null = null;
+  let pendingRequestCount = 0;
   if (user) {
-    const { data: appUser } = await supabase
-      .from("app_user")
-      .select("favorite_council:favorite_council_id(id, name)")
-      .eq("id", user.id)
-      .maybeSingle();
+    const [{ data: appUser }, { data: isManager }] = await Promise.all([
+      supabase
+        .from("app_user")
+        .select("favorite_council:favorite_council_id(id, name)")
+        .eq("id", user.id)
+        .maybeSingle(),
+      supabase.rpc("is_manager", { uid: user.id }),
+    ]);
     favoriteCouncil = appUser?.favorite_council ?? null;
+
+    if (isManager) {
+      const { count } = await supabase
+        .from("access_request")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending");
+      pendingRequestCount = count ?? 0;
+    }
   }
 
   return (
@@ -48,6 +60,20 @@ export async function SiteHeader() {
         </Link>
         {user ? (
           <>
+            {pendingRequestCount > 0 && (
+              <Link
+                href="/admin/dostep"
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+              >
+                Prośby o dostęp ({pendingRequestCount})
+              </Link>
+            )}
+            <Link
+              href="/dostep"
+              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            >
+              Dostęp
+            </Link>
             <span className="hidden text-zinc-500 sm:inline">
               {user.email}
             </span>
