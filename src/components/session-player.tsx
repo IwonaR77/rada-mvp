@@ -182,7 +182,10 @@ export function SessionPlayer({
   const followPlaybackRef = useRef(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [filter, setFilter] = useState<"all" | "unassigned">("all");
+  const [anchorId, setAnchorId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"all" | "unassigned" | "proposed">(
+    "all"
+  );
   const [query, setQuery] = useState("");
   const [speakerFilter, setSpeakerFilter] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
@@ -202,9 +205,14 @@ export function SessionPlayer({
   const getAssignedId = (s: Segment) =>
     s.confirmed_councilor_id ?? s.confirmed_official_id;
   const unassignedCount = segments.filter(isUnassigned).length;
+  const proposedCount = segments.filter((s) => s.status === "proposed").length;
   const normalizedQuery = query.trim().toLowerCase();
   const visibleSegments = segments
-    .filter((s) => (filter === "unassigned" ? isUnassigned(s) : true))
+    .filter((s) => {
+      if (filter === "unassigned") return isUnassigned(s);
+      if (filter === "proposed") return s.status === "proposed";
+      return true;
+    })
     .filter((s) =>
       normalizedQuery ? s.text.toLowerCase().includes(normalizedQuery) : true
     )
@@ -254,6 +262,37 @@ export function SessionPlayer({
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      return next;
+    });
+  }
+
+  // Shift+click extends from the anchor (last plain click, or the
+  // currently playing segment if nothing's been clicked yet) through the
+  // clicked segment, matching standard file-manager range-select — but adds
+  // the range to the existing selection rather than replacing it, so it
+  // composes with individually-checked segments elsewhere in the list.
+  function handleSegmentClick(id: string, shiftKey: boolean) {
+    if (!shiftKey) {
+      toggleSelected(id);
+      setAnchorId(id);
+      return;
+    }
+    const anchor = anchorId ?? activeSegment?.id ?? id;
+    const ids = visibleSegments.map((s) => s.id);
+    const anchorIndex = ids.indexOf(anchor);
+    const clickedIndex = ids.indexOf(id);
+    if (anchorIndex === -1 || clickedIndex === -1) {
+      toggleSelected(id);
+      return;
+    }
+    const [start, end] =
+      anchorIndex < clickedIndex
+        ? [anchorIndex, clickedIndex]
+        : [clickedIndex, anchorIndex];
+    const rangeIds = ids.slice(start, end + 1);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      rangeIds.forEach((rid) => next.add(rid));
       return next;
     });
   }
@@ -405,6 +444,16 @@ export function SessionPlayer({
             >
               Nieustalone{unassignedCount > 0 && ` (${unassignedCount})`}
             </button>
+            <button
+              onClick={() => setFilter("proposed")}
+              className={`rounded-full px-3 py-1 transition-colors ${
+                filter === "proposed"
+                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                  : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+              }`}
+            >
+              Niezaakceptowane{proposedCount > 0 && ` (${proposedCount})`}
+            </button>
           </div>
 
           <div className="ml-auto flex gap-2">
@@ -463,7 +512,9 @@ export function SessionPlayer({
                   ? "Brak wypowiedzi zaznaczonych mówców w tej sesji."
                   : filter === "unassigned"
                     ? "Wszystkie segmenty mają przypisanego mówcę."
-                    : "Brak segmentów dla tej sesji."}
+                    : filter === "proposed"
+                      ? "Brak niezaakceptowanych propozycji."
+                      : "Brak segmentów dla tej sesji."}
             </li>
           )}
           {visibleSegments.map((s) => {
@@ -488,7 +539,11 @@ export function SessionPlayer({
                   <input
                     type="checkbox"
                     checked={selected.has(s.id)}
-                    onChange={() => toggleSelected(s.id)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleSegmentClick(s.id, e.shiftKey);
+                    }}
+                    onChange={() => {}}
                     className="mt-1 shrink-0"
                   />
                 )}
