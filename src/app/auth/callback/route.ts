@@ -1,10 +1,17 @@
-import { NextResponse, type NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = request.nextUrl;
+  const { searchParams } = request.nextUrl;
   const code = searchParams.get("code");
-  const nextParam = searchParams.get("next");
+  const rawNextParam = searchParams.get("next");
+  // Only accept a same-app relative path — a "/" not followed by another
+  // "/" — so this can't become an open redirect to an attacker's domain
+  // (e.g. `?next=https://evil.example` or `?next=//evil.example`).
+  const nextParam =
+    rawNextParam && rawNextParam.startsWith("/") && !rawNextParam.startsWith("//")
+      ? rawNextParam
+      : null;
 
   if (code) {
     const supabase = await createClient();
@@ -41,9 +48,12 @@ export async function GET(request: NextRequest) {
           destination = `/rada/${appUser.favorite_council_id}`;
         }
       }
-      return NextResponse.redirect(`${origin}${destination}`);
+      // A relative Location header instead of NextResponse.redirect(url) —
+      // see /logout/route.ts for why an absolute URL built from the
+      // request's origin isn't safe here.
+      return new Response(null, { status: 302, headers: { Location: destination } });
     }
   }
 
-  return NextResponse.redirect(`${origin}/auth/error`);
+  return new Response(null, { status: 302, headers: { Location: "/auth/error" } });
 }

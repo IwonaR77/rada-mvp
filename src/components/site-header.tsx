@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { LogoutLink } from "@/components/logout-link";
 
 export async function SiteHeader() {
   const supabase = await createClient();
@@ -77,12 +78,7 @@ export async function SiteHeader() {
             <span className="hidden text-zinc-500 sm:inline">
               {user.email}
             </span>
-            <a
-              href="/logout"
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-            >
-              Wyloguj
-            </a>
+            <LogoutLink className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100" />
           </>
         ) : (
           <Link

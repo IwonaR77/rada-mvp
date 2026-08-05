@@ -1,8 +1,11 @@
-import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-export async function GET(request: Request) {
+export async function GET() {
   const supabase = await createClient();
   await supabase.auth.signOut();
-  return NextResponse.redirect(new URL("/", request.url));
+  // A relative Location header (valid per RFC 7231) instead of
+  // NextResponse.redirect(new URL("/", request.url)) — `next start` here
+  // hardcodes request.url's origin to localhost regardless of the actual
+  // Host header, which would send LAN/remote clients to an unreachable URL.
+  return new Response(null, { status: 302, headers: { Location: "/" } });
 }
