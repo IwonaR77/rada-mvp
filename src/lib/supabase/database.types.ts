@@ -14,6 +14,58 @@ export type Database = {
   }
   public: {
     Tables: {
+      access_audit_log: {
+        Row: {
+          action: string
+          actor_id: string
+          created_at: string
+          details: string | null
+          id: string
+          scope_council_id: string | null
+          target_app_user_id: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          created_at?: string
+          details?: string | null
+          id?: string
+          scope_council_id?: string | null
+          target_app_user_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          created_at?: string
+          details?: string | null
+          id?: string
+          scope_council_id?: string | null
+          target_app_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "access_audit_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_audit_log_scope_council_id_fkey"
+            columns: ["scope_council_id"]
+            isOneToOne: false
+            referencedRelation: "council"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "access_audit_log_target_app_user_id_fkey"
+            columns: ["target_app_user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       access_request: {
         Row: {
           app_user_id: string

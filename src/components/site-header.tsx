@@ -9,6 +9,7 @@ export async function SiteHeader() {
   } = await supabase.auth.getUser();
 
   let favoriteCouncil: { id: string; name: string } | null = null;
+  let manager = false;
   let pendingRequestCount = 0;
   if (user) {
     const [{ data: appUser }, { data: isManager }] = await Promise.all([
@@ -20,8 +21,9 @@ export async function SiteHeader() {
       supabase.rpc("is_manager", { uid: user.id }),
     ]);
     favoriteCouncil = appUser?.favorite_council ?? null;
+    manager = isManager ?? false;
 
-    if (isManager) {
+    if (manager) {
       const { count } = await supabase
         .from("access_request")
         .select("id", { count: "exact", head: true })
@@ -32,10 +34,10 @@ export async function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-50 flex items-center justify-between border-b border-zinc-200 bg-white/90 px-6 py-3 backdrop-blur dark:border-zinc-800 dark:bg-black/90">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 text-sm">
         <Link
           href="/"
-          className="text-sm font-semibold tracking-tight text-zinc-950 dark:text-zinc-50"
+          className="font-semibold tracking-tight text-zinc-950 dark:text-zinc-50"
         >
           Home
         </Link>
@@ -44,40 +46,45 @@ export async function SiteHeader() {
             <span className="text-zinc-300 dark:text-zinc-700">·</span>
             <Link
               href={`/rada/${favoriteCouncil.id}`}
-              className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+              className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
             >
               ♥ {favoriteCouncil.name}
             </Link>
           </>
         )}
-      </div>
-
-      <nav className="flex items-center gap-4 text-sm">
+        <span className="text-zinc-300 dark:text-zinc-700">·</span>
         <Link
           href="/sprawy"
           className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
         >
           Sprawy
         </Link>
-        {user ? (
+        {favoriteCouncil && (
           <>
-            {pendingRequestCount > 0 && (
-              <Link
-                href="/admin/dostep"
-                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              >
-                Prośby o dostęp ({pendingRequestCount})
-              </Link>
-            )}
+            <span className="text-zinc-300 dark:text-zinc-700">·</span>
             <Link
-              href="/dostep"
+              href={`/rada/${favoriteCouncil.id}/sesje`}
               className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
             >
-              Dostęp
+              Sesje
             </Link>
+          </>
+        )}
+      </div>
+
+      <nav className="flex items-center gap-4 text-sm">
+        {user ? (
+          <>
             <span className="hidden text-zinc-500 sm:inline">
               {user.email}
             </span>
+            <Link
+              href={manager ? "/admin/dostep" : "/dostep"}
+              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            >
+              Uprawnienia
+              {manager && pendingRequestCount > 0 && ` (${pendingRequestCount})`}
+            </Link>
             <LogoutLink className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100" />
           </>
         ) : (

@@ -24,6 +24,25 @@ export function isAccessLevel(value: string): value is AccessLevel {
   return value in ACCESS_LEVELS;
 }
 
+// Superset of ACCESS_LEVELS for the manager-facing edit UI (grant/edit an
+// existing user_role row) — includes "manager" itself, unlike ACCESS_LEVELS
+// which only lists what's safe to offer as a self-service request.
+export const ADMIN_LEVELS = {
+  ...ACCESS_LEVELS,
+  manager: {
+    label: "Manager (pełny dostęp)",
+    description:
+      "Pełny dostęp administracyjny, w tym zarządzanie uprawnieniami innych osób.",
+    permissions: ["full_access"],
+  },
+} as const;
+
+export type AdminLevel = keyof typeof ADMIN_LEVELS;
+
+export function isAdminLevel(value: string): value is AdminLevel {
+  return value in ADMIN_LEVELS;
+}
+
 // Best-effort label for whatever a user_role row's permissions[] actually
 // contain — used to describe an existing grant, not to request one.
 export function describeGrant(permissions: string[]): string | null {

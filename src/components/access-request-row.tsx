@@ -6,28 +6,37 @@ import {
   approveAccessRequest,
   denyAccessRequest,
 } from "@/app/admin/dostep/actions";
-import { ACCESS_LEVELS } from "@/lib/access-levels";
+import { ACCESS_LEVELS, type AccessLevel } from "@/lib/access-levels";
 
 export function AccessRequestRow({
   request,
+  councils,
 }: {
   request: {
     id: string;
     requested_level: string;
+    scope_council_id: string | null;
     message: string | null;
     created_at: string;
     requesterName: string;
     councilName: string | null;
   };
+  councils: { id: string; name: string }[];
 }) {
+  const [level, setLevel] = useState<AccessLevel>(
+    request.requested_level in ACCESS_LEVELS
+      ? (request.requested_level as AccessLevel)
+      : "editor"
+  );
+  const [councilId, setCouncilId] = useState(request.scope_council_id ?? "");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  const levelLabel =
-    ACCESS_LEVELS[request.requested_level as keyof typeof ACCESS_LEVELS]
-      ?.label ?? request.requested_level;
+  const changedFromRequest =
+    level !== request.requested_level ||
+    (councilId || null) !== request.scope_council_id;
 
   return (
     <li className="flex flex-col gap-2 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
@@ -43,15 +52,46 @@ export function AccessRequestRow({
           })}
         </p>
       </div>
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Poziom: <strong>{levelLabel}</strong>
-        {request.councilName && ` — ${request.councilName}`}
-      </p>
       {request.message && (
         <p className="rounded-lg bg-zinc-50 p-2 text-sm text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
           {request.message}
         </p>
       )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={level}
+          onChange={(e) => setLevel(e.target.value as AccessLevel)}
+          className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+        >
+          {Object.entries(ACCESS_LEVELS).map(([key, def]) => (
+            <option key={key} value={key}>
+              {def.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={councilId}
+          onChange={(e) => setCouncilId(e.target.value)}
+          className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+        >
+          <option value="">Cała platforma</option>
+          {councils.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        {changedFromRequest && (
+          <span className="text-xs text-amber-600 dark:text-amber-400">
+            zmieniono z pierwotnej prośby (
+            {ACCESS_LEVELS[request.requested_level as AccessLevel]?.label ??
+              request.requested_level}
+            {request.councilName && ` — ${request.councilName}`}
+            )
+          </span>
+        )}
+      </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -60,7 +100,11 @@ export function AccessRequestRow({
           onClick={() => {
             setError(null);
             startTransition(async () => {
-              const result = await approveAccessRequest(request.id);
+              const result = await approveAccessRequest(
+                request.id,
+                level,
+                councilId || null
+              );
               if (result.error) setError(result.error);
               else router.refresh();
             });

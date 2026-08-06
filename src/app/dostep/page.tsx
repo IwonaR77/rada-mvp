@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { AccessRequestForm } from "@/components/access-request-form";
@@ -55,7 +56,7 @@ export default async function DostepPage() {
     );
   }
 
-  const [{ data: councils }, { data: roles }, { data: requests }] =
+  const [{ data: councils }, { data: roles }, { data: requests }, { data: isManager }] =
     await Promise.all([
       supabase.from("council").select("id, name").order("name"),
       supabase
@@ -69,6 +70,7 @@ export default async function DostepPage() {
         )
         .eq("app_user_id", user.id)
         .order("created_at", { ascending: false }),
+      supabase.rpc("is_manager", { uid: user.id }),
     ]);
 
   const grantedPermissions = (roles ?? []).flatMap((r) => r.permissions ?? []);
@@ -89,6 +91,15 @@ export default async function DostepPage() {
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
           Masz już dostęp na poziomie: <strong>{grantLabel}</strong>.
         </p>
+      )}
+
+      {isManager && (
+        <Link
+          href="/admin/dostep"
+          className="self-start rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        >
+          Zarządzaj uprawnieniami →
+        </Link>
       )}
 
       {!grantLabel && pending && (

@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AccessRequestRow } from "@/components/access-request-row";
-import { ACCESS_LEVELS } from "@/lib/access-levels";
+import { UserRoleRow } from "@/components/user-role-row";
+import { ACCESS_LEVELS, describeGrant } from "@/lib/access-levels";
 
 function formatDate(date: string) {
   return new Date(date).toLocaleDateString("pl-PL", {
@@ -10,6 +11,23 @@ function formatDate(date: string) {
     year: "numeric",
   });
 }
+
+function formatDateTime(date: string) {
+  return new Date(date).toLocaleString("pl-PL", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  request_approved: "Zatwierdzono prośbę",
+  request_denied: "Odrzucono prośbę",
+  role_updated: "Zmieniono uprawnienie",
+  role_revoked: "Cofnięto uprawnienie",
+};
 
 export default async function AdminDostepPage() {
   const supabase = await createClient();
@@ -23,12 +41,37 @@ export default async function AdminDostepPage() {
   });
   if (!isManager) notFound();
 
-  const { data: requests } = await supabase
-    .from("access_request")
-    .select(
-      "id, requested_level, message, status, created_at, decided_at, decision_note, app_user:app_user_id(display_name), council:scope_council_id(name)"
-    )
-    .order("created_at", { ascending: false });
+  const [{ data: councils }, { data: requests }, { data: grants }, { data: audit }] =
+    await Promise.all([
+      supabase.from("council").select("id, name").order("name"),
+      supabase
+        .from("access_request")
+        .select(
+          "id, requested_level, scope_council_id, message, status, created_at, decided_at, decision_note, app_user:app_user_id(display_name), council:scope_council_id(name)"
+        )
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("user_role")
+        .select(
+          "id, app_user_id, permissions, scope_council_id, created_at, app_user:app_user_id(display_name), council:scope_council_id(name)"
+        )
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("access_audit_log")
+        .select(
+          "id, action, details, created_at, actor:actor_id(display_name), target:target_app_user_id(display_name), council:scope_council_id(name)"
+        )
+        .order("created_at", { ascending: false })
+        .range(0, 49),
+    ]);
+
+  const councilList = councils ?? [];
+
+  const grantRows = (grants ?? []).map((g) => ({
+    ...g,
+    holderName: g.app_user?.display_name ?? "Nieznany użytkownik",
+    councilName: g.council?.name ?? null,
+  }));
 
   const rows = (requests ?? []).map((r) => ({
     ...r,
@@ -39,11 +82,47 @@ export default async function AdminDostepPage() {
   const pending = rows.filter((r) => r.status === "pending");
   const decided = rows.filter((r) => r.status !== "pending");
 
+  const ownGrants = grantRows.filter((g) => g.app_user_id === user.id);
+  const ownGrantLabel = describeGrant(
+    ownGrants.flatMap((g) => g.permissions)
+  );
+  const ownScopes = ownGrants.map((g) => g.councilName ?? "cała platforma");
+
+  const auditRows = (audit ?? []).map((a) => ({
+    ...a,
+    actorName: a.actor?.display_name ?? "Nieznany użytkownik",
+    targetName: a.target?.display_name ?? "Nieznany użytkownik",
+    councilName: a.council?.name ?? null,
+  }));
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
       <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
-        Prośby o dostęp
+        Uprawnienia
       </h1>
+
+      {ownGrantLabel && (
+        <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
+          Twój poziom dostępu: <strong>{ownGrantLabel}</strong>
+          {" — "}
+          {ownScopes.join(", ")}
+        </p>
+      )}
+
+      <section>
+        <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
+          Uprawnienia ({grantRows.length})
+        </h2>
+        {grantRows.length === 0 ? (
+          <p className="text-sm text-zinc-500">Nikt nie ma jeszcze nadanego dostępu.</p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-zinc-200 rounded-2xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+            {grantRows.map((g) => (
+              <UserRoleRow key={g.id} grant={g} councils={councilList} />
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section>
         <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
@@ -54,7 +133,7 @@ export default async function AdminDostepPage() {
         ) : (
           <ul className="flex flex-col gap-3">
             {pending.map((r) => (
-              <AccessRequestRow key={r.id} request={r} />
+              <AccessRequestRow key={r.id} request={r} councils={councilList} />
             ))}
           </ul>
         )}
@@ -63,7 +142,7 @@ export default async function AdminDostepPage() {
       {decided.length > 0 && (
         <section>
           <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
-            Historia
+            Historia próśb
           </h2>
           <ul className="flex flex-col divide-y divide-zinc-200 rounded-2xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
             {decided.map((r) => (
@@ -95,6 +174,36 @@ export default async function AdminDostepPage() {
           </ul>
         </section>
       )}
+
+      <section>
+        <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
+          Log zdarzeń
+        </h2>
+        {auditRows.length === 0 ? (
+          <p className="text-sm text-zinc-500">Brak zdarzeń.</p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-zinc-200 rounded-2xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+            {auditRows.map((a) => (
+              <li key={a.id} className="flex flex-col gap-1 p-4 text-sm">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-zinc-800 dark:text-zinc-200">
+                    <strong>{AUDIT_ACTION_LABELS[a.action] ?? a.action}</strong>
+                    {" — "}
+                    {a.targetName}
+                    {a.councilName && ` — ${a.councilName}`}
+                  </span>
+                  <span className="text-xs text-zinc-400">
+                    {formatDateTime(a.created_at)}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-500">
+                  {a.details} · przez {a.actorName}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

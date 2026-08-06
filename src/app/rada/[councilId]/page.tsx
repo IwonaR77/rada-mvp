@@ -131,15 +131,6 @@ export default async function CouncilHubPage({
         <p className="text-zinc-500">{council.city?.name}</p>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <Link
-          href={`/rada/${council.id}/sesje`}
-          className="rounded-full border border-zinc-300 px-4 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-        >
-          Sesje →
-        </Link>
-      </div>
-
       {councilors.length > 0 && (
         <section>
           <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
@@ -162,18 +153,9 @@ export default async function CouncilHubPage({
 
       {activity && (
         <section>
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h3 className="text-sm font-medium uppercase tracking-wide text-zinc-500">
-              Aktywność na sesjach {latestTerm?.label ? `— ${latestTerm.label}` : ""}
-            </h3>
-            <Link
-              href={`/rada/${council.id}/sesje`}
-              prefetch={false}
-              className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
-            >
-              Zobacz sesje →
-            </Link>
-          </div>
+          <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
+            Aktywność na sesjach {latestTerm?.label ? `— ${latestTerm.label}` : ""}
+          </h3>
           <SpeakingHeatmap
             councilors={[
               ...activity.councilors.map((c) => ({ ...c, href: `/radny/${c.id}` })),
