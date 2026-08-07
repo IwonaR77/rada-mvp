@@ -50,23 +50,26 @@ export async function SiteHeader() {
             >
               ♥ {favoriteCouncil.name}
             </Link>
-          </>
-        )}
-        <span className="text-zinc-300 dark:text-zinc-700">·</span>
-        <Link
-          href="/sprawy"
-          className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-        >
-          Sprawy
-        </Link>
-        {favoriteCouncil && (
-          <>
+            <span className="text-zinc-300 dark:text-zinc-700">·</span>
+            <Link
+              href="/sprawy"
+              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            >
+              Sprawy
+            </Link>
             <span className="text-zinc-300 dark:text-zinc-700">·</span>
             <Link
               href={`/rada/${favoriteCouncil.id}/sesje`}
               className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
             >
               Sesje
+            </Link>
+            <span className="text-zinc-300 dark:text-zinc-700">·</span>
+            <Link
+              href={`/rada/${favoriteCouncil.id}/glosy`}
+              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            >
+              Głosy
             </Link>
           </>
         )}

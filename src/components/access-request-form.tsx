@@ -3,19 +3,27 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { submitAccessRequest } from "@/app/dostep/actions";
-import { ACCESS_LEVELS, type AccessLevel } from "@/lib/access-levels";
+import {
+  ACCESS_LEVELS,
+  MESSAGE_MAX_LENGTH,
+  type AccessLevel,
+} from "@/lib/access-levels";
 
 export function AccessRequestForm({
   councils,
+  availableLevels,
 }: {
   councils: { id: string; name: string }[];
+  availableLevels: AccessLevel[];
 }) {
-  const [level, setLevel] = useState<AccessLevel>("editor");
+  const [level, setLevel] = useState<AccessLevel>(availableLevels[0]);
   const [councilId, setCouncilId] = useState(councils[0]?.id ?? "");
   const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+
+  if (availableLevels.length === 0) return null;
 
   return (
     <form
@@ -35,8 +43,9 @@ export function AccessRequestForm({
       className="flex flex-col gap-4 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800"
     >
       <div className="flex flex-col gap-2">
-        {(Object.entries(ACCESS_LEVELS) as [AccessLevel, (typeof ACCESS_LEVELS)[AccessLevel]][]).map(
-          ([key, def]) => (
+        {availableLevels.map((key) => {
+          const def = ACCESS_LEVELS[key];
+          return (
             <label
               key={key}
               className={`flex cursor-pointer flex-col gap-0.5 rounded-xl border p-3 text-sm ${
@@ -56,8 +65,8 @@ export function AccessRequestForm({
               </span>
               <span className="pl-6 text-zinc-500">{def.description}</span>
             </label>
-          )
-        )}
+          );
+        })}
       </div>
 
       {councils.length > 1 && (
@@ -84,6 +93,7 @@ export function AccessRequestForm({
         <textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
+          maxLength={MESSAGE_MAX_LENGTH}
           rows={3}
           placeholder="Np. dlaczego chcesz pomóc, czy masz już doświadczenie..."
           className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"

@@ -8,6 +8,7 @@ import { ADMIN_LEVELS, type AdminLevel } from "@/lib/access-levels";
 export function UserRoleRow({
   grant,
   councils,
+  isSelf,
 }: {
   grant: {
     id: string;
@@ -17,6 +18,7 @@ export function UserRoleRow({
     created_at: string;
   };
   councils: { id: string; name: string }[];
+  isSelf: boolean;
 }) {
   // Check from the most-permission-heavy tier down — moderator's
   // permissions are a superset of editor's, so checking editor first would
@@ -35,6 +37,21 @@ export function UserRoleRow({
 
   const dirty =
     level !== currentLevel || (councilId || null) !== grant.scope_council_id;
+
+  if (isSelf) {
+    return (
+      <li className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+        <span className="text-zinc-800 dark:text-zinc-200">
+          {grant.holderName} <span className="text-zinc-400">(Ty)</span>
+        </span>
+        <span className="text-xs text-zinc-500">
+          {ADMIN_LEVELS[currentLevel].label} — edycja własnego uprawnienia
+          niedostępna w tym panelu (chroni przed przypadkową utratą dostępu;
+          poproś innego Managera).
+        </span>
+      </li>
+    );
+  }
 
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">

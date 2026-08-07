@@ -2,22 +2,30 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { AccessRequestForm } from "@/components/access-request-form";
-import { ACCESS_LEVELS, describeGrant } from "@/lib/access-levels";
+import {
+  ACCESS_LEVELS,
+  alreadyHeldLevels,
+  describeGrant,
+  type AccessLevel,
+} from "@/lib/access-levels";
 
-function LevelsList() {
+function LevelsList({ levels }: { levels: AccessLevel[] }) {
   return (
     <ul className="flex flex-col gap-3">
-      {Object.values(ACCESS_LEVELS).map((def) => (
-        <li
-          key={def.label}
-          className="rounded-xl border border-zinc-200 p-3 text-sm dark:border-zinc-800"
-        >
-          <p className="font-medium text-zinc-900 dark:text-zinc-50">
-            {def.label}
-          </p>
-          <p className="text-zinc-500">{def.description}</p>
-        </li>
-      ))}
+      {levels.map((key) => {
+        const def = ACCESS_LEVELS[key];
+        return (
+          <li
+            key={key}
+            className="rounded-xl border border-zinc-200 p-3 text-sm dark:border-zinc-800"
+          >
+            <p className="font-medium text-zinc-900 dark:text-zinc-50">
+              {def.label}
+            </p>
+            <p className="text-zinc-500">{def.description}</p>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -44,13 +52,13 @@ export default async function DostepPage() {
             Dostęp do współtworzenia
           </h1>
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            Przeglądanie sesji, spraw i profili radnych jest publicznie
-            dostępne bez logowania. Współtworzenie — przypisywanie wypowiedzi
-            mówcom, zatwierdzanie spraw, pobieranie transkryptów — wymaga
-            konta i zatwierdzonej prośby o dostęp.
+            Przeglądanie Serwisu wymaga zalogowania — konto od razu otrzymuje
+            podstawowy dostęp do przeglądania. Współtworzenie — przypisywanie
+            wypowiedzi mówcom, zatwierdzanie spraw, pobieranie transkryptów —
+            wymaga dodatkowo zatwierdzonej prośby o dostęp.
           </p>
         </div>
-        <LevelsList />
+        <LevelsList levels={Object.keys(ACCESS_LEVELS) as AccessLevel[]} />
         <GoogleSignInButton />
       </div>
     );
@@ -74,7 +82,14 @@ export default async function DostepPage() {
     ]);
 
   const grantedPermissions = (roles ?? []).flatMap((r) => r.permissions ?? []);
-  const grantLabel = describeGrant(grantedPermissions);
+  // "browse" (auto-granted at login) always makes this non-null, so it
+  // reliably shows the user's real current level instead of nothing.
+  const currentLevelLabel = describeGrant(grantedPermissions);
+  const held = alreadyHeldLevels(grantedPermissions);
+  const availableLevels = (Object.keys(ACCESS_LEVELS) as AccessLevel[]).filter(
+    (level) => !held.includes(level)
+  );
+  const atMaxSelfServiceLevel = availableLevels.length === 0;
   const pending = (requests ?? []).find((r) => r.status === "pending");
   const latestDenied =
     !pending && (requests ?? [])[0]?.status === "denied"
@@ -87,9 +102,9 @@ export default async function DostepPage() {
         Dostęp do współtworzenia
       </h1>
 
-      {grantLabel && (
+      {currentLevelLabel && (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
-          Masz już dostęp na poziomie: <strong>{grantLabel}</strong>.
+          Twój obecny poziom dostępu: <strong>{currentLevelLabel}</strong>.
         </p>
       )}
 
@@ -102,7 +117,7 @@ export default async function DostepPage() {
         </Link>
       )}
 
-      {!grantLabel && pending && (
+      {pending && (
         <p className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300">
           Twoja prośba (
           {ACCESS_LEVELS[pending.requested_level as keyof typeof ACCESS_LEVELS]
@@ -111,7 +126,14 @@ export default async function DostepPage() {
         </p>
       )}
 
-      {!grantLabel && !pending && (
+      {!pending && atMaxSelfServiceLevel && (
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          Masz już najwyższy dostępny poziom samoobsługowy (Moderator). Dalsze
+          uprawnienia (np. Manager) nadaje wyłącznie inny Manager.
+        </p>
+      )}
+
+      {!pending && !atMaxSelfServiceLevel && (
         <>
           {latestDenied && (
             <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
@@ -125,8 +147,11 @@ export default async function DostepPage() {
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
             Poziomy dostępu do współtworzenia:
           </p>
-          <LevelsList />
-          <AccessRequestForm councils={councils ?? []} />
+          <LevelsList levels={availableLevels} />
+          <AccessRequestForm
+            councils={councils ?? []}
+            availableLevels={availableLevels}
+          />
         </>
       )}
     </div>

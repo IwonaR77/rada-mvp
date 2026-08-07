@@ -32,6 +32,9 @@ export async function GET(request: NextRequest) {
           },
           { onConflict: "id" }
         );
+        // Idempotent — every login until it's actually granted, cheap no-op
+        // afterwards (or after a manager revokes it, e.g. for a ban).
+        await supabase.rpc("grant_browse_permission", { uid: data.user.id });
       }
 
       // No explicit `next` (e.g. a deep link) — default a returning user

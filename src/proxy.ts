@@ -4,10 +4,13 @@ import { checkRateLimit, clientIp } from "@/lib/rate-limit";
 
 const SEARCH_RATE_LIMIT = { limit: 20, windowMs: 60_000 };
 
-// Content is public — no login required to browse. Real authorization for
-// contributing (tagging, finalizing, admin queues) lives in RLS policies
-// and per-page/per-action permission checks, not here; this only refreshes
-// the auth cookie so a logged-in session stays valid where it matters.
+// Pages reachable without a session — everything else requires login.
+// Browsing itself now requires the auto-granted "browse" permission (see
+// grant_browse_permission(), called from /auth/callback), enforced by RLS;
+// this gate just keeps logged-out visitors from reaching pages that would
+// otherwise render empty/broken instead of a proper login prompt.
+const PUBLIC_PATHS = new Set(["/", "/auth/callback", "/auth/error", "/logout"]);
+
 export async function proxy(request: NextRequest) {
   if (request.nextUrl.pathname === "/szukaj") {
     const key = `szukaj:${clientIp(request.headers)}`;
@@ -26,7 +29,12 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  const { response } = await updateSession(request);
+  const { response, user } = await updateSession(request);
+
+  if (!user && !PUBLIC_PATHS.has(request.nextUrl.pathname)) {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
+
   return response;
 }
 

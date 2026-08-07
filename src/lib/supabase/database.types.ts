@@ -1164,6 +1164,7 @@ export type Database = {
           full_name: string
         }[]
       }
+      grant_browse_permission: { Args: { uid: string }; Returns: undefined }
       is_manager: { Args: { uid: string }; Returns: boolean }
       is_moderator: { Args: { uid: string }; Returns: boolean }
       meeting_tagging_progress: {

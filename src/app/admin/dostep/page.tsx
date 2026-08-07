@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AccessRequestRow } from "@/components/access-request-row";
 import { UserRoleRow } from "@/components/user-role-row";
+import { GrantAccessRow } from "@/components/grant-access-row";
 import { ACCESS_LEVELS, describeGrant } from "@/lib/access-levels";
 
 function formatDate(date: string) {
@@ -67,11 +68,32 @@ export default async function AdminDostepPage() {
 
   const councilList = councils ?? [];
 
-  const grantRows = (grants ?? []).map((g) => ({
+  // Every account auto-holds a "browse"-only row from first login (see
+  // grant_browse_permission()) — that's not an editable contribution tier
+  // (ADMIN_LEVELS doesn't even have an entry for it, so UserRoleRow's
+  // "current level" dropdown would mismatch it against Redaktor by
+  // accident). Keep those out of the editable list; a manager cares about
+  // who has real Redaktor/Moderator/Manager access, not who's logged in.
+  const allGrantRows = (grants ?? []).map((g) => ({
     ...g,
     holderName: g.app_user?.display_name ?? "Nieznany użytkownik",
     councilName: g.council?.name ?? null,
   }));
+  const grantRows = allGrantRows.filter(
+    (g) => !(g.permissions.length === 1 && g.permissions[0] === "browse")
+  );
+  // A person (not just a row) belongs in "no contribution access" only if
+  // NONE of their rows carry a real tier — Barbara e.g. has two rows (a
+  // scoped Moderator grant + her own global browse-only auto-grant) and
+  // must not show up here just because one of her rows happens to be
+  // browse-only.
+  const contributorIds = new Set(grantRows.map((g) => g.app_user_id));
+  const browseOnlyRows = allGrantRows.filter(
+    (g) =>
+      g.permissions.length === 1 &&
+      g.permissions[0] === "browse" &&
+      !contributorIds.has(g.app_user_id)
+  );
 
   const rows = (requests ?? []).map((r) => ({
     ...r,
@@ -118,11 +140,38 @@ export default async function AdminDostepPage() {
         ) : (
           <ul className="flex flex-col divide-y divide-zinc-200 rounded-2xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
             {grantRows.map((g) => (
-              <UserRoleRow key={g.id} grant={g} councils={councilList} />
+              <UserRoleRow
+                key={g.id}
+                grant={g}
+                councils={councilList}
+                isSelf={g.app_user_id === user.id}
+              />
             ))}
           </ul>
         )}
       </section>
+
+      {browseOnlyRows.length > 0 && (
+        <section>
+          <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
+            Konta bez uprawnień współtworzenia ({browseOnlyRows.length})
+          </h2>
+          <p className="mb-3 text-xs text-zinc-500">
+            Mają tylko automatycznie nadane uprawnienie przeglądania — możesz
+            nadać im dostęp do współtworzenia bez czekania na ich wniosek.
+          </p>
+          <ul className="flex flex-col divide-y divide-zinc-200 rounded-2xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+            {browseOnlyRows.map((g) => (
+              <GrantAccessRow
+                key={g.id}
+                appUserId={g.app_user_id}
+                holderName={g.holderName}
+                councils={councilList}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section>
         <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">

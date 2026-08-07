@@ -40,6 +40,54 @@ async function logAudit(
   });
 }
 
+// Shared by approveAccessRequest and grantAccess — a user can hold at most
+// one user_role row per scope in practice today (nothing else writes this
+// table), so this unions permissions on re-grant rather than clobbering an
+// earlier one. Crucially, a target's global (scope=null) row is also where
+// their auto-granted "browse" permission lives (see grant_browse_permission
+// in /auth/callback) — merging into it rather than replacing preserves
+// browse instead of silently taking away basic access while adding a
+// contribution tier.
+async function mergeUserRoleGrant(
+  supabase: SupabaseClient<Database>,
+  targetAppUserId: string,
+  levelDef: { permissions: readonly string[] },
+  councilId: string | null
+) {
+  let existingQuery = supabase
+    .from("user_role")
+    .select("id, permissions")
+    .eq("app_user_id", targetAppUserId);
+  existingQuery = councilId
+    ? existingQuery.eq("scope_council_id", councilId)
+    : existingQuery.is("scope_council_id", null);
+  const { data: existing } = await existingQuery.maybeSingle();
+
+  const mergedPermissions = Array.from(
+    new Set([...(existing?.permissions ?? []), ...levelDef.permissions])
+  );
+
+  // user_role.role has a DB check constraint allowing only 'manager' — it
+  // doesn't track the actual tier, that's what permissions[] is for.
+  return existing
+    ? supabase
+        .from("user_role")
+        .update(
+          { permissions: mergedPermissions, role: "manager" },
+          { count: "exact" }
+        )
+        .eq("id", existing.id)
+    : supabase.from("user_role").insert(
+        {
+          app_user_id: targetAppUserId,
+          role: "manager",
+          permissions: mergedPermissions,
+          scope_council_id: councilId,
+        },
+        { count: "exact" }
+      );
+}
+
 export async function approveAccessRequest(
   requestId: string,
   overrideLevel: AdminLevel,
@@ -61,41 +109,12 @@ export async function approveAccessRequest(
   const levelDef = ADMIN_LEVELS[overrideLevel];
   if (!levelDef) return { error: "Nieznany poziom dostępu" };
 
-  // A user can hold at most one user_role row per scope in practice today
-  // (nothing else writes this table) — union permissions on re-request so
-  // escalating editor→moderator adds rather than clobbers an earlier grant.
-  let existingQuery = supabase
-    .from("user_role")
-    .select("id, permissions")
-    .eq("app_user_id", request.app_user_id);
-  existingQuery = overrideCouncilId
-    ? existingQuery.eq("scope_council_id", overrideCouncilId)
-    : existingQuery.is("scope_council_id", null);
-  const { data: existing } = await existingQuery.maybeSingle();
-
-  const mergedPermissions = Array.from(
-    new Set([...(existing?.permissions ?? []), ...levelDef.permissions])
+  const roleWrite = await mergeUserRoleGrant(
+    supabase,
+    request.app_user_id,
+    levelDef,
+    overrideCouncilId
   );
-
-  // user_role.role has a DB check constraint allowing only 'manager' —
-  // it doesn't track the actual tier, that's what permissions[] is for.
-  const roleWrite = existing
-    ? await supabase
-        .from("user_role")
-        .update(
-          { permissions: mergedPermissions, role: "manager" },
-          { count: "exact" }
-        )
-        .eq("id", existing.id)
-    : await supabase.from("user_role").insert(
-        {
-          app_user_id: request.app_user_id,
-          role: "manager",
-          permissions: mergedPermissions,
-          scope_council_id: overrideCouncilId,
-        },
-        { count: "exact" }
-      );
 
   if (roleWrite.error) return { error: roleWrite.error.message };
   if (roleWrite.count === 0)
@@ -187,6 +206,43 @@ export async function denyAccessRequest(requestId: string, note: string) {
   return { error: null };
 }
 
+// Grants a fresh contribution tier to a user who doesn't have one yet (e.g.
+// currently holds only the auto-granted "browse" permission) — unlike
+// updateUserRole, there's no existing contribution-tier user_role row to
+// pick from, so the manager names the target directly.
+export async function grantAccess(
+  targetAppUserId: string,
+  level: AdminLevel,
+  councilId: string | null
+) {
+  const { error: permError, supabase, userId } = await requireManager();
+  if (permError) return { error: permError };
+  if (!userId) return { error: "Musisz być zalogowany" };
+
+  const levelDef = ADMIN_LEVELS[level];
+  if (!levelDef) return { error: "Nieznany poziom dostępu" };
+
+  const roleWrite = await mergeUserRoleGrant(
+    supabase,
+    targetAppUserId,
+    levelDef,
+    councilId
+  );
+  if (roleWrite.error) return { error: roleWrite.error.message };
+
+  await logAudit(
+    supabase,
+    userId,
+    targetAppUserId,
+    "role_updated",
+    councilId,
+    `Nadano bezpośrednio: ${levelDef.label}`
+  );
+
+  revalidatePath("/admin/dostep");
+  return { error: null };
+}
+
 export async function updateUserRole(
   roleId: string,
   level: AdminLevel,
@@ -205,6 +261,14 @@ export async function updateUserRole(
     .eq("id", roleId)
     .maybeSingle();
   if (!existing) return { error: "Nie znaleziono uprawnienia" };
+  // Self-service demotion/promotion of your own grant through this panel
+  // is disabled — if you're the only manager, revoking or downgrading
+  // yourself here would lock you out of /admin/dostep with no way back
+  // short of direct DB access. Ask another manager, or edit the DB directly
+  // if you're certain.
+  if (existing.app_user_id === userId) {
+    return { error: "Nie możesz edytować własnego uprawnienia z tego panelu." };
+  }
 
   const { error } = await supabase
     .from("user_role")
@@ -242,6 +306,9 @@ export async function revokeUserRole(roleId: string) {
     .eq("id", roleId)
     .maybeSingle();
   if (!existing) return { error: "Nie znaleziono uprawnienia" };
+  if (existing.app_user_id === userId) {
+    return { error: "Nie możesz cofnąć własnego uprawnienia z tego panelu." };
+  }
 
   const { error } = await supabase.from("user_role").delete().eq("id", roleId);
   if (error) return { error: error.message };
