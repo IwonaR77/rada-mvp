@@ -539,11 +539,10 @@ export function SessionPlayer({
                   <input
                     type="checkbox"
                     checked={selected.has(s.id)}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleSegmentClick(s.id, e.shiftKey);
+                    onChange={(e) => {
+                      const shiftKey = (e.nativeEvent as MouseEvent).shiftKey;
+                      handleSegmentClick(s.id, shiftKey);
                     }}
-                    onChange={() => {}}
                     className="mt-1 shrink-0"
                   />
                 )}
