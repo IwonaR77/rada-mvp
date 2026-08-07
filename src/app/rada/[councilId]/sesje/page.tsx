@@ -6,7 +6,6 @@ import { SessionTimelinePill } from "@/components/session-timeline-pill";
 import { LiveMeetingRefresh } from "@/components/live-meeting-refresh";
 import { CURRENT_SUMMARY_PROMPT_VERSION } from "@/lib/summary-prompt-version";
 import { getSpeakingActivity, type CouncilorStat } from "@/lib/council-activity";
-import { VotingCorrelationMatrix } from "@/components/voting-correlation-matrix";
 
 function formatDuration(totalSeconds: number) {
   const total = Math.round(totalSeconds);
@@ -144,7 +143,6 @@ export default async function CouncilSessionsPage({
   let heatmapMatrix: Record<string, Record<string, number>> = {};
   let heatmapExtraRows: { id: string; fullName: string }[] = [];
   let meetingNumbers = new Map<string, number>();
-  let votingPairs: { a: string; b: string; agreementPct: number }[] = [];
 
   const { data: officials } = await supabase
     .from("official")
@@ -155,7 +153,6 @@ export default async function CouncilSessionsPage({
       activity,
       { data: meetingRows },
       { data: progressRows, error: progressError },
-      { data: correlationRows },
     ] = await Promise.all([
         getSpeakingActivity(supabase, selectedTermId, officials ?? []),
         supabase
@@ -169,7 +166,6 @@ export default async function CouncilSessionsPage({
         // timeline's progress ring — a grouped aggregate, done server-side
         // via RPC rather than fetching every segment just to count them.
         supabase.rpc("meeting_tagging_progress", { p_term_id: selectedTermId }),
-        supabase.rpc("term_voting_correlation", { p_term_id: selectedTermId }),
       ]);
 
     if (progressError) {
@@ -199,11 +195,6 @@ export default async function CouncilSessionsPage({
     heatmapMatrix = activity.heatmapMatrix;
     heatmapExtraRows = activity.heatmapExtraRows;
     heatmapMeetings = activity.heatmapMeetings;
-    votingPairs = (correlationRows ?? []).map((r) => ({
-      a: r.councilor_a,
-      b: r.councilor_b,
-      agreementPct: r.agreement_pct,
-    }));
     stats = activity.stats;
   }
 
@@ -397,21 +388,6 @@ export default async function CouncilSessionsPage({
               matrix={heatmapMatrix}
             />
           </section>
-
-          {votingPairs.length > 0 && (
-            <section>
-              <h3 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
-                Korelacja głosowań
-              </h3>
-              <p className="mb-4 text-xs text-zinc-500">
-                % głosowań o tym samym wyniku (ZA/PRZECIW/WSTRZYMAŁ SIĘ) między
-                dwoma radnymi, liczone wyłącznie wśród uchwał, które nie
-                zapadły jednomyślnie — radni pogrupowani automatycznie wg
-                podobieństwa głosowań.
-              </p>
-              <VotingCorrelationMatrix councilors={councilors} pairs={votingPairs} />
-            </section>
-          )}
 
           <section className="grid gap-6 sm:grid-cols-2">
             <div>
