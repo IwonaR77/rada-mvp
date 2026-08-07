@@ -72,3 +72,7 @@ next-env.d.ts
 # python
 __pycache__/
 *.pyc
+
+# certs/: self-signed TLS cert+key for temporary HTTPS (no domain yet) —
+# private key must never be committed, regenerate with scripts/gen-temp-ssl.sh
+/certs
