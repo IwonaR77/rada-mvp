@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import type { ExtraProps } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ComponentPropsWithoutRef } from "react";
 
 type Props<T extends keyof React.JSX.IntrinsicElements> = ComponentPropsWithoutRef<T> &
@@ -9,6 +10,7 @@ export function LegalDocument({ content }: { content: string }) {
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 px-6 py-12 text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ node, ...props }: Props<"h1">) => (
             <h1
