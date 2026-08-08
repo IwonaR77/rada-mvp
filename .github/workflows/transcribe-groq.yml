@@ -16,6 +16,12 @@ on:
     - cron: "0 6 * * *" # codziennie 06:00 UTC
   workflow_dispatch: {} # ręczne odpalenie z zakładki Actions, do testów
 
+# Zasada najmniejszych uprawnień — ten workflow nic nie zapisuje do repo przez
+# GITHUB_TOKEN (pisze bezpośrednio do Supabase/Groq przez sekrety), więc nie
+# potrzebuje żadnych uprawnień poza samym checkoutem kodu.
+permissions:
+  contents: read
+
 jobs:
   transcribe:
     runs-on: ubuntu-latest
