@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 };
 
 // Bump this filename when a new version is published to prompty/.
-const DOC_PATH = path.join(process.cwd(), "prompty", "Prompt_Sprawy_v3.md");
+const DOC_PATH = path.join(process.cwd(), "prompty", "Prompt_Sprawy_v4.md");
 
 export default function PromptSprawPage() {
   const content = fs.readFileSync(DOC_PATH, "utf-8");
