@@ -79,6 +79,33 @@ export default async function CouncilHubPage({
         <p className="text-zinc-500">{council.city?.name}</p>
       </div>
 
+      <nav className="flex flex-wrap gap-2">
+        <Link
+          href={`/rada/${council.id}/radni`}
+          className="rounded-full border border-zinc-300 px-4 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        >
+          Radni
+        </Link>
+        <Link
+          href={`/rada/${council.id}/sesje`}
+          className="rounded-full border border-zinc-300 px-4 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        >
+          Sesje
+        </Link>
+        <Link
+          href={`/rada/${council.id}/glosy`}
+          className="rounded-full border border-zinc-300 px-4 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        >
+          Głosy
+        </Link>
+        <Link
+          href={`/sprawy?councilId=${council.id}`}
+          className="rounded-full border border-zinc-300 px-4 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        >
+          Sprawy
+        </Link>
+      </nav>
+
       {activity && (
         <section>
           <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">

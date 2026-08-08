@@ -56,5 +56,6 @@ export async function submitAccessRequest(
   }
 
   revalidatePath("/dostep");
+  revalidatePath("/admin/dostep");
   return { error: null };
 }
