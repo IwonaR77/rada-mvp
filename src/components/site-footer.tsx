@@ -28,6 +28,13 @@ export function SiteFooter() {
         >
           Prompt (radni)
         </Link>
+        <span className="text-zinc-300 dark:text-zinc-700">·</span>
+        <Link
+          href="/prompt-spraw"
+          className="hover:text-zinc-900 dark:hover:text-zinc-100"
+        >
+          Prompt (sprawy)
+        </Link>
       </div>
     </footer>
   );
