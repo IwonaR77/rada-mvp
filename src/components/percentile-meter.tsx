@@ -36,7 +36,7 @@ export function PercentileMeter({
   percentile: number | null;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+    <div className="flex h-full flex-col rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
       <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
         {label}
       </h3>
@@ -45,7 +45,7 @@ export function PercentileMeter({
         {compareLabel ? ` — ${compareLabel}` : ""}
       </p>
       {percentile !== null && (
-        <div className="relative h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+        <div className="relative mt-auto h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
           <div
             className="h-full rounded-full"
             style={{
