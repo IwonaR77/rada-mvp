@@ -86,13 +86,40 @@ function sqlEscape(text) {
   return text.replace(/'/g, "''");
 }
 
-function supabaseQuery(sqlOrArgs) {
-  const args = Array.isArray(sqlOrArgs)
-    ? ["supabase", "db", "query", "--linked", "--output", "json", ...sqlOrArgs]
-    : ["supabase", "db", "query", "--linked", "--output", "json", sqlOrArgs];
-  const out = execFileSync("npx", args, { encoding: "utf8" });
-  const parsed = JSON.parse(out);
-  return parsed.rows ?? [];
+// `npx supabase db query --linked` zależy od keyringu/D-Bus sesji desktopowej
+// (auth CLI Supabase) — działa lokalnie na agatka, ale nie w headless CI
+// (GitHub Actions), patrz scripts/backup-db.sh dla tego samego ustalenia.
+// Gdy SUPABASE_DB_URL jest ustawiony (sekret w CI), używamy bezpośredniego
+// połączenia przez psql zamiast CLI — bez zmiany zachowania lokalnie, gdzie
+// SUPABASE_DB_URL zwykle nie jest ustawiony.
+function supabaseQuery(sql) {
+  if (process.env.SUPABASE_DB_URL) {
+    const wrapped = `select coalesce(json_agg(row_to_json(sub)), '[]'::json) from (${sql.replace(/;\s*$/, "")}) sub;`;
+    const out = execFileSync(
+      "psql",
+      [process.env.SUPABASE_DB_URL, "-t", "-A", "-c", wrapped],
+      { encoding: "utf8" }
+    );
+    return JSON.parse(out.trim() || "[]");
+  }
+  const out = execFileSync(
+    "npx",
+    ["supabase", "db", "query", "--linked", "--output", "json", sql],
+    { encoding: "utf8" }
+  );
+  return JSON.parse(out).rows ?? [];
+}
+
+function runSqlFile(sqlPath) {
+  if (process.env.SUPABASE_DB_URL) {
+    execFileSync("psql", [process.env.SUPABASE_DB_URL, "-v", "ON_ERROR_STOP=1", "-f", sqlPath], {
+      stdio: "inherit",
+    });
+    return;
+  }
+  execFileSync("npx", ["supabase", "db", "query", "--linked", "--file", sqlPath], {
+    stdio: "inherit",
+  });
 }
 
 function main() {
@@ -187,9 +214,7 @@ function main() {
   writeFileSync(sqlPath, statements.join("\n\n"), "utf8");
 
   try {
-    execFileSync("npx", ["supabase", "db", "query", "--linked", "--file", sqlPath], {
-      stdio: "inherit",
-    });
+    runSqlFile(sqlPath);
     console.log(`Zaimportowano ${segments.length} segmentów.`);
   } finally {
     unlinkSync(sqlPath);

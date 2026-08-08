@@ -44,8 +44,18 @@ supabase/.branches
 *.tsbuildinfo
 next-env.d.ts
 
-# whisper/: working files for the transcription pipeline, not part of the project
+# whisper/: working files for the OLD whisperx transcription pipeline
+# (secrets, SSH key, downloaded media, whisperx scripts, tokens.txt) — not
+# part of the project, kept only as a manual fallback (see groq/ for the
+# active pipeline, which has its own copy of tokens.txt).
 /whisper
+
+# groq/: active transcription pipeline (see .github/workflows/transcribe-groq.yml).
+# Code and tokens.txt are tracked; the local API key, transient working
+# files, and generated mp3 stats are not.
+/groq/.env.groq
+/groq/work
+/groq/mp3-stats.json
 
 # run1/, run2/: transcription output dumps, not part of the project
 /run1

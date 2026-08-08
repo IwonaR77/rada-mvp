@@ -1,0 +1,235 @@
+#!/usr/bin/env node
+// Docelowy orkiestrator transkrypcji przez Groq (Faza 4 planu migracji, patrz
+// /home/blady/.claude/plans/crispy-questing-otter.md) — następca
+// whisper/pipeline-advance.mjs dla NOWYCH sesji. Bezstanowy: każde
+// uruchomienie samo ustala co robić na podstawie DB
+// (meeting.transcript_status/video_url), przetwarza NAJWYŻEJ jedną sesję na
+// wywołanie — ta sama zasada bezpieczeństwa co pipeline-advance.mjs, a każdy
+// przebieg workflow GitHub Actions jest krótki i tak.
+//
+// Ścieżka whisperx (192.168.90.57, whisper/pipeline-advance.mjs) zostaje
+// osobna, nietknięta, jako fallback "w wyjątkowych sytuacjach" (decyzja
+// użytkownika) — ten skrypt jej nie dotyka i nie zastępuje. Working pliki tego
+// pipeline'u (mp4/mp3/kawałki/vtt) mają własny katalog (groq/work/), żeby
+// nigdy nie kolidować nazwami z whisper/videos/ używanym przez starą ścieżkę.
+// Backfill historycznych sesji świadomie poza zakresem (decyzja z Fazy 1) —
+// ten orkiestrator obsługuje tylko sesje jeszcze nietranskrybowane.
+
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, rmSync, statSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  cutChunks,
+  transcribeChunks,
+  applyTokenCorrections,
+  writeVttFile,
+  resolveGroqApiKey,
+  ffprobeDuration,
+} from "./groq-lib.mjs";
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const WORK_DIR = path.join(REPO_ROOT, "groq/work");
+// groq/ jest samowystarczalny — nic nie czyta ani nie zapisuje w whisper/
+// (własna kopia tokens.txt, własny mp3-stats.json). Dwie kopie tokens.txt
+// mogą się z czasem rozjechać (np. korekty specyficzne dla Groq dopisane
+// tylko tu) — to świadomy kompromis, nie przeoczenie.
+const TOKENS_FILE = path.join(REPO_ROOT, "groq/tokens.txt");
+const MP3_STATS_FILE = path.join(REPO_ROOT, "groq/mp3-stats.json");
+const GROQ_ENV_FILE = path.join(REPO_ROOT, "groq/.env.groq");
+
+function log(msg) {
+  console.log(`[pipeline-groq] ${msg}`);
+}
+
+// Ten sam wzorzec co scripts/import-transcript.mjs (patrz tamten komentarz):
+// SUPABASE_DB_URL (repo secret w CI) → bezpośrednie psql, omija auth CLI
+// Supabase, który wymaga keyringu/D-Bus sesji desktopowej niedostępnej
+// headless. Lokalnie (agatka) bez SUPABASE_DB_URL — zachowanie bez zmian.
+function supabaseQuery(sql) {
+  if (process.env.SUPABASE_DB_URL) {
+    const wrapped = `select coalesce(json_agg(row_to_json(sub)), '[]'::json) from (${sql.replace(/;\s*$/, "")}) sub;`;
+    const out = execFileSync(
+      "psql",
+      [process.env.SUPABASE_DB_URL, "-t", "-A", "-c", wrapped],
+      { encoding: "utf8" }
+    );
+    return JSON.parse(out.trim() || "[]");
+  }
+  // Telemetria ("PostHog") Supabase CLI czasem kończy się niezerowym kodem
+  // mimo że zapytanie już się powiodło i JSON jest w stdout — nie traktować
+  // tego jak realną porażkę (ten sam fallback co pipeline-advance.mjs).
+  try {
+    const out = execFileSync(
+      "npx",
+      ["supabase", "db", "query", "--linked", "--output", "json", sql],
+      { encoding: "utf8", cwd: REPO_ROOT, timeout: 30000 }
+    );
+    return JSON.parse(out).rows ?? [];
+  } catch (e) {
+    const stdout = e.stdout?.toString() ?? "";
+    try {
+      return JSON.parse(stdout).rows ?? [];
+    } catch {
+      throw e;
+    }
+  }
+}
+
+function sqlEscape(s) {
+  return s.replace(/'/g, "''");
+}
+
+function sessionName(m) {
+  return `sesja_${m.esesja_id}_${m.date}`;
+}
+
+async function resolveVideoUrl(esesjaId) {
+  const listing = await fetch(
+    "https://grojec.esesja.pl/transmisje_z_obrad_rady"
+  ).then((r) => r.text());
+  const linkMatch = listing.match(
+    new RegExp(`/transmisja/${esesjaId}/[^"']+\\.htm`)
+  );
+  if (!linkMatch) return null;
+  const pageUrl = `https://grojec.esesja.pl${linkMatch[0]}`;
+  const page = await fetch(pageUrl).then((r) => r.text());
+  const videoMatch = page.match(/videourl='([^']+)'/);
+  return videoMatch ? videoMatch[1] : null;
+}
+
+// Archiwalna, wysokiej jakości kopia mp3 (-q:a 0) — niezależna od niskobitowej
+// kopii pod Groq (patrz groq-lib.mjs cutChunks). Zasila groq/mp3-stats.json
+// (własny, niezależny od whisper/mp3-stats.json starego pipeline'u), który
+// realnie karmi też przyszły temat identyfikacji mówcy głosem (backlog).
+function recordMp3Stats(esesjaId, date, sizeBytes, durationSeconds) {
+  let statsFile = { bytes_per_second_estimate: null, sessions: [] };
+  if (existsSync(MP3_STATS_FILE)) {
+    try {
+      statsFile = JSON.parse(readFileSync(MP3_STATS_FILE, "utf8"));
+    } catch {
+      // Uszkodzony/brakujący plik — zacznij od nowa zamiast wywalać pipeline.
+    }
+  }
+  const entry = {
+    esesja_id: esesjaId,
+    date,
+    duration_seconds: durationSeconds,
+    mp3_size_bytes: sizeBytes,
+    source: "real",
+  };
+  const idx = statsFile.sessions.findIndex((s) => s.esesja_id === esesjaId);
+  if (idx >= 0) statsFile.sessions[idx] = entry;
+  else statsFile.sessions.push(entry);
+  statsFile.sessions.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+  writeFileSync(MP3_STATS_FILE, JSON.stringify(statsFile, null, 2));
+}
+
+function downloadAndConvert(name, videoUrl, esesjaId, date) {
+  const mp4 = path.join(WORK_DIR, `${name}.mp4`);
+  const mp3 = path.join(WORK_DIR, `${name}.mp3`);
+  mkdirSync(WORK_DIR, { recursive: true });
+  if (!existsSync(mp4)) {
+    log(`Pobieram ${name}...`);
+    execFileSync("ffmpeg", ["-y", "-i", videoUrl, "-c", "copy", mp4], {
+      stdio: "inherit",
+      // Łącze do stream1.esesja.tv bywa wolne (obserwowane ~150KB/s) —
+      // szeroki margines na dłuższe sesje.
+      timeout: 3 * 60 * 60 * 1000,
+    });
+  }
+  if (!existsSync(mp3)) {
+    log(`Konwertuję ${name} do mp3 (archiwalna jakość)...`);
+    execFileSync("ffmpeg", ["-y", "-i", mp4, "-q:a", "0", "-map", "a", mp3], {
+      stdio: "inherit",
+      timeout: 15 * 60 * 1000,
+    });
+  }
+  try {
+    const sizeBytes = statSync(mp3).size;
+    const durationSeconds = ffprobeDuration(mp3);
+    recordMp3Stats(esesjaId, date, sizeBytes, durationSeconds);
+  } catch (e) {
+    log(`Nie udało się zapisać statystyk mp3: ${e.message}`);
+  }
+  return { mp4, mp3 };
+}
+
+export async function processMeeting(m) {
+  const name = sessionName(m);
+  log(`Przetwarzam ${name}...`);
+
+  let videoUrl = m.video_url;
+  if (!videoUrl) {
+    log(`Rozwiązuję video_url dla ${name}...`);
+    videoUrl = await resolveVideoUrl(m.esesja_id);
+    if (!videoUrl) {
+      log(`UWAGA: nie znaleziono video_url dla ${name} — pomijam.`);
+      return false;
+    }
+    supabaseQuery(
+      `update meeting set video_url = '${sqlEscape(videoUrl)}' where id = '${m.id}';`
+    );
+  }
+
+  const { mp3 } = downloadAndConvert(name, videoUrl, m.esesja_id, m.date);
+  supabaseQuery(`update meeting set video_downloaded = true where id = '${m.id}';`);
+
+  const chunkDir = path.join(WORK_DIR, `${name}-chunks`);
+  const chunks = cutChunks(mp3, chunkDir, name);
+  log(`${chunks.length} kawałek(-ów) do wysłania.`);
+
+  const apiKey = resolveGroqApiKey(GROQ_ENV_FILE);
+  const segments = await transcribeChunks(apiKey, chunks, { log });
+
+  const correctedSegments = segments.map((s) => ({
+    ...s,
+    text: applyTokenCorrections(s.text, TOKENS_FILE),
+  }));
+
+  const vttPath = path.join(WORK_DIR, `${name}.vtt`);
+  writeVttFile(vttPath, correctedSegments);
+  log(`Zapisano ${correctedSegments.length} segmentów do ${vttPath}`);
+
+  log(`Importuję do bazy...`);
+  execFileSync("node", ["scripts/import-transcript.mjs", vttPath], {
+    cwd: REPO_ROOT,
+    stdio: "inherit",
+    timeout: 5 * 60 * 1000,
+  });
+
+  // Sprzątanie — bez znaczenia na efemerycznym runnerze GH Actions (znika i
+  // tak), ale istotne przy ręcznym odpaleniu na agatka (dysk nie jest z gumy).
+  rmSync(chunkDir, { recursive: true, force: true });
+  rmSync(vttPath, { force: true });
+  rmSync(path.join(WORK_DIR, `${name}.mp4`), { force: true });
+  rmSync(mp3, { force: true });
+
+  return true;
+}
+
+async function main() {
+  const pending = await supabaseQuery(
+    `select id, esesja_id, date, video_url from meeting where transcript_status != 'rozpisana' and meeting_type != 'komisja' order by date asc limit 1;`
+  );
+
+  if (pending.length === 0) {
+    log("Brak sesji oczekujących na transkrypcję. Koniec.");
+    return;
+  }
+
+  const ok = await processMeeting(pending[0]);
+  if (!ok) process.exitCode = 1;
+}
+
+// Uruchom main() tylko gdy plik jest wywołany bezpośrednio (node
+// groq/pipeline-groq.mjs), nie przy imporcie processMeeting/innych
+// eksportów gdzie indziej (np. w testach) — inaczej sam import miałby
+// efekt uboczny w postaci prawdziwego zapytania do DB i próby przetworzenia
+// sesji.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => {
+    console.error("[pipeline-groq] BŁĄD:", e);
+    process.exit(1);
+  });
+}
