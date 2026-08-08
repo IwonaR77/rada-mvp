@@ -85,6 +85,10 @@ export default async function SessionPage({
           "id, date, video_url, summary, summary_prompt_version, transcript_status"
         )
         .eq("term_id", meeting.term_id)
+        // Komisja meetings share this table but aren't "sesje" — excluded
+        // so they don't shift the verified Sesja Nr N numbering (see the
+        // comment above) or appear in the neighbor nav.
+        .neq("meeting_type", "komisja")
         .order("date", { ascending: true }),
       // Every topic tag used anywhere in this council's sessions (any
       // term) — embedded in the .txt export so the summary prompt reuses

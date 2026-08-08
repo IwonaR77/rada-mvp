@@ -161,6 +161,10 @@ export default async function CouncilSessionsPage({
             "id, date, title, video_url, video_downloaded, transcript_status, topics, summary, summary_prompt_version"
           )
           .eq("term_id", selectedTermId)
+          // Komisja meetings share this table (see prompty/Prompt_Sprawy_v3.md)
+          // but aren't "sesje" — excluded here so they don't appear on the
+          // session timeline or shift the "Sesja Nr N" numbering below.
+          .neq("meeting_type", "komisja")
           .order("date", { ascending: false }),
         // Per-session tagging progress (finalized/total segments) for the
         // timeline's progress ring — a grouped aggregate, done server-side
