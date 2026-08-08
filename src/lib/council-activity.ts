@@ -62,6 +62,12 @@ export async function getSpeakingActivity(
       .from("meeting")
       .select("id, date, title, transcript_status")
       .eq("term_id", termId)
+      // Komisja meetings share this table but aren't "sesje" — currently
+      // excluded from the heatmap anyway by the transcript_status filter
+      // below (nothing sets 'rozpisana' on a komisja meeting today), but
+      // that's an indirect invariant, not an enforced one — filter here
+      // too rather than rely on it staying true.
+      .neq("meeting_type", "komisja")
       .order("date", { ascending: false }),
   ]);
 
