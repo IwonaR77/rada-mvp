@@ -52,6 +52,13 @@ export async function SiteHeader() {
             </Link>
             <span className="text-zinc-300 dark:text-zinc-700">·</span>
             <Link
+              href={`/rada/${favoriteCouncil.id}/radni`}
+              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            >
+              Radni
+            </Link>
+            <span className="text-zinc-300 dark:text-zinc-700">·</span>
+            <Link
               href="/sprawy"
               className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
             >

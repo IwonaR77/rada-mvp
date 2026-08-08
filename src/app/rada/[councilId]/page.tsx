@@ -43,16 +43,12 @@ export default async function CouncilHubPage({
     .limit(1)
     .maybeSingle();
 
-  let councilors: { id: string; full_name: string }[] = [];
   let activity: Awaited<ReturnType<typeof getSpeakingActivity>> | null = null;
   if (latestTerm) {
     const { data: officials } = await supabase
       .from("official")
       .select("id, full_name, role");
     activity = await getSpeakingActivity(supabase, latestTerm.id, officials ?? []);
-    councilors = [...activity.councilors]
-      .sort((a, b) => a.fullName.localeCompare(b.fullName, "pl"))
-      .map((c) => ({ id: c.id, full_name: c.fullName }));
   }
 
   return (
@@ -82,26 +78,6 @@ export default async function CouncilHubPage({
         </div>
         <p className="text-zinc-500">{council.city?.name}</p>
       </div>
-
-      {councilors.length > 0 && (
-        <section>
-          <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
-            Radni {latestTerm?.label ? `— ${latestTerm.label}` : ""} (
-            {councilors.length})
-          </h3>
-          <div className="flex flex-wrap gap-1.5">
-            {councilors.map((c) => (
-              <Link
-                key={c.id}
-                href={`/radny/${c.id}`}
-                className="rounded-full border border-zinc-200 px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800"
-              >
-                {c.full_name}
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
 
       {activity && (
         <section>
