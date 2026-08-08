@@ -1,24 +1,38 @@
-// Average-linkage agglomerative clustering over a sparse pairwise
-// similarity list — used to group councilors into voting "blocs" from
-// term_voting_correlation, and to order them so blocs sit contiguously in
-// a matrix (adjacent rows/columns instead of scattered).
-//
-// N is small here (a council's roster, ~15-25 people), so an O(n^3)
-// naive implementation (recompute all pairwise cluster distances each
-// merge) is plenty fast — no need for a proper priority-queue version.
+/** One pairwise voting-agreement measurement, as returned by the `term_voting_correlation` RPC. */
 export type PairAgreement = { a: string; b: string; agreementPct: number };
 
+/**
+ * Output of {@link clusterByAgreement}: a leaf order and cluster
+ * assignment ready to drive a matrix layout.
+ */
 export type ClusterResult = {
-  // Ids ordered so that same-cluster members are contiguous — use this
-  // order for both matrix axes.
+  /** Ids ordered so that same-cluster members are contiguous — use this order for both matrix axes. */
   order: string[];
-  // Cluster index (0-based, ordered by first appearance in `order`) per id.
+  /** Cluster index (0-based, ordered by first appearance in `order`) per id. */
   clusterOf: Map<string, number>;
   clusterCount: number;
 };
 
 type Node = { members: string[]; left?: Node; right?: Node };
 
+/**
+ * Average-linkage agglomerative clustering over a sparse pairwise
+ * similarity list — groups ids into 2–6 clusters (e.g. councilors into
+ * voting "blocs") and returns them in an order where same-cluster members
+ * sit contiguously, so a matrix built from that order shows blocs as
+ * adjacent rows/columns instead of scattered ones.
+ *
+ * `N` is expected to be small (a council's roster, ~15–25 people), so this
+ * uses a naive O(n³) implementation (recomputes all pairwise cluster
+ * distances on every merge) rather than a priority-queue version — plenty
+ * fast at this scale.
+ *
+ * @param ids - every id to place, including ones absent from `pairs`
+ * @param pairs - sparse pairwise agreement percentages; any pair not
+ * listed is treated as maximally dissimilar rather than ignored, so
+ * missing data (e.g. below an upstream common-votes threshold) pulls ids
+ * apart instead of accidentally clustering them together
+ */
 export function clusterByAgreement(
   ids: string[],
   pairs: PairAgreement[]
