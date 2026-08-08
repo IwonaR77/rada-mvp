@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { AccessRequestRow } from "@/components/access-request-row";
-import { UserRoleRow } from "@/components/user-role-row";
+import { PersonAccessCard } from "@/components/person-access-card";
 import { GrantAccessRow } from "@/components/grant-access-row";
 import { ACCESS_LEVELS, describeGrant } from "@/lib/access-levels";
 
@@ -70,10 +69,10 @@ export default async function AdminDostepPage() {
 
   // Every account auto-holds a "browse"-only row from first login (see
   // grant_browse_permission()) — that's not an editable contribution tier
-  // (ADMIN_LEVELS doesn't even have an entry for it, so UserRoleRow's
-  // "current level" dropdown would mismatch it against Redaktor by
-  // accident). Keep those out of the editable list; a manager cares about
-  // who has real Redaktor/Moderator/Manager access, not who's logged in.
+  // (ADMIN_LEVELS doesn't even have an entry for it, so an edit dropdown
+  // would mismatch it against Redaktor by accident). Keep those out of the
+  // editable list; a manager cares about who has real Redaktor/Moderator/
+  // Manager access, not who's logged in.
   const allGrantRows = (grants ?? []).map((g) => ({
     ...g,
     holderName: g.app_user?.display_name ?? "Nieznany użytkownik",
@@ -98,11 +97,10 @@ export default async function AdminDostepPage() {
 
   const contributorIds = new Set(grantRows.map((g) => g.app_user_id));
   // A browse-only account with an actual pending request must show up
-  // *only* in "Oczekujące" below, never also as a generic quick-grant
-  // shortcut here — the shortcut's Redaktor/cała platforma defaults have
-  // nothing to do with what was actually requested, and a manager acting
-  // on the wrong one of two look-alike rows for the same person is exactly
-  // how a request for Moderator/Grójec ends up granted as Redaktor/global.
+  // *only* in "Uprawnienia i wnioski" below (as part of its request card),
+  // never also as a generic quick-grant shortcut here — the shortcut's
+  // Redaktor/cała platforma defaults have nothing to do with what was
+  // actually requested.
   const pendingRequesterIds = new Set(pending.map((r) => r.app_user_id));
   const browseOnlyRows = allGrantRows.filter(
     (g) =>
@@ -125,6 +123,49 @@ export default async function AdminDostepPage() {
     councilName: a.council?.name ?? null,
   }));
 
+  // One card per person instead of two independent, potentially-overlapping
+  // lists (their real grant(s) + any pending request(s) together) — a
+  // browse-only account with a pending request used to show twice, once
+  // with a real requested level and once with a meaningless Redaktor/cała
+  // platforma default from a generic "grant something" shortcut, and a
+  // manager acting on the wrong one granted the wrong thing entirely.
+  type PersonEntry = {
+    appUserId: string;
+    holderName: string;
+    isSelf: boolean;
+    grants: typeof grantRows;
+    requests: typeof pending;
+  };
+  const personMap = new Map<string, PersonEntry>();
+  for (const g of grantRows) {
+    const entry = personMap.get(g.app_user_id) ?? {
+      appUserId: g.app_user_id,
+      holderName: g.holderName,
+      isSelf: g.app_user_id === user.id,
+      grants: [],
+      requests: [],
+    };
+    entry.grants.push(g);
+    personMap.set(g.app_user_id, entry);
+  }
+  for (const r of pending) {
+    const entry = personMap.get(r.app_user_id) ?? {
+      appUserId: r.app_user_id,
+      holderName: r.requesterName,
+      isSelf: r.app_user_id === user.id,
+      grants: [],
+      requests: [],
+    };
+    entry.requests.push(r);
+    personMap.set(r.app_user_id, entry);
+  }
+  const peopleWithActivity = [...personMap.values()].sort((a, b) => {
+    if (a.requests.length !== b.requests.length) {
+      return b.requests.length - a.requests.length;
+    }
+    return a.holderName.localeCompare(b.holderName, "pl");
+  });
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
       <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
@@ -141,18 +182,23 @@ export default async function AdminDostepPage() {
 
       <section>
         <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
-          Uprawnienia ({grantRows.length})
+          Uprawnienia i wnioski ({peopleWithActivity.length})
         </h2>
-        {grantRows.length === 0 ? (
-          <p className="text-sm text-zinc-500">Nikt nie ma jeszcze nadanego dostępu.</p>
+        {peopleWithActivity.length === 0 ? (
+          <p className="text-sm text-zinc-500">
+            Nikt nie ma jeszcze nadanego dostępu ani oczekującej prośby.
+          </p>
         ) : (
           <ul className="flex flex-col divide-y divide-zinc-200 rounded-2xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-            {grantRows.map((g) => (
-              <UserRoleRow
-                key={g.id}
-                grant={g}
+            {peopleWithActivity.map((p) => (
+              <PersonAccessCard
+                key={p.appUserId}
+                appUserId={p.appUserId}
+                holderName={p.holderName}
+                isSelf={p.isSelf}
+                grants={p.grants}
+                requests={p.requests}
                 councils={councilList}
-                isSelf={g.app_user_id === user.id}
               />
             ))}
           </ul>
@@ -180,21 +226,6 @@ export default async function AdminDostepPage() {
           </ul>
         </section>
       )}
-
-      <section>
-        <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
-          Oczekujące ({pending.length})
-        </h2>
-        {pending.length === 0 ? (
-          <p className="text-sm text-zinc-500">Brak oczekujących próśb.</p>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {pending.map((r) => (
-              <AccessRequestRow key={r.id} request={r} councils={councilList} />
-            ))}
-          </ul>
-        )}
-      </section>
 
       {decided.length > 0 && (
         <section>
