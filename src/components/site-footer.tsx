@@ -19,14 +19,14 @@ export function SiteFooter() {
           href="/prompt-podsumowania"
           className="hover:text-zinc-900 dark:hover:text-zinc-100"
         >
-          Prompt: podsumowania sesji
+          Prompt (sesje)
         </Link>
         <span className="text-zinc-300 dark:text-zinc-700">·</span>
         <Link
           href="/prompt-oceny-radnych"
           className="hover:text-zinc-900 dark:hover:text-zinc-100"
         >
-          Prompt: aktywność radnych
+          Prompt (radni)
         </Link>
       </div>
     </footer>
