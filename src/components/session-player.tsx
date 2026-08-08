@@ -75,6 +75,48 @@ function buildPlainText(
   return `${header}\n\n${segments.map((s) => s.text).join("\n\n")}`;
 }
 
+// Same header as buildPlainText, but groups consecutive segments sharing
+// the same confirmed speaker into one labeled block instead of repeating
+// the name before every single segment — a run of segment-level cuts from
+// the same person reads as one continuous statement, not N separate ones.
+function buildPlainTextWithSpeakers(
+  segments: Segment[],
+  peopleById: Map<string, string>,
+  meta: {
+    esesjaId: string | null;
+    date: string;
+    title: string;
+    existingTopics: string[];
+  }
+) {
+  const header = [
+    meta.esesjaId ? `esesja_id: ${meta.esesjaId}` : null,
+    `data: ${meta.date}`,
+    `tytuł: ${meta.title}`,
+    meta.existingTopics.length > 0
+      ? `tagi: ${meta.existingTopics.join(", ")}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const blocks: { label: string; texts: string[] }[] = [];
+  for (const s of segments) {
+    const assignedId = s.confirmed_councilor_id ?? s.confirmed_official_id;
+    const label = assignedId ? (peopleById.get(assignedId) ?? "?") : "Nieustalone";
+    const last = blocks[blocks.length - 1];
+    if (last && last.label === label) {
+      last.texts.push(s.text);
+    } else {
+      blocks.push({ label, texts: [s.text] });
+    }
+  }
+
+  const body = blocks.map((b) => `${b.label}:\n${b.texts.join("\n")}`).join("\n\n");
+
+  return `${header}\n\n${body}`;
+}
+
 // Splits s.text into words tagged with their character offset in the
 // original string, so clicking a word can tell the split action exactly
 // where to cut ("split before this word") without re-deriving it from
@@ -476,6 +518,24 @@ export function SessionPlayer({
                   className="rounded-full border border-zinc-300 px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
                 >
                   Pobierz .txt
+                </button>
+                <button
+                  disabled={segments.length === 0}
+                  onClick={() =>
+                    downloadFile(
+                      `${sessionFileBase(esesjaId, meetingDate, meetingTitle)}_mowcy.txt`,
+                      buildPlainTextWithSpeakers(segments, peopleById, {
+                        esesjaId,
+                        date: meetingDate,
+                        title: meetingTitle,
+                        existingTopics,
+                      }),
+                      "text/plain;charset=utf-8"
+                    )
+                  }
+                  className="rounded-full border border-zinc-300 px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  Pobierz .txt (z mówcami)
                 </button>
                 <button
                   disabled={segments.length === 0}
