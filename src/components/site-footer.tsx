@@ -14,6 +14,20 @@ export function SiteFooter() {
         >
           Polityka Prywatności
         </Link>
+        <span className="text-zinc-300 dark:text-zinc-700">·</span>
+        <Link
+          href="/prompt-podsumowania"
+          className="hover:text-zinc-900 dark:hover:text-zinc-100"
+        >
+          Prompt: podsumowania sesji
+        </Link>
+        <span className="text-zinc-300 dark:text-zinc-700">·</span>
+        <Link
+          href="/prompt-oceny-radnych"
+          className="hover:text-zinc-900 dark:hover:text-zinc-100"
+        >
+          Prompt: aktywność radnych
+        </Link>
       </div>
     </footer>
   );
