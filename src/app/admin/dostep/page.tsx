@@ -48,7 +48,7 @@ export default async function AdminDostepPage() {
       supabase
         .from("access_request")
         .select(
-          "id, requested_level, scope_council_id, message, status, created_at, decided_at, decision_note, app_user:app_user_id(display_name), council:scope_council_id(name)"
+          "id, app_user_id, requested_level, scope_council_id, message, status, created_at, decided_at, decision_note, app_user:app_user_id(display_name), council:scope_council_id(name)"
         )
         .order("created_at", { ascending: false }),
       supabase
@@ -87,14 +87,6 @@ export default async function AdminDostepPage() {
   // scoped Moderator grant + her own global browse-only auto-grant) and
   // must not show up here just because one of her rows happens to be
   // browse-only.
-  const contributorIds = new Set(grantRows.map((g) => g.app_user_id));
-  const browseOnlyRows = allGrantRows.filter(
-    (g) =>
-      g.permissions.length === 1 &&
-      g.permissions[0] === "browse" &&
-      !contributorIds.has(g.app_user_id)
-  );
-
   const rows = (requests ?? []).map((r) => ({
     ...r,
     requesterName: r.app_user?.display_name ?? "Nieznany użytkownik",
@@ -103,6 +95,22 @@ export default async function AdminDostepPage() {
 
   const pending = rows.filter((r) => r.status === "pending");
   const decided = rows.filter((r) => r.status !== "pending");
+
+  const contributorIds = new Set(grantRows.map((g) => g.app_user_id));
+  // A browse-only account with an actual pending request must show up
+  // *only* in "Oczekujące" below, never also as a generic quick-grant
+  // shortcut here — the shortcut's Redaktor/cała platforma defaults have
+  // nothing to do with what was actually requested, and a manager acting
+  // on the wrong one of two look-alike rows for the same person is exactly
+  // how a request for Moderator/Grójec ends up granted as Redaktor/global.
+  const pendingRequesterIds = new Set(pending.map((r) => r.app_user_id));
+  const browseOnlyRows = allGrantRows.filter(
+    (g) =>
+      g.permissions.length === 1 &&
+      g.permissions[0] === "browse" &&
+      !contributorIds.has(g.app_user_id) &&
+      !pendingRequesterIds.has(g.app_user_id)
+  );
 
   const ownGrants = grantRows.filter((g) => g.app_user_id === user.id);
   const ownGrantLabel = describeGrant(
