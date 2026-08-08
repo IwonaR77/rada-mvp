@@ -9,7 +9,14 @@ const SEARCH_RATE_LIMIT = { limit: 20, windowMs: 60_000 };
 // grant_browse_permission(), called from /auth/callback), enforced by RLS;
 // this gate just keeps logged-out visitors from reaching pages that would
 // otherwise render empty/broken instead of a proper login prompt.
-const PUBLIC_PATHS = new Set(["/", "/auth/callback", "/auth/error", "/logout"]);
+const PUBLIC_PATHS = new Set([
+  "/",
+  "/auth/callback",
+  "/auth/error",
+  "/logout",
+  "/regulamin",
+  "/polityka-prywatnosci",
+]);
 
 export async function proxy(request: NextRequest) {
   if (request.nextUrl.pathname === "/szukaj") {
