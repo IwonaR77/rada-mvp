@@ -3,21 +3,22 @@
 // jeszcze nie mamy w tabeli `meeting`, i dopisuje je (term_id, esesja_id,
 // date, title, video_url). To wszystko, co ten skrypt robi — CELOWO nie
 // pobiera/nie wysyła nagrania na serwer transkrypcji i nie startuje
-// transkrypcji: `whisper/pipeline-advance.mjs`, uruchamiany cyklicznie,
-// sam znajdzie każdy nowy wiersz `meeting` z transcript_status != 'rozpisana'
-// i przeprowadzi go przez cały cykl (pobranie, konwersja, wysyłka, start
-// transkrypcji, import gotowego .vtt) automatycznie w kolejnym cyklu — nie
-// trzeba tego dublować ani ręcznie "importować" żadnej paczki, żeby nowa
-// sesja pojawiła się na osi czasu w /rada/[councilId].
+// transkrypcji: `groq/pipeline-groq.mjs`, uruchamiany cyklicznie, sam
+// znajdzie każdy nowy wiersz `meeting` z transcript_status != 'rozpisana'
+// i przeprowadzi go przez cały cykl (pobranie, konwersja, transkrypcja przez
+// Groq, import gotowego .vtt) automatycznie w kolejnym cyklu — nie trzeba
+// tego dublować ani ręcznie "importować" żadnej paczki, żeby nowa sesja
+// pojawiła się na osi czasu w /rada/[councilId].
 //
-// Uruchom ręcznie, np. raz na tydzień: node scripts/discover-new-sessions.mjs
+// Uruchamiany automatycznie przez .github/workflows/transcribe-groq.yml
+// (krok przed pipeline-groq.mjs) — albo ręcznie: node scripts/discover-new-sessions.mjs
 
-import { createClient } from "@supabase/supabase-js";
 import { execFileSync } from "node:child_process";
 
 const BASE = "https://grojec.esesja.pl";
 const COUNCIL_ID = "846c8bce-7f11-4825-91dd-fe80cedf5289";
 const TERM_ID = "c4bc384f-33c3-46bd-b67c-ab569bb399dd";
+const REPO_ROOT = "/home/blady/Projects/rada-mvp";
 
 const MONTHS = {
   stycznia: "01", lutego: "02", marca: "03", kwietnia: "04",
@@ -29,20 +30,41 @@ function log(msg) {
   console.log(`[discover] ${msg}`);
 }
 
-function getServiceRoleKey() {
-  const out = execFileSync(
-    "npx",
-    ["supabase", "projects", "api-keys", "--project-ref", "nmsictzdvqbzevkolqpu"],
-    { encoding: "utf8", cwd: "/home/blady/Projects/rada-mvp" }
-  );
-  const json = JSON.parse(out.trim().split("\n").pop());
-  return json.keys.find((k) => k.id === "service_role").api_key;
+// Ten sam wzorzec co scripts/import-transcript.mjs / groq/pipeline-groq.mjs:
+// `npx supabase db query --linked` zależy od keyringu/D-Bus sesji desktopowej,
+// niedostępnej headless (GitHub Actions). SUPABASE_DB_URL (repo secret w CI)
+// → bezpośrednie psql. Dzięki temu nie trzeba osobnego sekretu z kluczem
+// service_role — jeden SUPABASE_DB_URL wystarcza całemu pipeline'owi Groq.
+function supabaseQuery(sql) {
+  if (process.env.SUPABASE_DB_URL) {
+    const wrapped = `select coalesce(json_agg(row_to_json(sub)), '[]'::json) from (${sql.replace(/;\s*$/, "")}) sub;`;
+    const out = execFileSync(
+      "psql",
+      [process.env.SUPABASE_DB_URL, "-t", "-A", "-c", wrapped],
+      { encoding: "utf8" }
+    );
+    return JSON.parse(out.trim() || "[]");
+  }
+  try {
+    const out = execFileSync(
+      "npx",
+      ["supabase", "db", "query", "--linked", "--output", "json", sql],
+      { encoding: "utf8", cwd: REPO_ROOT, timeout: 30000 }
+    );
+    return JSON.parse(out).rows ?? [];
+  } catch (e) {
+    const stdout = e.stdout?.toString() ?? "";
+    try {
+      return JSON.parse(stdout).rows ?? [];
+    } catch {
+      throw e;
+    }
+  }
 }
 
-const supabase = createClient(
-  "https://nmsictzdvqbzevkolqpu.supabase.co",
-  getServiceRoleKey()
-);
+function sqlEscape(s) {
+  return s.replace(/'/g, "''");
+}
 
 function parsePolishDateFromSlug(slug) {
   // Slugi wyglądają jak "sesjaaradyawadniuaśrodaa26aczerwcaa2024" — spacje
@@ -90,11 +112,9 @@ async function main() {
   }
   log(`Znaleziono ${links.length} sesji na liście transmisji.`);
 
-  const { data: existing, error: existingError } = await supabase
-    .from("meeting")
-    .select("esesja_id")
-    .eq("term_id", TERM_ID);
-  if (existingError) throw new Error(`select meeting: ${existingError.message}`);
+  const existing = supabaseQuery(
+    `select esesja_id from meeting where term_id = '${TERM_ID}';`
+  );
   const knownIds = new Set(existing.map((m) => m.esesja_id));
 
   const newOnes = links.filter((l) => !knownIds.has(l.esesjaId));
@@ -112,16 +132,15 @@ async function main() {
       continue;
     }
     const { videoUrl, title } = await resolveVideoUrlAndTitle(l.esesjaId, l.path);
-    const { error } = await supabase.from("meeting").insert({
-      term_id: TERM_ID,
-      meeting_type: "sesja",
-      esesja_id: l.esesjaId,
-      date,
-      title,
-      video_url: videoUrl,
-    });
-    if (error) {
-      log(`BŁĄD przy dodawaniu ${l.esesjaId} (${date}): ${error.message}`);
+    try {
+      supabaseQuery(
+        `insert into meeting (term_id, meeting_type, esesja_id, date, title, video_url) values ` +
+          `('${TERM_ID}', 'sesja', '${sqlEscape(l.esesjaId)}', '${date}', ` +
+          `${title ? `'${sqlEscape(title)}'` : "null"}, ` +
+          `${videoUrl ? `'${sqlEscape(videoUrl)}'` : "null"});`
+      );
+    } catch (e) {
+      log(`BŁĄD przy dodawaniu ${l.esesjaId} (${date}): ${e.message}`);
       continue;
     }
     log(`DODANO ${l.esesjaId} (${date}) — ${title ?? "(bez tytułu)"}`);
@@ -132,7 +151,7 @@ async function main() {
   log(`Podsumowanie: dodano ${added}/${newOnes.length} nowych sesji do council_id=${COUNCIL_ID}, term_id=${TERM_ID}.`);
   if (added > 0) {
     log(
-      "Nic więcej nie trzeba robić ręcznie — whisper/pipeline-advance.mjs " +
+      "Nic więcej nie trzeba robić ręcznie — groq/pipeline-groq.mjs " +
       "podejmie te sesje w swoim najbliższym cyklu (pobranie, transkrypcja, " +
       "import) i pojawią się na osi czasu /rada/[councilId] automatycznie."
     );

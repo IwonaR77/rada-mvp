@@ -1,10 +1,16 @@
 name: Transkrypcja sesji (Groq)
 
-# Docelowy, zaplanowany pipeline transkrypcji nowych sesji przez Groq API —
-# patrz Faza 4 planu migracji. Realny wolumen to ~2-3 sesje/miesiąc, więc
-# harmonogram jest celowo rzadki; orkiestrator (whisper/pipeline-groq.mjs)
-# i tak przetwarza najwyżej jedną sesję na uruchomienie i jest bezpieczny
-# do wywoływania powtarzalnie/często, gdyby trzeba było to kiedyś zagęścić.
+# Docelowy, zaplanowany pipeline dla nowych sesji — patrz Faza 4 planu
+# migracji. Realny wolumen to ~2-3 sesje/miesiąc, więc harmonogram jest
+# celowo rzadki; orkiestrator (groq/pipeline-groq.mjs) i tak przetwarza
+# najwyżej jedną sesję na uruchomienie i jest bezpieczny do wywoływania
+# powtarzalnie/często, gdyby trzeba było to kiedyś zagęścić.
+#
+# Dwa kroki, jeden workflow: najpierw odkrycie nowych sesji na esesja.pl
+# (scripts/discover-new-sessions.mjs — wcześniej ręczne, ~raz w tygodniu na
+# agatka), potem transkrypcja tego, co czeka. Oba używają tego samego
+# SUPABASE_DB_URL do headless zapisu — nie trzeba osobnego sekretu z kluczem
+# service_role dla discovery.
 on:
   schedule:
     - cron: "0 6 * * *" # codziennie 06:00 UTC
@@ -27,7 +33,12 @@ jobs:
       - name: Zainstaluj zależności
         run: npm ci
 
-      - name: Uruchom orkiestrator
+      - name: Odkryj nowe sesje
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/discover-new-sessions.mjs
+
+      - name: Uruchom orkiestrator transkrypcji
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
