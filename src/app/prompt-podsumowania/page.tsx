@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 const DOC_PATH = path.join(
   process.cwd(),
   "prompty",
-  "Prompt_Podsumowania_Sesji_v5.md"
+  "Prompt_Podsumowania_Sesji_v6.md"
 );
 
 export default function PromptPodsumowaniaPage() {
