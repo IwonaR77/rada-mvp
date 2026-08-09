@@ -13,10 +13,9 @@ import {
 // Built for the scale this app is heading to (1000+ accounts), not the
 // handful it has today: search, filtering and paging all happen in the
 // database, so the page never loads more than PAGE_SIZE people at once.
-// The older /admin/dostep panel loads every grant and every request in one
-// go — fine at 6 accounts, a silent 1000-row truncation at 1000 (see
-// feedback_supabase_row_limit) — which is exactly why this is a separate
-// page rather than an edit of that one.
+// The panel this replaced loaded every grant and every request in one go —
+// fine at 6 accounts, a silent 1000-row truncation at 1000 (see
+// feedback_supabase_row_limit).
 const PAGE_SIZE = 25;
 
 // Filters are "at least this tier", which maps to a single permission
@@ -205,10 +204,10 @@ export default async function AdminKontaPage({
           Konta i uprawnienia
         </h1>
         <Link
-          href="/admin/dostep"
+          href="/dostep"
           className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
         >
-          stary panel →
+          twój dostęp →
         </Link>
       </div>
 

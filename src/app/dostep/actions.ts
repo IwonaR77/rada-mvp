@@ -56,7 +56,6 @@ export async function submitAccessRequest(
   }
 
   revalidatePath("/dostep");
-  revalidatePath("/admin/dostep");
   revalidatePath("/admin/konta");
   return { error: null };
 }

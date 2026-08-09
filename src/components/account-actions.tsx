@@ -8,13 +8,8 @@ import {
   grantAccess,
   approveAccessRequest,
   denyAccessRequest,
-} from "@/app/admin/dostep/actions";
+} from "@/app/admin/konta/actions";
 import { ADMIN_LEVELS, type AdminLevel } from "@/lib/access-levels";
-
-// Deliberately reuses the server actions from /admin/dostep rather than
-// getting its own copies — the permission rules there (browse preservation,
-// count checks, self-edit lock) are the hard-won part and must not fork.
-// Only the presentation differs between the two panels.
 
 type Grant = {
   id: string;

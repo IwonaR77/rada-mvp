@@ -166,7 +166,6 @@ export async function approveAccessRequest(
     `Zatwierdzono: ${levelDef.label}${wasOverridden ? " (zmieniono zakres/poziom)" : ""}`
   );
 
-  revalidatePath("/admin/dostep");
   revalidatePath("/admin/konta");
   return { error: null };
 }
@@ -209,7 +208,6 @@ export async function denyAccessRequest(requestId: string, note: string) {
     note.trim() || "Odrzucono bez podania powodu"
   );
 
-  revalidatePath("/admin/dostep");
   revalidatePath("/admin/konta");
   return { error: null };
 }
@@ -249,7 +247,6 @@ export async function grantAccess(
     `Nadano bezpośrednio: ${levelDef.label}`
   );
 
-  revalidatePath("/admin/dostep");
   revalidatePath("/admin/konta");
   return { error: null };
 }
@@ -274,7 +271,7 @@ export async function updateUserRole(
   if (!existing) return { error: "Nie znaleziono uprawnienia" };
   // Self-service demotion/promotion of your own grant through this panel
   // is disabled — if you're the only manager, revoking or downgrading
-  // yourself here would lock you out of /admin/dostep with no way back
+  // yourself here would lock you out of /admin/konta with no way back
   // short of direct DB access. Ask another manager, or edit the DB directly
   // if you're certain.
   if (existing.app_user_id === userId) {
@@ -344,7 +341,6 @@ export async function updateUserRole(
     `Zmieniono na: ${levelDef.label}`
   );
 
-  revalidatePath("/admin/dostep");
   revalidatePath("/admin/konta");
   return { error: null };
 }
@@ -394,7 +390,6 @@ export async function revokeUserRole(roleId: string) {
     "Cofnięto dostęp"
   );
 
-  revalidatePath("/admin/dostep");
   revalidatePath("/admin/konta");
   return { error: null };
 }
