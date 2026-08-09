@@ -2,7 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AccountActions } from "@/components/account-actions";
-import { ADMIN_LEVELS, describeGrant, type AdminLevel } from "@/lib/access-levels";
+import {
+  ADMIN_LEVELS,
+  BROWSE_LABEL,
+  describeGrant,
+  tierChipClass,
+  type AdminLevel,
+} from "@/lib/access-levels";
 
 // Built for the scale this app is heading to (1000+ accounts), not the
 // handful it has today: search, filtering and paging all happen in the
@@ -28,14 +34,6 @@ type LevelKey = keyof typeof LEVEL_FILTERS;
 function isLevelKey(v: string | undefined): v is LevelKey {
   return !!v && v in LEVEL_FILTERS;
 }
-
-const CHIP_BY_TIER: Record<string, string> = {
-  "Manager (pełny dostęp)":
-    "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-400",
-  Moderator: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400",
-  Redaktor: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400",
-  Przeglądanie: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
-};
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString("pl-PL", {
@@ -353,7 +351,13 @@ export default async function AdminKontaPage({
                     scope="col"
                     className="border-b border-zinc-200 p-3 text-left font-normal text-zinc-500 dark:border-zinc-800"
                   >
-                    Poziom i zakres
+                    Poziom
+                  </th>
+                  <th
+                    scope="col"
+                    className="border-b border-zinc-200 p-3 text-left font-normal text-zinc-500 dark:border-zinc-800"
+                  >
+                    Zakres
                   </th>
                   <th
                     scope="col"
@@ -374,6 +378,27 @@ export default async function AdminKontaPage({
                   const tiers = grants.filter(
                     (g) => !(g.permissions.length === 1 && g.permissions[0] === "browse")
                   );
+                  // Level and scope render as two separate columns, so both
+                  // iterate this one array — that's what guarantees row N of
+                  // "Poziom" lines up with row N of "Zakres" for someone
+                  // holding several grants.
+                  const browseScope = grants.find(
+                    (g) => g.permissions.length === 1 && g.permissions[0] === "browse"
+                  )?.council?.name;
+                  const displayRows =
+                    tiers.length > 0
+                      ? tiers.map((g) => ({
+                          key: g.id,
+                          label: describeGrant(g.permissions) ?? "—",
+                          scope: g.council?.name ?? "cała platforma",
+                        }))
+                      : [
+                          {
+                            key: "browse",
+                            label: BROWSE_LABEL,
+                            scope: browseScope ?? "cała platforma",
+                          },
+                        ];
                   const isSelf = p.id === user.id;
                   const personPending = pendingByUser.get(p.id) ?? [];
                   return (
@@ -398,34 +423,26 @@ export default async function AdminKontaPage({
                         )}
                       </th>
                       <td className="border-b border-zinc-100 p-3 dark:border-zinc-900">
-                        {tiers.length === 0 ? (
-                          <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-                            Przeglądanie
-                          </span>
-                        ) : (
-                          <ul className="flex flex-col gap-1">
-                            {tiers.map((g) => {
-                              const label = describeGrant(g.permissions) ?? "—";
-                              return (
-                                <li
-                                  key={g.id}
-                                  className="flex flex-wrap items-center gap-2"
-                                >
-                                  <span
-                                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                      CHIP_BY_TIER[label] ?? CHIP_BY_TIER.Przeglądanie
-                                    }`}
-                                  >
-                                    {label}
-                                  </span>
-                                  <span className="text-xs text-zinc-500">
-                                    {g.council?.name ?? "cała platforma"}
-                                  </span>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        )}
+                        <ul className="flex flex-col gap-1">
+                          {displayRows.map((r) => (
+                            <li key={r.key} className="flex h-5 items-center">
+                              <span className={tierChipClass(r.label)}>
+                                {r.label}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
+                      <td className="border-b border-zinc-100 p-3 dark:border-zinc-900">
+                        <ul className="flex flex-col gap-1">
+                          {displayRows.map((r) => (
+                            <li key={r.key} className="flex h-5 items-center">
+                              <span className="whitespace-nowrap text-xs text-zinc-500">
+                                {r.scope}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
                       </td>
                       <td className="border-b border-zinc-100 p-3 text-right dark:border-zinc-900">
                         {isSelf ? (

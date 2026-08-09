@@ -6,6 +6,7 @@ import { submitAccessRequest } from "@/app/dostep/actions";
 import {
   ACCESS_LEVELS,
   MESSAGE_MAX_LENGTH,
+  tierChipClass,
   type AccessLevel,
 } from "@/lib/access-levels";
 
@@ -25,6 +26,8 @@ export function AccessRequestForm({
 
   if (availableLevels.length === 0) return null;
 
+  // No outer border on the form: the level options are themselves bordered
+  // cards, and wrapping them in another panel doubled the outline.
   return (
     <form
       onSubmit={(e) => {
@@ -40,7 +43,7 @@ export function AccessRequestForm({
           else router.refresh();
         });
       }}
-      className="flex flex-col gap-4 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800"
+      className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-2">
         {availableLevels.map((key) => {
@@ -48,20 +51,20 @@ export function AccessRequestForm({
           return (
             <label
               key={key}
-              className={`flex cursor-pointer flex-col gap-0.5 rounded-xl border p-3 text-sm ${
+              className={`flex cursor-pointer flex-col gap-1.5 rounded-2xl border p-4 text-sm transition-colors ${
                 level === key
                   ? "border-zinc-900 dark:border-zinc-100"
-                  : "border-zinc-200 dark:border-zinc-800"
+                  : "border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
               }`}
             >
-              <span className="flex items-center gap-2 font-medium text-zinc-900 dark:text-zinc-50">
+              <span className="flex items-center gap-2">
                 <input
                   type="radio"
                   name="level"
                   checked={level === key}
                   onChange={() => setLevel(key)}
                 />
-                {def.label}
+                <span className={tierChipClass(def.label)}>{def.label}</span>
               </span>
               <span className="pl-6 text-zinc-500">{def.description}</span>
             </label>
@@ -75,7 +78,7 @@ export function AccessRequestForm({
           <select
             value={councilId}
             onChange={(e) => setCouncilId(e.target.value)}
-            className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 dark:border-zinc-700 dark:bg-zinc-900"
+            className="rounded-xl border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
           >
             {councils.map((c) => (
               <option key={c.id} value={c.id}>
@@ -96,7 +99,7 @@ export function AccessRequestForm({
           maxLength={MESSAGE_MAX_LENGTH}
           rows={3}
           placeholder="Np. dlaczego chcesz pomóc, czy masz już doświadczenie..."
-          className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
         />
       </label>
 

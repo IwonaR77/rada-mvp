@@ -4,25 +4,33 @@ import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { AccessRequestForm } from "@/components/access-request-form";
 import {
   ACCESS_LEVELS,
+  BROWSE_LABEL,
   alreadyHeldLevels,
   describeGrant,
+  tierChipClass,
   type AccessLevel,
 } from "@/lib/access-levels";
 
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
+      {children}
+    </h2>
+  );
+}
+
+// Same container treatment as the manager table on /admin/konta: one rounded
+// panel with hairline dividers, rather than a stack of separately bordered
+// cards.
 function LevelsList({ levels }: { levels: AccessLevel[] }) {
   return (
-    <ul className="flex flex-col gap-3">
+    <ul className="flex flex-col divide-y divide-zinc-200 rounded-2xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
       {levels.map((key) => {
         const def = ACCESS_LEVELS[key];
         return (
-          <li
-            key={key}
-            className="rounded-xl border border-zinc-200 p-3 text-sm dark:border-zinc-800"
-          >
-            <p className="font-medium text-zinc-900 dark:text-zinc-50">
-              {def.label}
-            </p>
-            <p className="text-zinc-500">{def.description}</p>
+          <li key={key} className="flex flex-col gap-1.5 p-4">
+            <span className={tierChipClass(def.label)}>{def.label}</span>
+            <p className="text-sm text-zinc-500">{def.description}</p>
           </li>
         );
       })}
@@ -46,7 +54,7 @@ export default async function DostepPage() {
 
   if (!user) {
     return (
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-12">
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
             Dostęp do współtworzenia
@@ -58,7 +66,10 @@ export default async function DostepPage() {
             wymaga dodatkowo zatwierdzonej prośby o dostęp.
           </p>
         </div>
-        <LevelsList levels={Object.keys(ACCESS_LEVELS) as AccessLevel[]} />
+        <section>
+          <SectionHeading>Poziomy dostępu</SectionHeading>
+          <LevelsList levels={Object.keys(ACCESS_LEVELS) as AccessLevel[]} />
+        </section>
         <GoogleSignInButton />
       </div>
     );
@@ -82,9 +93,6 @@ export default async function DostepPage() {
     ]);
 
   const grantedPermissions = (roles ?? []).flatMap((r) => r.permissions ?? []);
-  // "browse" (auto-granted at login) always makes this non-null, so it
-  // reliably shows the user's real current level instead of nothing.
-  const currentLevelLabel = describeGrant(grantedPermissions);
   const held = alreadyHeldLevels(grantedPermissions);
   const availableLevels = (Object.keys(ACCESS_LEVELS) as AccessLevel[]).filter(
     (level) => !held.includes(level)
@@ -96,29 +104,54 @@ export default async function DostepPage() {
       ? requests![0]
       : null;
 
+  // Shown per grant rather than as one pooled label, so a scoped grant is
+  // visible as scoped — the same level/scope pairing the manager sees in the
+  // /admin/konta table. Council names come from the list already fetched
+  // above for the request form, so this costs no extra query.
+  const councilNameById = new Map((councils ?? []).map((c) => [c.id, c.name]));
+  const myGrants = (roles ?? []).map((r, i) => ({
+    key: `${r.scope_council_id ?? "global"}-${i}`,
+    label: describeGrant(r.permissions ?? []) ?? BROWSE_LABEL,
+    scope: r.scope_council_id
+      ? councilNameById.get(r.scope_council_id) ?? "nieznana rada"
+      : "cała platforma",
+  }));
+
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-12">
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
-        Dostęp do współtworzenia
-      </h1>
+    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-12">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+          Dostęp do współtworzenia
+        </h1>
+        {isManager && (
+          <Link
+            href="/admin/konta"
+            className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
+          >
+            zarządzaj kontami →
+          </Link>
+        )}
+      </div>
 
-      {currentLevelLabel && (
-        <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
-          Twój obecny poziom dostępu: <strong>{currentLevelLabel}</strong>.
-        </p>
-      )}
-
-      {isManager && (
-        <Link
-          href="/admin/dostep"
-          className="self-start rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-        >
-          Zarządzaj uprawnieniami →
-        </Link>
+      {myGrants.length > 0 && (
+        <section>
+          <SectionHeading>Twoje uprawnienia</SectionHeading>
+          <ul className="flex flex-col divide-y divide-zinc-200 rounded-2xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+            {myGrants.map((g) => (
+              <li
+                key={g.key}
+                className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
+              >
+                <span className={tierChipClass(g.label)}>{g.label}</span>
+                <span className="text-xs text-zinc-500">{g.scope}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {pending && (
-        <p className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300">
+        <p className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/20 dark:text-blue-300">
           Twoja prośba (
           {ACCESS_LEVELS[pending.requested_level as keyof typeof ACCESS_LEVELS]
             ?.label ?? pending.requested_level}
@@ -136,7 +169,7 @@ export default async function DostepPage() {
       {!pending && !atMaxSelfServiceLevel && (
         <>
           {latestDenied && (
-            <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+            <p className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">
               Twoja poprzednia prośba została odrzucona
               {latestDenied.decision_note
                 ? `: ${latestDenied.decision_note}`
@@ -144,14 +177,16 @@ export default async function DostepPage() {
               Możesz spróbować ponownie poniżej.
             </p>
           )}
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            Poziomy dostępu do współtworzenia:
-          </p>
-          <LevelsList levels={availableLevels} />
-          <AccessRequestForm
-            councils={councils ?? []}
-            availableLevels={availableLevels}
-          />
+          {/* The form's own radio cards already carry each level's label and
+              description, so there is no separate LevelsList here — showing
+              both repeated the same text twice. */}
+          <section>
+            <SectionHeading>Poproś o dostęp</SectionHeading>
+            <AccessRequestForm
+              councils={councils ?? []}
+              availableLevels={availableLevels}
+            />
+          </section>
         </>
       )}
     </div>

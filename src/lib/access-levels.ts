@@ -65,6 +65,32 @@ export function describeGrant(permissions: string[]): string | null {
   return permissions.length > 0 ? permissions.join(", ") : null;
 }
 
+// Chip colours keyed by the label describeGrant() returns, so the manager
+// table (/admin/konta) and the user's own view (/dostep) tint a given tier
+// identically — a tier that reads violet in one place must not read blue in
+// the other.
+const CHIP_CLASS_BY_TIER: Record<string, string> = {
+  "Manager (pełny dostęp)":
+    "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-400",
+  Moderator:
+    "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400",
+  Redaktor: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400",
+  [BROWSE_LABEL]:
+    "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
+};
+
+// Fixed height (h-5) rather than vertical padding: the level and scope sit in
+// separate table columns on /admin/konta, and two stacked lists only line up
+// row-for-row if every item is exactly the same height.
+export const TIER_CHIP_BASE =
+  "inline-flex h-5 items-center whitespace-nowrap rounded-full px-2.5 text-xs font-medium";
+
+export function tierChipClass(label: string): string {
+  return `${TIER_CHIP_BASE} ${
+    CHIP_CLASS_BY_TIER[label] ?? CHIP_CLASS_BY_TIER[BROWSE_LABEL]
+  }`;
+}
+
 // Which self-service ACCESS_LEVELS tiers a user already effectively holds
 // (their granted permissions, pooled across all scopes, already cover that
 // tier's requirements) — used to stop e.g. an existing Moderator from
