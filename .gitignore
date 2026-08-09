@@ -64,12 +64,14 @@ next-env.d.ts
 # summary/: manually generated session summaries, not part of the project
 /summary
 
-# radni/: versioned prompt + working notes for councilor session-activity
-# synthesis (mirrors summary/), not part of the project
-/radni
-
-# prompt/: periodic snapshots of a full build-prompt for model comparison, not part of the project
+# prompt/: leftover reference screenshots (model-comparison), not part of the project.
+# Its actual prompt files live in prompty-prywatne/ now — see below.
 /prompt
+
+# prompty-prywatne/: all private/draft prompts (radni, summary, dated build-prompt
+# snapshots) live here now. Public, published prompts are the sibling folder
+# prompty/, which IS tracked and read at runtime by the /prompt-* pages.
+/prompty-prywatne
 
 # protokoly/: locally-dropped session protokół PDFs (from BIP or FOI requests),
 # fed to scripts/match-protokol-speakers.py -- source documents, not part of the project
@@ -89,3 +91,7 @@ __pycache__/
 
 # notatki/: private working notes (handoff instructions, drafts, etc.), not part of the project
 /notatki
+
+# .remove_*: staged for deletion during folder cleanup — renamed here, not yet
+# deleted, so they stay out of git while under review
+.remove_*

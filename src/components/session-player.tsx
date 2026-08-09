@@ -168,7 +168,7 @@ function slugify(text: string) {
 // easy to lose track of which summary belongs to which session once both
 // sat in the same folder. The "_transkrypcja" suffix (paired with
 // "_podsumowanie" on the prompt-generated summary, see
-// summary/prompt.md's NAZEWNICTWO PLIKU) keeps the two tellable apart at a
+// prompty-prywatne/summary/prompt.md's NAZEWNICTWO PLIKU) keeps the two tellable apart at a
 // glance too, not just by extension. Falls back to the old title-based
 // slug only for the rare meeting with no esesja_id.
 function sessionFileBase(

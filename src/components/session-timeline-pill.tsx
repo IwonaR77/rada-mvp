@@ -13,7 +13,7 @@ export type TimelineMeeting = {
   progress: number | undefined;
   hasSummary: boolean;
   // True when hasSummary is true but the summary was generated with an
-  // older summary/prompt.md version than CURRENT_SUMMARY_PROMPT_VERSION —
+  // older prompty-prywatne/summary/prompt.md version than CURRENT_SUMMARY_PROMPT_VERSION —
   // meaningless when hasSummary is false.
   summaryOutdated: boolean;
 };
@@ -100,7 +100,7 @@ export const SessionTimelinePill = forwardRef<
   // versa) — the summary highlight only means something against the
   // muted default number color the other pills use. Red overrides the
   // usual "has summary" dark highlight when that summary predates the
-  // current summary/prompt.md version — a nudge to regenerate it.
+  // current prompty-prywatne/summary/prompt.md version — a nudge to regenerate it.
   const numberClassName =
     !isCurrent && hasSummary
       ? summaryOutdated
