@@ -88,12 +88,20 @@ export async function SiteHeader() {
             <span className="hidden text-zinc-500 sm:inline">
               {user.email}
             </span>
+            {manager && (
+              <Link
+                href="/admin/konta"
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+              >
+                Konta
+                {pendingRequestCount > 0 && ` (${pendingRequestCount})`}
+              </Link>
+            )}
             <Link
               href={manager ? "/admin/dostep" : "/dostep"}
               className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
             >
               Uprawnienia
-              {manager && pendingRequestCount > 0 && ` (${pendingRequestCount})`}
             </Link>
             <LogoutLink className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100" />
           </>

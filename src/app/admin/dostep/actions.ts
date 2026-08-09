@@ -167,6 +167,7 @@ export async function approveAccessRequest(
   );
 
   revalidatePath("/admin/dostep");
+  revalidatePath("/admin/konta");
   return { error: null };
 }
 
@@ -209,6 +210,7 @@ export async function denyAccessRequest(requestId: string, note: string) {
   );
 
   revalidatePath("/admin/dostep");
+  revalidatePath("/admin/konta");
   return { error: null };
 }
 
@@ -248,6 +250,7 @@ export async function grantAccess(
   );
 
   revalidatePath("/admin/dostep");
+  revalidatePath("/admin/konta");
   return { error: null };
 }
 
@@ -342,6 +345,7 @@ export async function updateUserRole(
   );
 
   revalidatePath("/admin/dostep");
+  revalidatePath("/admin/konta");
   return { error: null };
 }
 
@@ -391,5 +395,6 @@ export async function revokeUserRole(roleId: string) {
   );
 
   revalidatePath("/admin/dostep");
+  revalidatePath("/admin/konta");
   return { error: null };
 }
