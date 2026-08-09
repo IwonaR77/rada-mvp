@@ -1,0 +1,114 @@
+@startuml Architektura Rada (Agatka)
+!global $ARCH_LOCAL = %true()
+!include lib/Archimate.puml
+
+LAYOUT_TOP_DOWN()
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam nodesep 30
+skinparam ranksep 60
+' domyślny font eksportu PDF gubi polskie znaki diakrytyczne — DejaVu Sans
+' ma pełne pokrycie Latin Extended-A i renderuje się poprawnie we wszystkich
+' formatach (SVG/PNG/PDF)
+skinparam defaultFontName "DejaVu Sans"
+
+' ===================== BUSINESS =====================
+together {
+  Business_Actor(mieszkaniec, "Mieszkaniec\nużytkownik publiczny")
+  Business_Service(dostep, "Dostęp i współtworzenie\ndanych o radzie")
+  Business_Actor(redaktor, "Redaktor / Moderator\nrola z uprawnieniami zapisu")
+}
+
+' ===================== APPLICATION, rząd 1 =====================
+together {
+  Application_Component(supabase, "Supabase (BaaS)\nAuth (Google OAuth)\n+ PostgREST + RLS")
+  Application_Component(frontend, "Next.js — Frontend\nApp Router, w tym /admin\nVercel + systemd (równolegle)")
+}
+together {
+  Application_Component(import_esesja, "Import rekordów esesja.pl\nscrape-esesja-records.mjs")
+}
+
+' ===================== APPLICATION, rząd 2 =====================
+together {
+  Application_Component(pipeline_transkr, "Pipeline transkrypcji\nGroq API + GitHub Actions")
+  Application_DataObject(baza, "Baza rady\nsesje, radni, głosowania,\nsprawy, reputacja/moderacja")
+  Application_Component(pipeline_mowcy, "Dopasowanie mówców\nprotokoły BIP → segmenty\ntranskryptu")
+}
+
+' ===================== TECHNOLOGY =====================
+together {
+  Technology_Node(gha, "GitHub Actions")
+  Technology_Service(groq, "Groq API\ntranskrypcja audio\n(zewnętrzne)")
+  Technology_Node(vercel, "Vercel\nprod: ktomowi.pl")
+  Technology_Node(serwer, "Serwer lokalny\nsystemd, port 3000")
+  Technology_Service(postgres, "Supabase Postgres\nhosting bazy, RLS")
+  Technology_Service(bip, "BIP (app.esesja.pl)\nprotokoły sesji\n(zewnętrzne)")
+  Technology_Service(esesja, "esesja.pl\ngłosowania, uchwały,\ninterpelacje (zewnętrzne)")
+}
+Technology_Process(backup, "Backup bazy\npg_dump, cron codziennie")
+
+' ===================== KOLEJNOŚĆ WARSTW =====================
+' Dot/Graphviz liczy ranking na podstawie NAJDŁUŻSZEJ ścieżki w całym
+' grafie — pojedyncze podpowiedzi kierunkowe (_Up/_Down) na relacjach
+' semantycznych bywają "przebijane" przez inne ścieżki (np. hostowanie
+' frontendu przez węzły technologii) i warstwy potrafią się zlać na tym
+' samym poziomie. Ten niewidoczny "kręgosłup" wymusza twardo kolejność
+' biznes → aplikacja rząd 1 → aplikacja rząd 2 → technologia, niezależnie
+' od reszty relacji.
+dostep -[hidden]down-> frontend
+frontend -[hidden]down-> pipeline_transkr
+pipeline_transkr -[hidden]down-> gha
+
+' ===================== RELATIONSHIPS =====================
+Rel_Serving_Left(dostep, mieszkaniec, "przegląda")
+Rel_Serving_Right(dostep, redaktor, "moderuje")
+
+Rel_Realization_Up(frontend, dostep)
+
+Rel_Serving_Right(supabase, frontend, "auth + dane")
+
+Rel_Access_rw_Down(supabase, baza)
+
+Rel_Flow_Right(pipeline_transkr, baza, "zapis: transkrypty")
+Rel_Flow_Left(pipeline_mowcy, baza, "zapis: segmenty -> mówcy")
+Rel_Flow_Down(import_esesja, baza, "zapis: głosowania, uchwały,\ninterpelacje")
+pipeline_mowcy -[hidden]up-> import_esesja
+
+Rel_Assignment_Up(gha, pipeline_transkr, "uruchamia")
+Rel_Serving_Up(groq, pipeline_transkr, "transkrypcja")
+Rel_Assignment_Up(vercel, frontend, "hostuje")
+Rel_Assignment_Up(serwer, frontend, "hostuje")
+Rel_Realization_Up(postgres, baza)
+Rel_Serving_Up(bip, pipeline_mowcy, "protokoły sesji")
+Rel_Serving_Up(esesja, import_esesja, "dane źródłowe")
+
+Rel_Assignment_Right(serwer, backup, "uruchamia")
+Rel_Access_r_Up(backup, baza, "codzienny odczyt\n(pg_dump)")
+
+' ===================== LEGENDA =====================
+' Prawdziwe elementy i relacje ArchiMate (te same ikony/linie co wyżej),
+' żeby legenda nigdy nie rozjechała się z tym, co faktycznie narysowano.
+rectangle "Legenda: ikony i typy relacji ArchiMate" as legend_frame #f5f5f5 {
+  together {
+    Business_Actor(lg_actor, "Aktor biznesowy")
+    Application_Service(lg_service, "Serwis")
+    Application_Component(lg_comp1, "Komponent\naplikacyjny")
+    Application_DataObject(lg_data1, "Obiekt danych")
+    Technology_Node(lg_node, "Węzeł\ntechnologii")
+  }
+  together {
+    Application_Component(lg_comp2, "Komponent")
+    Application_Component(lg_comp3, "Komponent")
+    Application_Component(lg_comp4, "Komponent")
+    Application_DataObject(lg_data2, "Obiekt danych")
+  }
+
+  Rel_Serving_Down(lg_service, lg_actor, "serving: obsługuje / jest używany przez")
+  Rel_Realization_Down(lg_comp2, lg_service, "realization: realizuje / implementuje")
+  Rel_Access_rw_Down(lg_comp3, lg_data1, "access: odczyt i zapis danych")
+  Rel_Flow_Down(lg_comp4, lg_data2, "flow: przepływ danych między procesami")
+  Rel_Assignment_Down(lg_node, lg_comp1, "assignment: hostuje / uruchamia")
+}
+esesja -[hidden]down-> legend_frame
+
+@enduml
