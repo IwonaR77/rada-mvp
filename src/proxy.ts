@@ -16,9 +16,6 @@ const PUBLIC_PATHS = new Set([
   "/logout",
   "/regulamin",
   "/polityka-prywatnosci",
-  "/prompt-podsumowania",
-  "/prompt-oceny-radnych",
-  "/prompt-spraw",
 ]);
 
 export async function proxy(request: NextRequest) {
