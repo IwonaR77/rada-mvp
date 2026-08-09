@@ -61,7 +61,13 @@ async function mergeUserRoleGrant(
   existingQuery = councilId
     ? existingQuery.eq("scope_council_id", councilId)
     : existingQuery.is("scope_council_id", null);
-  const { data: existing } = await existingQuery.maybeSingle();
+  const { data: existing, error: existingError } = await existingQuery.maybeSingle();
+  // A UNIQUE index now guarantees at most one row per (app_user_id, scope)
+  // (see migration 2026-08-09), so this should never fire in normal
+  // operation — but .maybeSingle() still errors if it somehow does, and
+  // that error used to be silently dropped here (only `data` was
+  // destructured), which masked a real duplicate-row bug in production.
+  if (existingError) return { error: existingError, count: null };
 
   const mergedPermissions = Array.from(
     new Set([...(existing?.permissions ?? []), ...levelDef.permissions])
@@ -229,6 +235,8 @@ export async function grantAccess(
     councilId
   );
   if (roleWrite.error) return { error: roleWrite.error.message };
+  if (roleWrite.count === 0)
+    return { error: "Nie udało się zapisać uprawnień" };
 
   await logAudit(
     supabase,
@@ -257,7 +265,7 @@ export async function updateUserRole(
 
   const { data: existing } = await supabase
     .from("user_role")
-    .select("app_user_id")
+    .select("app_user_id, permissions, scope_council_id")
     .eq("id", roleId)
     .maybeSingle();
   if (!existing) return { error: "Nie znaleziono uprawnienia" };
@@ -270,17 +278,59 @@ export async function updateUserRole(
     return { error: "Nie możesz edytować własnego uprawnienia z tego panelu." };
   }
 
-  const { error } = await supabase
-    .from("user_role")
-    // role stays 'manager' — see approveAccessRequest for why.
-    .update({
-      role: "manager",
-      permissions: [...levelDef.permissions],
-      scope_council_id: councilId,
-    })
-    .eq("id", roleId);
+  // Moving a grant to a different scope can't be a plain UPDATE of this
+  // row: the target may already hold one (e.g. promoting someone's
+  // council-scoped Moderator to platform-wide, when they also have the
+  // global browse row every account gets on first login), and the UNIQUE
+  // indexes added 2026-08-09 reject a second row for the same
+  // (app_user_id, scope). Merge into whatever lives at the target scope,
+  // then clean up the row we moved out of.
+  if ((existing.scope_council_id ?? null) !== councilId) {
+    const roleWrite = await mergeUserRoleGrant(
+      supabase,
+      existing.app_user_id,
+      levelDef,
+      councilId
+    );
+    if (roleWrite.error) return { error: roleWrite.error.message };
+    if (roleWrite.count === 0)
+      return { error: "Nie udało się zapisać uprawnień" };
 
-  if (error) return { error: error.message };
+    // Same rule as revokeUserRole: a row carrying the global "browse"
+    // baseline is kept (reduced to just browse) rather than deleted, so
+    // moving a tier away from it doesn't also take away basic access.
+    const sourceHasBrowse = (existing.permissions ?? []).includes("browse");
+    const cleanup = sourceHasBrowse
+      ? await supabase
+          .from("user_role")
+          .update({ permissions: ["browse"] }, { count: "exact" })
+          .eq("id", roleId)
+      : await supabase.from("user_role").delete({ count: "exact" }).eq("id", roleId);
+    if (cleanup.error) return { error: cleanup.error.message };
+  } else {
+    // "browse" is the auto-granted baseline (see grant_browse_permission in
+    // /auth/callback) and, when this row's scope is global, is bundled into
+    // the same row as the chosen tier's permissions. Setting a new level
+    // means "replace the tier", not "replace everything" — so browse
+    // survives even though the rest of the previous permissions (e.g. a
+    // downgrade from Moderator's finalize_vote) do not.
+    const preserved = (existing.permissions ?? []).filter((p) => p === "browse");
+    const nextPermissions = Array.from(
+      new Set([...preserved, ...levelDef.permissions])
+    );
+
+    const { error, count } = await supabase
+      .from("user_role")
+      // role stays 'manager' — see approveAccessRequest for why.
+      .update(
+        { role: "manager", permissions: nextPermissions },
+        { count: "exact" }
+      )
+      .eq("id", roleId);
+
+    if (error) return { error: error.message };
+    if (count === 0) return { error: "Nie udało się zapisać uprawnień" };
+  }
 
   await logAudit(
     supabase,
@@ -310,8 +360,26 @@ export async function revokeUserRole(roleId: string) {
     return { error: "Nie możesz cofnąć własnego uprawnienia z tego panelu." };
   }
 
-  const { error } = await supabase.from("user_role").delete().eq("id", roleId);
+  // If "browse" (the auto-granted baseline) is bundled into this row, only
+  // strip the granted tier and leave the row with just browse — a full
+  // DELETE here would also take away the ability to view the site, not
+  // just the contribution tier being revoked. A row without browse (the
+  // usual case: a council-scoped tier grant) has nothing to preserve, so a
+  // plain delete is correct as-is.
+  const hasBrowse = (existing.permissions ?? []).includes("browse");
+
+  const { error, count } = hasBrowse
+    ? await supabase
+        .from("user_role")
+        .update({ permissions: ["browse"] }, { count: "exact" })
+        .eq("id", roleId)
+    : await supabase
+        .from("user_role")
+        .delete({ count: "exact" })
+        .eq("id", roleId);
+
   if (error) return { error: error.message };
+  if (count === 0) return { error: "Nie udało się cofnąć uprawnienia" };
 
   await logAudit(
     supabase,

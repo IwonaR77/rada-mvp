@@ -58,6 +58,11 @@ export async function assignSegments(
 
   if (error) return { error: error.message };
   if (count === 0) return { error: "Brak uprawnień do tej zmiany" };
+  if (count !== segmentIds.length) {
+    return {
+      error: `Zapisano tylko ${count} z ${segmentIds.length} zaznaczonych segmentów — reszta wymaga wyższych uprawnień.`,
+    };
+  }
 
   revalidatePath(`/sesje/${meetingId}`);
   return { error: null };
