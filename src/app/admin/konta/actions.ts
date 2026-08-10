@@ -212,11 +212,24 @@ export async function denyAccessRequest(requestId: string, note: string) {
   return { error: null };
 }
 
-// Grants a fresh contribution tier to a user who doesn't have one yet (e.g.
-// currently holds only the auto-granted "browse" permission) — unlike
-// updateUserRole, there's no existing contribution-tier user_role row to
-// pick from, so the manager names the target directly.
-export async function grantAccess(
+/**
+ * Ustawia poziom dostępu osoby w JEDNYM zakresie — tworzy wpis, jeśli go tam
+ * jeszcze nie ma, a jeśli jest, zastępuje dotychczasowy poziom.
+ *
+ * Jedna operacja zamiast dawnej pary „nadaj" (sumowała uprawnienia) i „zmień"
+ * (zastępowała je). Panel wyglądał tak samo w obu przypadkach, więc obniżenie
+ * poziomu przez „nadaj" po cichu nic nie robiło — suma uprawnień Moderatora
+ * i Redaktora to nadal Moderator — a w logu zdarzeń lądował wpis o nadaniu,
+ * które się nie odbyło.
+ *
+ * Sumowanie zostaje tam, gdzie jest na miejscu: przy zatwierdzaniu próśb
+ * o dostęp (`approveAccessRequest`), gdzie nikt niczego nie obniża.
+ *
+ * @param level Poziom docelowy; `browse` (nadawane automatycznie przy
+ *   pierwszym logowaniu) przetrwa niezależnie od wyboru — zmieniamy szczebel
+ *   współtworzenia, nie odbieramy podstawowego dostępu.
+ */
+export async function setAccessLevel(
   targetAppUserId: string,
   level: AdminLevel,
   councilId: string | null
@@ -228,117 +241,61 @@ export async function grantAccess(
   const levelDef = ADMIN_LEVELS[level];
   if (!levelDef) return { error: "Nieznany poziom dostępu" };
 
-  const roleWrite = await mergeUserRoleGrant(
-    supabase,
-    targetAppUserId,
-    levelDef,
-    councilId
-  );
-  if (roleWrite.error) return { error: roleWrite.error.message };
-  if (roleWrite.count === 0)
-    return { error: "Nie udało się zapisać uprawnień" };
+  // Ta sama blokada co dawniej w updateUserRole: gdyby jedyny manager obniżył
+  // sobie poziom, zamknąłby się w /admin/konta bez drogi powrotnej poza
+  // bezpośrednim dostępem do bazy. Panel i tak nie pokazuje przycisku przy
+  // własnym koncie — to zabezpieczenie na wypadek wywołania z pominięciem UI.
+  if (targetAppUserId === userId) {
+    return { error: "Nie możesz zmieniać własnych uprawnień z tego panelu." };
+  }
 
-  await logAudit(
-    supabase,
-    userId,
-    targetAppUserId,
-    "role_updated",
-    councilId,
-    `Nadano bezpośrednio: ${levelDef.label}`
-  );
-
-  revalidatePath("/admin/konta");
-  return { error: null };
-}
-
-export async function updateUserRole(
-  roleId: string,
-  level: AdminLevel,
-  councilId: string | null
-) {
-  const { error: permError, supabase, userId } = await requireManager();
-  if (permError) return { error: permError };
-  if (!userId) return { error: "Musisz być zalogowany" };
-
-  const levelDef = ADMIN_LEVELS[level];
-  if (!levelDef) return { error: "Nieznany poziom dostępu" };
-
-  const { data: existing } = await supabase
+  let existingQuery = supabase
     .from("user_role")
-    .select("app_user_id, permissions, scope_council_id")
-    .eq("id", roleId)
-    .maybeSingle();
-  if (!existing) return { error: "Nie znaleziono uprawnienia" };
-  // Self-service demotion/promotion of your own grant through this panel
-  // is disabled — if you're the only manager, revoking or downgrading
-  // yourself here would lock you out of /admin/konta with no way back
-  // short of direct DB access. Ask another manager, or edit the DB directly
-  // if you're certain.
-  if (existing.app_user_id === userId) {
-    return { error: "Nie możesz edytować własnego uprawnienia z tego panelu." };
-  }
+    .select("id, permissions")
+    .eq("app_user_id", targetAppUserId);
+  existingQuery = councilId
+    ? existingQuery.eq("scope_council_id", councilId)
+    : existingQuery.is("scope_council_id", null);
+  const { data: existing, error: existingError } = await existingQuery.maybeSingle();
+  if (existingError) return { error: existingError.message };
 
-  // Moving a grant to a different scope can't be a plain UPDATE of this
-  // row: the target may already hold one (e.g. promoting someone's
-  // council-scoped Moderator to platform-wide, when they also have the
-  // global browse row every account gets on first login), and the UNIQUE
-  // indexes added 2026-08-09 reject a second row for the same
-  // (app_user_id, scope). Merge into whatever lives at the target scope,
-  // then clean up the row we moved out of.
-  if ((existing.scope_council_id ?? null) !== councilId) {
-    const roleWrite = await mergeUserRoleGrant(
-      supabase,
-      existing.app_user_id,
-      levelDef,
-      councilId
-    );
-    if (roleWrite.error) return { error: roleWrite.error.message };
-    if (roleWrite.count === 0)
-      return { error: "Nie udało się zapisać uprawnień" };
+  const preserved = (existing?.permissions ?? []).filter((p) => p === "browse");
+  const nextPermissions = Array.from(
+    new Set([...preserved, ...levelDef.permissions])
+  );
 
-    // Same rule as revokeUserRole: a row carrying the global "browse"
-    // baseline is kept (reduced to just browse) rather than deleted, so
-    // moving a tier away from it doesn't also take away basic access.
-    const sourceHasBrowse = (existing.permissions ?? []).includes("browse");
-    const cleanup = sourceHasBrowse
-      ? await supabase
-          .from("user_role")
-          .update({ permissions: ["browse"] }, { count: "exact" })
-          .eq("id", roleId)
-      : await supabase.from("user_role").delete({ count: "exact" }).eq("id", roleId);
-    if (cleanup.error) return { error: cleanup.error.message };
-  } else {
-    // "browse" is the auto-granted baseline (see grant_browse_permission in
-    // /auth/callback) and, when this row's scope is global, is bundled into
-    // the same row as the chosen tier's permissions. Setting a new level
-    // means "replace the tier", not "replace everything" — so browse
-    // survives even though the rest of the previous permissions (e.g. a
-    // downgrade from Moderator's finalize_vote) do not.
-    const preserved = (existing.permissions ?? []).filter((p) => p === "browse");
-    const nextPermissions = Array.from(
-      new Set([...preserved, ...levelDef.permissions])
-    );
-
-    const { error, count } = await supabase
-      .from("user_role")
-      // role stays 'manager' — see approveAccessRequest for why.
-      .update(
-        { role: "manager", permissions: nextPermissions },
+  // role zostaje 'manager' — kolumna ma check constraint dopuszczający tylko
+  // tę wartość i nie opisuje szczebla; od tego jest permissions[].
+  const { error, count } = existing
+    ? await supabase
+        .from("user_role")
+        .update(
+          { role: "manager", permissions: nextPermissions },
+          { count: "exact" }
+        )
+        .eq("id", existing.id)
+    : await supabase.from("user_role").insert(
+        {
+          app_user_id: targetAppUserId,
+          role: "manager",
+          permissions: nextPermissions,
+          scope_council_id: councilId,
+        },
         { count: "exact" }
-      )
-      .eq("id", roleId);
+      );
 
-    if (error) return { error: error.message };
-    if (count === 0) return { error: "Nie udało się zapisać uprawnień" };
-  }
+  if (error) return { error: error.message };
+  // Brak błędu przy zerze zapisanych wierszy znaczy, że RLS po cichu odrzuciło
+  // zapis — bez tej kontroli panel pokazałby sukces (feedback_rls_silent_denial).
+  if (count === 0) return { error: "Nie udało się zapisać uprawnień" };
 
   await logAudit(
     supabase,
     userId,
-    existing.app_user_id,
+    targetAppUserId,
     "role_updated",
     councilId,
-    `Zmieniono na: ${levelDef.label}`
+    `${existing ? "Zmieniono poziom na" : "Nadano"}: ${levelDef.label}`
   );
 
   revalidatePath("/admin/konta");
