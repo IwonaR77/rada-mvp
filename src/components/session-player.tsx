@@ -744,77 +744,140 @@ export function SessionPlayer({
             )}
           </div>
 
-          <div>
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-              Radni
-            </h3>
-            <ul className="flex flex-col gap-1">
-              {councilors.map((c) => (
-                <li
-                  key={c.id}
-                  className={`flex items-center gap-2 rounded-lg px-2 py-0.5 ${
-                    speakingIds.has(c.id)
-                      ? "bg-emerald-50 dark:bg-emerald-950/30"
-                      : ""
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={speakerFilter.has(c.id)}
-                    onChange={() => toggleSpeakerFilter(c.id)}
-                    className="shrink-0"
-                  />
-                  <button
-                    disabled={selected.size === 0 || isPending}
-                    onClick={() => assignTo({ type: "councilor", id: c.id })}
-                    className={`w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-zinc-100 disabled:opacity-40 dark:hover:bg-zinc-800 ${
-                      speakingIds.has(c.id) ? "font-semibold" : ""
-                    }`}
-                  >
-                    {c.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <SpeakerGroup
+            title="Radni"
+            people={councilors.map((c) => ({
+              id: c.id,
+              label: c.name,
+              sub: null,
+              target: { type: "councilor" as const, id: c.id },
+            }))}
+            speakingIds={speakingIds}
+            speakerFilter={speakerFilter}
+            onToggleFilter={toggleSpeakerFilter}
+            onAssign={assignTo}
+            disabled={selected.size === 0 || isPending}
+          />
 
           {officials.length > 0 && (
-            <div>
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                Urzędnicy
-              </h3>
-              <ul className="flex flex-col gap-1">
-                {officials.map((o) => (
-                  <li
-                    key={o.id}
-                    className={`flex items-center gap-2 rounded-lg px-2 py-0.5 ${
-                      speakingIds.has(o.id)
-                        ? "bg-emerald-50 dark:bg-emerald-950/30"
-                        : ""
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={speakerFilter.has(o.id)}
-                      onChange={() => toggleSpeakerFilter(o.id)}
-                      className="shrink-0"
-                    />
-                    <button
-                      disabled={selected.size === 0 || isPending}
-                      onClick={() => assignTo({ type: "official", id: o.id })}
-                      className={`w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-zinc-100 disabled:opacity-40 dark:hover:bg-zinc-800 ${
-                        speakingIds.has(o.id) ? "font-semibold" : ""
-                      }`}
-                    >
-                      {o.full_name}
-                      <span className="text-zinc-400"> — {o.role}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <SpeakerGroup
+              title="Urzędnicy"
+              people={officials.map((o) => ({
+                id: o.id,
+                label: o.full_name,
+                sub: o.role,
+                target: { type: "official" as const, id: o.id },
+              }))}
+              speakingIds={speakingIds}
+              speakerFilter={speakerFilter}
+              onToggleFilter={toggleSpeakerFilter}
+              onAssign={assignTo}
+              disabled={selected.size === 0 || isPending}
+            />
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+type SpeakerTarget =
+  | { type: "councilor"; id: string }
+  | { type: "official"; id: string };
+
+type SpeakerEntry = {
+  id: string;
+  label: string;
+  /** Dopisek przy nazwisku — dla urzędników funkcja, dla radnych nic. */
+  sub: string | null;
+  target: SpeakerTarget;
+};
+
+/**
+ * Jedna kategoria na liście mówców (radni albo urzędnicy), z osobami
+ * występującymi w tej sesji wyciągniętymi na górę.
+ *
+ * Lista rady miejskiej ma 43 pozycje, a w jednej sesji pada mediana 10 różnych
+ * mówców — bez tego podziału szuka się jednej czwartej listy wśród całości.
+ *
+ * Podział, a nie zmiana kolejności całej listy: pozycje nie przeskakują pod
+ * kursorem w trakcie klikania. Przy tagowaniu setek segmentów lista
+ * przestawiająca się po każdym kliknięciu to gotowe źródło cichych pomyłek
+ * w danych o konkretnych osobach.
+ *
+ * „W tej sesji" obejmuje też przypisania jeszcze niezatwierdzone — propozycje
+ * z dopasowania do protokołów dają obsadę sesji, zanim człowiek kliknie
+ * cokolwiek, i to jest dokładnie ten moment, w którym skrót jest najbardziej
+ * potrzebny.
+ */
+function SpeakerGroup({
+  title,
+  people,
+  speakingIds,
+  speakerFilter,
+  onToggleFilter,
+  onAssign,
+  disabled,
+}: {
+  title: string;
+  people: SpeakerEntry[];
+  speakingIds: Set<string>;
+  speakerFilter: Set<string>;
+  onToggleFilter: (id: string) => void;
+  onAssign: (target: SpeakerTarget) => void;
+  disabled: boolean;
+}) {
+  const inSession = people.filter((p) => speakingIds.has(p.id));
+  const rest = people.filter((p) => !speakingIds.has(p.id));
+
+  const row = (p: SpeakerEntry) => (
+    <li
+      key={p.id}
+      className={`flex items-center gap-2 rounded-lg px-2 py-0.5 ${
+        speakingIds.has(p.id) ? "bg-emerald-50 dark:bg-emerald-950/30" : ""
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={speakerFilter.has(p.id)}
+        onChange={() => onToggleFilter(p.id)}
+        className="shrink-0"
+      />
+      <button
+        disabled={disabled}
+        onClick={() => onAssign(p.target)}
+        className={`w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-zinc-100 disabled:opacity-40 dark:hover:bg-zinc-800 ${
+          speakingIds.has(p.id) ? "font-semibold" : ""
+        }`}
+      >
+        {p.label}
+        {p.sub && <span className="text-zinc-400"> — {p.sub}</span>}
+      </button>
+    </li>
+  );
+
+  return (
+    <div>
+      <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+        {title}
+      </h3>
+      {/* Podpisy pojawiają się dopiero, gdy jest co wyciągnąć na górę —
+          dla nietkniętej sesji lista wygląda dokładnie jak dotąd. */}
+      {inSession.length > 0 ? (
+        <>
+          <p className="mb-1 text-xs text-emerald-700 dark:text-emerald-500">
+            W tej sesji ({inSession.length})
+          </p>
+          <ul className="flex flex-col gap-1">{inSession.map(row)}</ul>
+          {rest.length > 0 && (
+            <>
+              <p className="mb-1 mt-3 text-xs text-zinc-400">Pozostali</p>
+              <ul className="flex flex-col gap-1">{rest.map(row)}</ul>
+            </>
+          )}
+        </>
+      ) : (
+        <ul className="flex flex-col gap-1">{people.map(row)}</ul>
       )}
     </div>
   );
