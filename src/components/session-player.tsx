@@ -115,6 +115,7 @@ export function SessionPlayer({
   canFinalize,
   canDownloadTranscript,
   summaryManager,
+  taggingProgress,
   initialSeek,
 }: {
   meetingId: string;
@@ -143,6 +144,8 @@ export function SessionPlayer({
    * decyduje strona, która i tak sprawdza uprawnienia dla reszty widoku.
    */
   summaryManager?: ReactNode;
+  /** Pasek postępu tagowania tej sesji, nad listą wypowiedzi. */
+  taggingProgress?: ReactNode;
   initialSeek?: number;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -521,6 +524,7 @@ export function SessionPlayer({
           </div>
         </div>
 
+        {taggingProgress && <div className="mb-3">{taggingProgress}</div>}
         <ul
           onWheel={() => {
             followPlaybackRef.current = false;

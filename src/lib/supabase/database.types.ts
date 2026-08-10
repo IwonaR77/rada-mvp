@@ -1280,6 +1280,14 @@ export type Database = {
           start_time: number
         }[]
       }
+      term_tagging_time: {
+        Args: { p_term_id: string }
+        Returns: {
+          total_seconds: number
+          finalized_seconds: number
+          proposed_seconds: number
+        }[]
+      }
       term_attendance_stats: {
         Args: { p_term_id: string }
         Returns: {

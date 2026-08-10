@@ -7,6 +7,7 @@ import { LiveMeetingRefresh } from "@/components/live-meeting-refresh";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { CURRENT_SUMMARY_PROMPT_VERSION } from "@/lib/summary-prompt-version";
 import { SummaryManager } from "@/components/summary-manager";
+import { TaggingProgress } from "@/components/tagging-progress";
 
 export default async function SessionPage({
   params,
@@ -280,6 +281,27 @@ export default async function SessionPage({
         canAssign={canAssign}
         canFinalize={finalizePermission}
         canDownloadTranscript={canDownloadTranscript}
+        taggingProgress={
+          // Liczone z segmentów już pobranych na tę stronę — postęp tej jednej
+          // sesji nie wymaga osobnego zapytania, w odróżnieniu od widoku rady.
+          (() => {
+            const dur = (s: { start_time: number; end_time: number }) =>
+              Number(s.end_time) - Number(s.start_time);
+            const all = segments ?? [];
+            return (
+              <TaggingProgress
+                label="Przypisani mówcy w tej sesji"
+                totalSeconds={all.reduce((a, s) => a + dur(s), 0)}
+                finalizedSeconds={all
+                  .filter((s) => s.status === "finalized")
+                  .reduce((a, s) => a + dur(s), 0)}
+                proposedSeconds={all
+                  .filter((s) => s.status === "proposed")
+                  .reduce((a, s) => a + dur(s), 0)}
+              />
+            );
+          })()
+        }
         summaryManager={
           canManageSummary ? (
             <SummaryManager

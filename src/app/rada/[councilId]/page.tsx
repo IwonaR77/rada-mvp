@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { FavoriteCouncilButton } from "@/components/favorite-council-button";
 import { SpeakingHeatmap } from "@/components/speaking-heatmap";
 import { getSpeakingActivity } from "@/lib/council-activity";
+import { TaggingProgress } from "@/components/tagging-progress";
 
 export default async function CouncilHubPage({
   params,
@@ -44,12 +45,24 @@ export default async function CouncilHubPage({
     .maybeSingle();
 
   let activity: Awaited<ReturnType<typeof getSpeakingActivity>> | null = null;
+  let taggingTime: {
+    total_seconds: number;
+    finalized_seconds: number;
+    proposed_seconds: number;
+  } | null = null;
   if (latestTerm) {
     const { data: officials } = await supabase
       .from("official")
       .select("id, full_name, role")
       .eq("council_id", councilId);
     activity = await getSpeakingActivity(supabase, latestTerm.id, officials ?? []);
+    // Postęp tagowania liczony czasem wypowiedzi — mówi, ile jeszcze zostało
+    // do przesłuchania, czego heatmapa sama z siebie nie pokazuje: pusta
+    // komórka może znaczyć "nie mówił" albo "nikt tego jeszcze nie tknął".
+    const { data: timeRows } = await supabase.rpc("term_tagging_time", {
+      p_term_id: latestTerm.id,
+    });
+    taggingTime = timeRows?.[0] ?? null;
   }
 
   return (
@@ -112,6 +125,15 @@ export default async function CouncilHubPage({
           <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
             Aktywność na sesjach {latestTerm?.label ? `— ${latestTerm.label}` : ""}
           </h3>
+          {taggingTime && (
+            <div className="mb-4">
+              <TaggingProgress
+                totalSeconds={Number(taggingTime.total_seconds)}
+                finalizedSeconds={Number(taggingTime.finalized_seconds)}
+                proposedSeconds={Number(taggingTime.proposed_seconds)}
+              />
+            </div>
+          )}
           <SpeakingHeatmap
             councilors={[
               ...activity.councilors.map((c) => ({ ...c, href: `/radny/${c.id}` })),
