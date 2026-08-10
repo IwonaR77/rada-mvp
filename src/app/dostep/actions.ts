@@ -27,6 +27,18 @@ export async function submitAccessRequest(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Musisz być zalogowany" };
 
+  // Zablokowane konto nie może wnioskować o uprawnienia. Proxy odcina samą
+  // stronę /dostep, ale akcja serwerowa jest właściwą granicą — wywołać ją
+  // da się z pominięciem interfejsu.
+  const { data: account } = await supabase
+    .from("app_user")
+    .select("blocked_at")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (account?.blocked_at) {
+    return { error: "Konto jest zablokowane." };
+  }
+
   // Defense in depth — the /dostep UI already hides levels the user holds,
   // but this is the actual authorization boundary for the server action.
   const { data: roles } = await supabase

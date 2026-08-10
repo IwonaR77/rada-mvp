@@ -31,5 +31,7 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  return { response, user };
+  // Klient wraca razem z sesją, żeby proxy mogło dopytać o stan konta bez
+  // budowania drugiego klienta i drugiego odświeżenia tokenu.
+  return { response, user, supabase };
 }

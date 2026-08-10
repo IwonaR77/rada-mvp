@@ -18,6 +18,19 @@ const PUBLIC_PATHS = new Set([
   "/polityka-prywatnosci",
 ]);
 
+// Ścieżki, które widzi także zablokowane konto (Regulamin §5.6). Regulamin i
+// polityka zostają celowo: są publiczne dla niezalogowanych, więc odcinanie
+// ich zablokowanym niczego nie chroni, a utrudnia sprawdzenie, na jakiej
+// podstawie blokada nastąpiła.
+const BLOCKED_ALLOWED_PATHS = new Set([
+  "/brak-dostepu",
+  "/logout",
+  "/auth/callback",
+  "/auth/error",
+  "/regulamin",
+  "/polityka-prywatnosci",
+]);
+
 export async function proxy(request: NextRequest) {
   if (request.nextUrl.pathname === "/szukaj") {
     const key = `szukaj:${clientIp(request.headers)}`;
@@ -36,10 +49,30 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  const { response, user } = await updateSession(request);
+  const { response, user, supabase } = await updateSession(request);
 
   if (!user && !PUBLIC_PATHS.has(request.nextUrl.pathname)) {
     return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  // Blokada musi być egzekwowana tutaj, a nie tylko przez RLS. RLS pilnuje
+  // danych, ale część stron nie czyta z bazy w ogóle — prompty i dokumenty
+  // czytają z dysku, a /dostep pozwalał zablokowanemu kontu wnioskować
+  // o nowe uprawnienia. Proxy jest jedynym miejscem, przez które przechodzi
+  // każde żądanie, więc tu jest granica.
+  //
+  // Kosztuje jedno zapytanie po kluczu głównym na żądanie zalogowanego
+  // użytkownika. Świadomy wybór: sesja nie niesie tej informacji, a blokada
+  // musi działać od razu, nie po wygaśnięciu tokenu.
+  if (user && !BLOCKED_ALLOWED_PATHS.has(request.nextUrl.pathname)) {
+    const { data: account } = await supabase
+      .from("app_user")
+      .select("blocked_at")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (account?.blocked_at) {
+      return NextResponse.redirect(new URL("/brak-dostepu", request.url));
+    }
   }
 
   return response;
