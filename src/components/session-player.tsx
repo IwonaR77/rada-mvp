@@ -202,6 +202,19 @@ export function SessionPlayer({
     segments.map(getAssignedId).filter((id): id is string => Boolean(id))
   );
 
+  // Czas mówienia w TEJ sesji — porządkuje listę mówców tak, żeby osoby
+  // prowadzące obrady i najczęściej zabierające głos były najwyżej. Liczone
+  // z segmentów już wczytanych na stronę, bez dodatkowego zapytania.
+  const speakingSeconds = new Map<string, number>();
+  for (const seg of segments) {
+    const id = getAssignedId(seg);
+    if (!id) continue;
+    speakingSeconds.set(
+      id,
+      (speakingSeconds.get(id) ?? 0) + Number(seg.end_time) - Number(seg.start_time)
+    );
+  }
+
   const proposedSegments = segments.filter((s) => s.status === "proposed");
   const selectedProposedIds = Array.from(selected).filter((id) =>
     proposedSegments.some((s) => s.id === id)
@@ -753,6 +766,7 @@ export function SessionPlayer({
               target: { type: "councilor" as const, id: c.id },
             }))}
             speakingIds={speakingIds}
+            speakingSeconds={speakingSeconds}
             speakerFilter={speakerFilter}
             onToggleFilter={toggleSpeakerFilter}
             onAssign={assignTo}
@@ -769,6 +783,7 @@ export function SessionPlayer({
                 target: { type: "official" as const, id: o.id },
               }))}
               speakingIds={speakingIds}
+              speakingSeconds={speakingSeconds}
               speakerFilter={speakerFilter}
               onToggleFilter={toggleSpeakerFilter}
               onAssign={assignTo}
@@ -814,6 +829,7 @@ function SpeakerGroup({
   title,
   people,
   speakingIds,
+  speakingSeconds,
   speakerFilter,
   onToggleFilter,
   onAssign,
@@ -822,12 +838,24 @@ function SpeakerGroup({
   title: string;
   people: SpeakerEntry[];
   speakingIds: Set<string>;
+  /** Czas mówienia w tej sesji, w sekundach — porządek sekcji „W tej sesji". */
+  speakingSeconds: Map<string, number>;
   speakerFilter: Set<string>;
   onToggleFilter: (id: string) => void;
   onAssign: (target: SpeakerTarget) => void;
   disabled: boolean;
 }) {
-  const inSession = people.filter((p) => speakingIds.has(p.id));
+  // Najwięcej mówiący na górze. Przy równym czasie alfabetycznie, żeby
+  // kolejność była powtarzalna, a nie zależna od kolejności wczytania.
+  const inSession = people
+    .filter((p) => speakingIds.has(p.id))
+    .sort(
+      (a, b) =>
+        (speakingSeconds.get(b.id) ?? 0) - (speakingSeconds.get(a.id) ?? 0) ||
+        a.label.localeCompare(b.label, "pl")
+    );
+  // Pozostali zostają alfabetycznie — wszyscy mają zero, więc sortowanie
+  // czasem dałoby im kolejność przypadkową.
   const rest = people.filter((p) => !speakingIds.has(p.id));
 
   const row = (p: SpeakerEntry) => (
@@ -852,6 +880,13 @@ function SpeakerGroup({
       >
         {p.label}
         {p.sub && <span className="text-zinc-400"> — {p.sub}</span>}
+        {/* Czas obok nazwiska, żeby kolejność sekcji nie wyglądała
+            na przypadkową. */}
+        {speakingSeconds.has(p.id) && (
+          <span className="float-right tabular-nums text-xs text-zinc-400">
+            {formatTime(speakingSeconds.get(p.id) ?? 0)}
+          </span>
+        )}
       </button>
     </li>
   );
