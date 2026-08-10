@@ -80,8 +80,17 @@ function sqlEscape(s) {
   return s.replace(/'/g, "''");
 }
 
+// Identyfikator posiedzenia u dostawcy transmisji. Rady spoza esesja.pl nie
+// mają esesja_id — bez tego wychodziła nazwa "sesja_null_<data>", a dwie takie
+// sesje nadpisywałyby sobie wpis w mp3-stats.json.
+function sessionKey(m) {
+  return m.esesja_id ?? m.source_id ?? m.id;
+}
+
+// Tylko etykieta plików roboczych; wiązanie z posiedzeniem idzie osobno,
+// przez --meeting przy imporcie.
 function sessionName(m) {
-  return `sesja_${m.esesja_id}_${m.date}`;
+  return `sesja_${sessionKey(m)}_${m.date}`;
 }
 
 async function resolveVideoUrl(esesjaId) {
@@ -102,7 +111,7 @@ async function resolveVideoUrl(esesjaId) {
 // kopii pod Groq (patrz groq-lib.mjs cutChunks). Zasila groq/mp3-stats.json
 // (własny, niezależny od whisper/mp3-stats.json starego pipeline'u), który
 // realnie karmi też przyszły temat identyfikacji mówcy głosem (backlog).
-function recordMp3Stats(esesjaId, date, sizeBytes, durationSeconds) {
+function recordMp3Stats(sessionId, date, sizeBytes, durationSeconds) {
   let statsFile = { bytes_per_second_estimate: null, sessions: [] };
   if (existsSync(MP3_STATS_FILE)) {
     try {
@@ -112,20 +121,20 @@ function recordMp3Stats(esesjaId, date, sizeBytes, durationSeconds) {
     }
   }
   const entry = {
-    esesja_id: esesjaId,
+    esesja_id: sessionId,
     date,
     duration_seconds: durationSeconds,
     mp3_size_bytes: sizeBytes,
     source: "real",
   };
-  const idx = statsFile.sessions.findIndex((s) => s.esesja_id === esesjaId);
+  const idx = statsFile.sessions.findIndex((s) => s.esesja_id === sessionId);
   if (idx >= 0) statsFile.sessions[idx] = entry;
   else statsFile.sessions.push(entry);
   statsFile.sessions.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
   writeFileSync(MP3_STATS_FILE, JSON.stringify(statsFile, null, 2));
 }
 
-function downloadAndConvert(name, videoUrl, esesjaId, date) {
+function downloadAndConvert(name, videoUrl, sessionId, date) {
   const mp4 = path.join(WORK_DIR, `${name}.mp4`);
   const mp3 = path.join(WORK_DIR, `${name}.mp3`);
   mkdirSync(WORK_DIR, { recursive: true });
@@ -148,7 +157,7 @@ function downloadAndConvert(name, videoUrl, esesjaId, date) {
   try {
     const sizeBytes = statSync(mp3).size;
     const durationSeconds = ffprobeDuration(mp3);
-    recordMp3Stats(esesjaId, date, sizeBytes, durationSeconds);
+    recordMp3Stats(sessionId, date, sizeBytes, durationSeconds);
   } catch (e) {
     log(`Nie udało się zapisać statystyk mp3: ${e.message}`);
   }
@@ -172,7 +181,7 @@ export async function processMeeting(m) {
     );
   }
 
-  const { mp3 } = downloadAndConvert(name, videoUrl, m.esesja_id, m.date);
+  const { mp3 } = downloadAndConvert(name, videoUrl, sessionKey(m), m.date);
   supabaseQuery(`update meeting set video_downloaded = true where id = '${m.id}';`);
 
   const chunkDir = path.join(WORK_DIR, `${name}-chunks`);
@@ -192,7 +201,12 @@ export async function processMeeting(m) {
   log(`Zapisano ${correctedSegments.length} segmentów do ${vttPath}`);
 
   log(`Importuję do bazy...`);
-  execFileSync("node", ["scripts/import-transcript.mjs", vttPath], {
+  // --meeting jawnie, zamiast pozwalać importowi wyłuskać esesja_id z nazwy
+  // pliku. To sprzężenie przez konwencję nazw działało, dopóki każda sesja
+  // miała esesja_id; dla rady spoza esesja.pl import przerywał pracę
+  // dokładnie tutaj — po pobraniu nagrania i opłaconej transkrypcji, czyli
+  // w najgorszym możliwym momencie.
+  execFileSync("node", ["scripts/import-transcript.mjs", vttPath, "--meeting", m.id], {
     cwd: REPO_ROOT,
     stdio: "inherit",
     timeout: 5 * 60 * 1000,
@@ -216,7 +230,7 @@ async function main() {
   // Filtr musi być tutaj, a nie w kolejności kroków workflow: awaria importu
   // napisów i tak oddałaby sesję temu skryptowi.
   const pending = await supabaseQuery(
-    `select id, esesja_id, date, video_url from meeting where transcript_status != 'rozpisana' and meeting_type != 'komisja' and coalesce(subtitles_available, false) = false order by date asc limit 1;`
+    `select id, esesja_id, source_id, date, video_url from meeting where transcript_status != 'rozpisana' and meeting_type != 'komisja' and coalesce(subtitles_available, false) = false order by date asc limit 1;`
   );
 
   if (pending.length === 0) {
