@@ -15,6 +15,7 @@ Weliksiak=>Feliksiak
 Feliksieka=>Feliksiaka
 Feliksziak=>Feliksiak
 Feliksziak.=>Feliksiak.
+Piasta=>Gwiazda
 Gwoździaka=>Woźniaka
 Boźniak=>Woźniak
 Szliff=>Szlis
