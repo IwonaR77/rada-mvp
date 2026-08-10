@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import ReactPlayer from "react-player";
 import ReactMarkdown from "react-markdown";
@@ -196,6 +196,7 @@ export function SessionPlayer({
   canAssign,
   canFinalize,
   canDownloadTranscript,
+  summaryManager,
   initialSeek,
 }: {
   meetingId: string;
@@ -212,6 +213,12 @@ export function SessionPlayer({
   canAssign: boolean;
   canFinalize: boolean;
   canDownloadTranscript: boolean;
+  /**
+   * Panel managera pod podsumowaniem (wgranie .md, prompt, uwagi). Wchodzi
+   * gotowym węzłem, a nie flagą uprawnień — o tym, czy manager go widzi,
+   * decyduje strona, która i tak sprawdza uprawnienia dla reszty widoku.
+   */
+  summaryManager?: ReactNode;
   initialSeek?: number;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -440,6 +447,7 @@ export function SessionPlayer({
             <p className="text-zinc-400">Brak podsumowania.</p>
           )}
         </div>
+        {summaryManager}
       </div>
 
       <div className="flex flex-1 flex-col gap-6">

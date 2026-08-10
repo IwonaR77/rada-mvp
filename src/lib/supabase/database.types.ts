@@ -1030,6 +1030,48 @@ export type Database = {
           },
         ]
       }
+      summary_feedback: {
+        Row: {
+          author_id: string
+          body: string
+          created_at: string
+          id: string
+          meeting_id: string
+          prompt_version: number | null
+        }
+        Insert: {
+          author_id: string
+          body: string
+          created_at?: string
+          id?: string
+          meeting_id: string
+          prompt_version?: number | null
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          created_at?: string
+          id?: string
+          meeting_id?: string
+          prompt_version?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "summary_feedback_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "summary_feedback_meeting_id_fkey"
+            columns: ["meeting_id"]
+            isOneToOne: false
+            referencedRelation: "meeting"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       term: {
         Row: {
           council_id: string

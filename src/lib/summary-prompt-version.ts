@@ -1,6 +1,9 @@
-// Bump this whenever prompty-prywatne/summary/prompt.md changes in a way that would
-// meaningfully change existing summaries' content — meeting rows whose
-// summary_prompt_version is lower then read as "generated with an older
-// prompt", which the timeline flags (red session number) as a reminder to
-// regenerate that session's summary.
-export const CURRENT_SUMMARY_PROMPT_VERSION = 4;
+import { currentSummaryPromptVersion } from "@/lib/summary-prompt";
+
+// Wersja promptu podsumowań. Posiedzenia z niższym summary_prompt_version
+// czytają się jako „wygenerowane starszym promptem", co oś czasu oznacza
+// (czerwony numer sesji) jako przypomnienie, że warto je odświeżyć.
+//
+// Numer nie jest już wpisywany ręcznie — pochodzi z nagłówka samego pliku
+// promptu w prompty/, patrz src/lib/summary-prompt.ts.
+export const CURRENT_SUMMARY_PROMPT_VERSION = currentSummaryPromptVersion();

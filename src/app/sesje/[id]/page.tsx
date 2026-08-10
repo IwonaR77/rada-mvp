@@ -6,6 +6,7 @@ import { SessionNeighborNav } from "@/components/session-neighbor-nav";
 import { LiveMeetingRefresh } from "@/components/live-meeting-refresh";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { CURRENT_SUMMARY_PROMPT_VERSION } from "@/lib/summary-prompt-version";
+import { SummaryManager } from "@/components/summary-manager";
 
 export default async function SessionPage({
   params,
@@ -22,7 +23,7 @@ export default async function SessionPage({
   const { data: meeting } = await supabase
     .from("meeting")
     .select(
-      "id, title, date, esesja_id, video_url, summary, topics, term_id, term:term_id(council:council_id(id, name))"
+      "id, title, date, esesja_id, video_url, summary, summary_prompt_version, topics, term_id, term:term_id(council:council_id(id, name))"
     )
     .eq("id", id)
     .maybeSingle();
@@ -125,6 +126,7 @@ export default async function SessionPage({
   let canAssign = false;
   let finalizePermission = false;
   let canDownloadTranscript = false;
+  let canManageSummary = false;
   if (user) {
     const { data: appUser } = await supabase
       .from("app_user")
@@ -133,8 +135,12 @@ export default async function SessionPage({
       .maybeSingle();
     isAdmin = appUser?.role === "admin" || appUser?.role === "moderator";
 
-    const [{ data: canVote }, { data: canFinalize }, { data: canDownload }] =
-      await Promise.all([
+    const [
+      { data: canVote },
+      { data: canFinalize },
+      { data: canDownload },
+      { data: isManager },
+    ] = await Promise.all([
         supabase.rpc("user_has_permission", {
           uid: user.id,
           perm: "vote",
@@ -150,11 +156,32 @@ export default async function SessionPage({
           perm: "download_txt_srt",
           target_council_id: councilId ?? undefined,
         }),
+        supabase.rpc("user_has_permission", {
+          uid: user.id,
+          perm: "full_access",
+          target_council_id: councilId ?? undefined,
+        }),
       ]);
     canAssign = Boolean(canVote) || Boolean(canFinalize);
     finalizePermission = Boolean(canFinalize);
     canDownloadTranscript = Boolean(canDownload);
+    canManageSummary = Boolean(isManager);
   }
+
+  // Uwagi do promptu widzi tylko manager tej rady (polityka RLS na
+  // summary_feedback), więc zapytanie ma sens dopiero po sprawdzeniu.
+  const feedbackRows = canManageSummary
+    ? (
+        await supabase
+          .from("summary_feedback")
+          .select(
+            "id, body, created_at, prompt_version, author:author_id(id, display_name)"
+          )
+          .eq("meeting_id", id)
+          .order("created_at", { ascending: false })
+          .range(0, 199)
+      ).data ?? []
+    : [];
 
   const councilors = (roster ?? [])
     .filter((r) => r.councilor)
@@ -242,6 +269,24 @@ export default async function SessionPage({
         canAssign={canAssign}
         canFinalize={finalizePermission}
         canDownloadTranscript={canDownloadTranscript}
+        summaryManager={
+          canManageSummary ? (
+            <SummaryManager
+              meetingId={meeting.id}
+              currentPromptVersion={CURRENT_SUMMARY_PROMPT_VERSION}
+              summaryPromptVersion={meeting.summary_prompt_version}
+              hasSummary={Boolean(meeting.summary)}
+              feedback={feedbackRows.map((f) => ({
+                id: f.id,
+                body: f.body,
+                createdAt: f.created_at,
+                promptVersion: f.prompt_version,
+                authorName: f.author?.display_name ?? "Manager",
+                isOwn: f.author?.id === user?.id,
+              }))}
+            />
+          ) : undefined
+        }
         initialSeek={initialSeek}
       />
     </div>

@@ -4,10 +4,144 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { parseVtt } from "@/lib/vtt";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
+import { parseSummaryFile } from "@/lib/summary-prompt";
+import { CURRENT_SUMMARY_PROMPT_VERSION } from "@/lib/summary-prompt-version";
 
 type AssignTarget =
   | { type: "councilor"; id: string }
   | { type: "official"; id: string };
+
+// Uwagi do promptu i wgrywanie podsumowań to praca redakcyjna nad tym, co
+// serwis mówi o realnych ludziach — dlatego pełny dostęp (manager), a nie
+// moderator. Zakres liczy się per rada: manager Grójca nie redaguje powiatu.
+async function requireSummaryManager(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  meetingId: string
+): Promise<{ ok: false; error: string } | { ok: true; userId: string }> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Musisz być zalogowana" };
+
+  const { data: meeting } = await supabase
+    .from("meeting")
+    .select("term:term_id(council_id)")
+    .eq("id", meetingId)
+    .maybeSingle();
+  if (!meeting) return { ok: false, error: "Nie ma takiej sesji" };
+
+  const { data: isManager } = await supabase.rpc("user_has_permission", {
+    uid: user.id,
+    perm: "full_access",
+    target_council_id: meeting.term?.council_id ?? undefined,
+  });
+  if (!isManager) return { ok: false, error: "Brak uprawnień" };
+
+  return { ok: true, userId: user.id };
+}
+
+const SUMMARY_MAX_LENGTH = 100_000;
+const FEEDBACK_MAX_LENGTH = 5_000;
+
+/**
+ * Wgrywa gotowy plik .md z podsumowaniem sesji (prompt → czat → plik).
+ *
+ * Linia „TAGI:" trafia do meeting.topics jako osobna kolumna, a wersję
+ * promptu bierzemy z treści pliku, nie z bieżącej wersji promptu: wgranie
+ * dziś podsumowania zrobionego starszym promptem ma dalej być widoczne jako
+ * nieaktualne, a nie udawać świeże.
+ */
+export async function importSummary(meetingId: string, markdown: string) {
+  const supabase = await createClient();
+  const auth = await requireSummaryManager(supabase, meetingId);
+  if (!auth.ok) return { error: auth.error };
+
+  if (markdown.length > SUMMARY_MAX_LENGTH) {
+    return { error: "Plik jest podejrzanie duży — to na pewno podsumowanie?" };
+  }
+
+  const { summary, topics, promptVersion } = parseSummaryFile(markdown);
+  if (summary.length === 0) return { error: "Plik jest pusty." };
+
+  const { error } = await supabase
+    .from("meeting")
+    .update({
+      summary,
+      summary_prompt_version: promptVersion,
+      // Brak linii TAGI: (starsze prompty) nie może wyczyścić tagów, które
+      // ktoś już ustawił — wtedy kolumny po prostu nie ruszamy.
+      ...(topics ? { topics } : {}),
+    })
+    .eq("id", meetingId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/sesje/${meetingId}`);
+  revalidatePath("/rada/[councilId]/sesje", "page");
+  return {
+    error: null,
+    topics,
+    promptVersion,
+    isStale:
+      promptVersion === null || promptVersion < CURRENT_SUMMARY_PROMPT_VERSION,
+  };
+}
+
+/** Uwaga managera: czego prompt nie wyłapał w tej konkretnej sesji. */
+export async function addSummaryFeedback(meetingId: string, body: string) {
+  const supabase = await createClient();
+  const auth = await requireSummaryManager(supabase, meetingId);
+  if (!auth.ok) return { error: auth.error };
+
+  const trimmed = body.trim();
+  if (trimmed.length === 0) return { error: "Uwaga jest pusta." };
+  if (trimmed.length > FEEDBACK_MAX_LENGTH) {
+    return { error: `Uwaga może mieć najwyżej ${FEEDBACK_MAX_LENGTH} znaków.` };
+  }
+
+  // Wersja, którą wygenerowano krytykowany tekst — po dwóch podbiciach
+  // promptu inaczej nie wiadomo, czy uwaga jest jeszcze aktualna.
+  const { data: meeting } = await supabase
+    .from("meeting")
+    .select("summary_prompt_version")
+    .eq("id", meetingId)
+    .maybeSingle();
+
+  const { error } = await supabase.from("summary_feedback").insert({
+    meeting_id: meetingId,
+    author_id: auth.userId,
+    prompt_version:
+      meeting?.summary_prompt_version ?? CURRENT_SUMMARY_PROMPT_VERSION,
+    body: trimmed,
+  });
+  if (error) return { error: error.message };
+
+  revalidatePath(`/sesje/${meetingId}`);
+  return { error: null };
+}
+
+export async function deleteSummaryFeedback(
+  meetingId: string,
+  feedbackId: string
+) {
+  const supabase = await createClient();
+  const auth = await requireSummaryManager(supabase, meetingId);
+  if (!auth.ok) return { error: auth.error };
+
+  // Polityka RLS przepuszcza kasowanie tylko autorowi — filtr po author_id
+  // jest tu po to, żeby cudza uwaga dawała jawny komunikat zamiast cichego
+  // „usunięto 0 wierszy" (patrz feedback_rls_silent_denial).
+  const { error, count } = await supabase
+    .from("summary_feedback")
+    .delete({ count: "exact" })
+    .eq("id", feedbackId)
+    .eq("meeting_id", meetingId)
+    .eq("author_id", auth.userId);
+  if (error) return { error: error.message };
+  if (count === 0) return { error: "Można usuwać tylko własne uwagi." };
+
+  revalidatePath(`/sesje/${meetingId}`);
+  return { error: null };
+}
 
 export async function assignSegments(
   meetingId: string,
