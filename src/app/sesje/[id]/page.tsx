@@ -73,7 +73,9 @@ export default async function SessionPage({
         .from("councilor_term")
         .select("councilor:councilor_id(id, full_name)")
         .eq("term_id", meeting.term_id),
-      supabase.from("official").select("id, full_name, role"),
+      // Urzędnicy są zakresowani radą: sesja powiatu nie może proponować do
+      // otagowania urzędników gminy i odwrotnie.
+      supabase.from("official").select("id, full_name, role").eq("council_id", councilId ?? ""),
       // Chronological position within the term (ascending, ALL sessions —
       // not just ones with a resolved video_url) matches the real Sesja
       // Nr N numbering used in official documents — verified against two

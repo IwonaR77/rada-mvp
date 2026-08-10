@@ -47,7 +47,8 @@ export default async function CouncilHubPage({
   if (latestTerm) {
     const { data: officials } = await supabase
       .from("official")
-      .select("id, full_name, role");
+      .select("id, full_name, role")
+      .eq("council_id", councilId);
     activity = await getSpeakingActivity(supabase, latestTerm.id, officials ?? []);
   }
 

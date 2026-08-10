@@ -39,10 +39,23 @@ jobs:
       - name: Zainstaluj zależności
         run: npm ci
 
-      - name: Odkryj nowe sesje
+      - name: Odkryj nowe sesje (gmina, esesja.pl)
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: node scripts/discover-new-sessions.mjs
+
+      - name: Odkryj nowe sesje (powiat, transmisjaobrad.info)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/discover-powiat-sessions.mjs --term 25f80d4d-e7a3-49ab-bbfa-588ebe1a67b2
+
+      # Napisy zamiast transkrypcji: transmisjaobrad.info publikuje gotowy
+      # WebVTT dla większości nagrań, więc te sesje kończą się tutaj i nie
+      # docierają do Groqa. Ten krok nie potrzebuje GROQ_API_KEY.
+      - name: Zaimportuj napisy (powiat)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: node scripts/import-powiat-vtt.mjs
 
       - name: Uruchom orkiestrator transkrypcji
         env:

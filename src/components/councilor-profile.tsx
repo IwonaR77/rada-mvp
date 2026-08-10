@@ -194,7 +194,9 @@ export async function CouncilorProfile({
   if (currentTermId) {
     const [{ data: officials }, { data: attendanceRows }, { data: correlationRows }] =
       await Promise.all([
-        supabase.from("official").select("id, full_name, role"),
+        // Urzędnicy są zakresowani radą — bez filtra profil radnego powiatu
+        // liczyłby aktywność mówców razem z urzędnikami gminy.
+        supabase.from("official").select("id, full_name, role").eq("council_id", council?.id ?? ""),
         supabase.rpc("term_attendance_stats", { p_term_id: currentTermId }),
         supabase.rpc("term_voting_correlation", { p_term_id: currentTermId }),
       ]);

@@ -259,27 +259,37 @@ export type Database = {
       }
       council: {
         Row: {
-          city_id: string
+          admin_unit_id: string | null
+          city_id: string | null
           created_at: string
           district_id: string | null
           id: string
           name: string
         }
         Insert: {
-          city_id: string
+          admin_unit_id?: string | null
+          city_id?: string | null
           created_at?: string
           district_id?: string | null
           id?: string
           name: string
         }
         Update: {
-          city_id?: string
+          admin_unit_id?: string | null
+          city_id?: string | null
           created_at?: string
           district_id?: string | null
           id?: string
           name?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "council_admin_unit_id_fkey"
+            columns: ["admin_unit_id"]
+            isOneToOne: false
+            referencedRelation: "admin_unit"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "council_city_id_fkey"
             columns: ["city_id"]
@@ -776,6 +786,9 @@ export type Database = {
           esesja_id: string | null
           id: string
           meeting_type: string
+          source: string
+          source_id: string | null
+          subtitles_available: boolean | null
           summary: string | null
           summary_prompt_version: number | null
           term_id: string
@@ -792,6 +805,9 @@ export type Database = {
           esesja_id?: string | null
           id?: string
           meeting_type: string
+          source?: string
+          source_id?: string | null
+          subtitles_available?: boolean | null
           summary?: string | null
           summary_prompt_version?: number | null
           term_id: string
@@ -808,6 +824,9 @@ export type Database = {
           esesja_id?: string | null
           id?: string
           meeting_type?: string
+          source?: string
+          source_id?: string | null
+          subtitles_available?: boolean | null
           summary?: string | null
           summary_prompt_version?: number | null
           term_id?: string
@@ -830,24 +849,35 @@ export type Database = {
       }
       official: {
         Row: {
+          council_id: string
           created_at: string
           full_name: string
           id: string
           role: string
         }
         Insert: {
+          council_id: string
           created_at?: string
           full_name: string
           id?: string
           role: string
         }
         Update: {
+          council_id?: string
           created_at?: string
           full_name?: string
           id?: string
           role?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "official_council_id_fkey"
+            columns: ["council_id"]
+            isOneToOne: false
+            referencedRelation: "council"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       resolution: {
         Row: {
@@ -1176,8 +1206,10 @@ export type Database = {
         }[]
       }
       search_segments: {
-        Args: { search_query: string }
+        Args: { search_query: string; p_council_id?: string }
         Returns: {
+          council_id: string
+          council_name: string
           headline: string
           id: string
           meeting_date: string

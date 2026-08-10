@@ -24,14 +24,23 @@ function Highlight({ text }: { text: string }) {
 export default async function SearchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; councilId?: string }>;
 }) {
-  const { q } = await searchParams;
+  const { q, councilId } = await searchParams;
   const supabase = await createClient();
 
   const { data: results } = q
-    ? await supabase.rpc("search_segments", { search_query: q })
+    ? await supabase.rpc("search_segments", {
+        search_query: q,
+        p_council_id: councilId ?? undefined,
+      })
     : { data: null };
+
+  // Nazwę rady pokazujemy tylko wtedy, gdy wyniki faktycznie pochodzą z więcej
+  // niż jednej — przy jednej radzie byłaby to ta sama etykieta przy każdym
+  // wierszu, czyli szum.
+  const spansCouncils =
+    new Set((results ?? []).map((r) => r.council_id)).size > 1;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-16">
@@ -58,7 +67,7 @@ export default async function SearchPage({
       {q && (
         <div className="flex flex-col gap-2">
           {!results || results.length === 0 ? (
-            <p className="text-zinc-500">Brak wyników dla „{q}".</p>
+            <p className="text-zinc-500">Brak wyników dla „{q}”.</p>
           ) : (
             <ul className="flex flex-col gap-2">
               {results.map((r) => (
@@ -68,6 +77,11 @@ export default async function SearchPage({
                     className="block rounded-xl border border-zinc-200 px-4 py-3 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
                   >
                     <div className="mb-1 text-xs text-zinc-500">
+                      {spansCouncils && (
+                        <span className="mr-1.5 rounded-full bg-zinc-100 px-2 py-0.5 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                          {r.council_name}
+                        </span>
+                      )}
                       {r.meeting_title} — {r.meeting_date}
                     </div>
                     <div className="text-sm">

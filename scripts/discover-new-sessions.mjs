@@ -13,78 +13,16 @@
 // Uruchamiany automatycznie przez .github/workflows/transcribe-groq.yml
 // (krok przed pipeline-groq.mjs) — albo ręcznie: node scripts/discover-new-sessions.mjs
 
-import { execFileSync } from "node:child_process";
+import { supabaseQuery, sqlEscape } from "./lib/db.mjs";
+import { parsePolishDateFromSlug, fetchDecoded, sleep } from "./lib/pl.mjs";
 
 const BASE = "https://grojec.esesja.pl";
 const COUNCIL_ID = "846c8bce-7f11-4825-91dd-fe80cedf5289";
 const TERM_ID = "c4bc384f-33c3-46bd-b67c-ab569bb399dd";
-const REPO_ROOT = "/home/blady/Projects/rada-mvp";
-
-const MONTHS = {
-  stycznia: "01", lutego: "02", marca: "03", kwietnia: "04",
-  maja: "05", czerwca: "06", lipca: "07", sierpnia: "08",
-  września: "09", października: "10", listopada: "11", grudnia: "12",
-};
+const SOURCE = "esesja";
 
 function log(msg) {
   console.log(`[discover] ${msg}`);
-}
-
-// Ten sam wzorzec co scripts/import-transcript.mjs / groq/pipeline-groq.mjs:
-// `npx supabase db query --linked` zależy od keyringu/D-Bus sesji desktopowej,
-// niedostępnej headless (GitHub Actions). SUPABASE_DB_URL (repo secret w CI)
-// → bezpośrednie psql. Dzięki temu nie trzeba osobnego sekretu z kluczem
-// service_role — jeden SUPABASE_DB_URL wystarcza całemu pipeline'owi Groq.
-function supabaseQuery(sql) {
-  if (process.env.SUPABASE_DB_URL) {
-    const wrapped = `select coalesce(json_agg(row_to_json(sub)), '[]'::json) from (${sql.replace(/;\s*$/, "")}) sub;`;
-    const out = execFileSync(
-      "psql",
-      [process.env.SUPABASE_DB_URL, "-t", "-A", "-c", wrapped],
-      { encoding: "utf8" }
-    );
-    return JSON.parse(out.trim() || "[]");
-  }
-  try {
-    const out = execFileSync(
-      "npx",
-      ["supabase", "db", "query", "--linked", "--output", "json", sql],
-      { encoding: "utf8", cwd: REPO_ROOT, timeout: 30000 }
-    );
-    return JSON.parse(out).rows ?? [];
-  } catch (e) {
-    const stdout = e.stdout?.toString() ?? "";
-    try {
-      return JSON.parse(stdout).rows ?? [];
-    } catch {
-      throw e;
-    }
-  }
-}
-
-function sqlEscape(s) {
-  return s.replace(/'/g, "''");
-}
-
-function parsePolishDateFromSlug(slug) {
-  // Slugi wyglądają jak "sesjaaradyawadniuaśrodaa26aczerwcaa2024" — spacje
-  // zamienione na "a". Wyłuskujemy "<dzień>a<miesiąc słownie>a<rok>" z końca.
-  const m = slug.match(/(\d{1,2})a([a-ząćęłńóśźż]+)a(\d{4})/i);
-  if (!m) return null;
-  const [, day, monthName, year] = m;
-  const month = MONTHS[monthName.toLowerCase()];
-  if (!month) return null;
-  return `${year}-${month}-${day.padStart(2, "0")}`;
-}
-
-async function fetchDecoded(url) {
-  // Te same dwie strony bywają UTF-8 albo windows-1250 bez deklaracji —
-  // patrz gotcha #1 w scrape-esesja-records.mjs. Sniffujemy zamiast zgadywać.
-  const res = await fetch(url);
-  const buf = Buffer.from(await res.arrayBuffer());
-  const head = buf.subarray(0, 600).toString("latin1");
-  const isUtf8 = /charset=["']?utf-?8/i.test(head);
-  return isUtf8 ? buf.toString("utf8") : buf.toString("latin1");
 }
 
 async function resolveVideoUrlAndTitle(esesjaId, path) {
@@ -97,8 +35,9 @@ async function resolveVideoUrlAndTitle(esesjaId, path) {
   };
 }
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
+/** Sesja nadzwyczajna ma to w tytule; CHECK na meeting_type dopuszcza tylko te dwie wartości. */
+function meetingType(title) {
+  return /nadzwyczajn/i.test(title ?? "") ? "nadzwyczajna" : "zwyczajna";
 }
 
 async function main() {
@@ -133,9 +72,13 @@ async function main() {
     }
     const { videoUrl, title } = await resolveVideoUrlAndTitle(l.esesjaId, l.path);
     try {
+      // meeting_type musi być jedną z wartości z CHECK-a ('zwyczajna',
+      // 'nadzwyczajna', 'komisja') — wcześniej szło tu na sztywno 'sesja',
+      // co odrzuciłoby każdą nową sesję przy pierwszym realnym trafieniu.
+      // source/source_id to klucz naturalny wspólny z radami spoza esesja.pl.
       supabaseQuery(
-        `insert into meeting (term_id, meeting_type, esesja_id, date, title, video_url) values ` +
-          `('${TERM_ID}', 'sesja', '${sqlEscape(l.esesjaId)}', '${date}', ` +
+        `insert into meeting (term_id, meeting_type, source, source_id, esesja_id, date, title, video_url) values ` +
+          `('${TERM_ID}', '${meetingType(title)}', '${SOURCE}', '${sqlEscape(l.esesjaId)}', '${sqlEscape(l.esesjaId)}', '${date}', ` +
           `${title ? `'${sqlEscape(title)}'` : "null"}, ` +
           `${videoUrl ? `'${sqlEscape(videoUrl)}'` : "null"});`
       );

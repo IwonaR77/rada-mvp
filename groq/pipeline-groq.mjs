@@ -209,8 +209,14 @@ export async function processMeeting(m) {
 }
 
 async function main() {
+  // subtitles_available: część rad (transmisjaobrad.info) publikuje gotowe
+  // napisy WebVTT — takie sesje bierze scripts/import-powiat-vtt.mjs i nie ma
+  // po co pobierać dla nich 1,5 h wideo. NULL (wszystkie sesje esesja.pl)
+  // znaczy „napisów nie ma”, więc zachowanie dla gminy się nie zmienia.
+  // Filtr musi być tutaj, a nie w kolejności kroków workflow: awaria importu
+  // napisów i tak oddałaby sesję temu skryptowi.
   const pending = await supabaseQuery(
-    `select id, esesja_id, date, video_url from meeting where transcript_status != 'rozpisana' and meeting_type != 'komisja' order by date asc limit 1;`
+    `select id, esesja_id, date, video_url from meeting where transcript_status != 'rozpisana' and meeting_type != 'komisja' and coalesce(subtitles_available, false) = false order by date asc limit 1;`
   );
 
   if (pending.length === 0) {

@@ -146,7 +146,8 @@ export default async function CouncilSessionsPage({
 
   const { data: officials } = await supabase
     .from("official")
-    .select("id, full_name, role");
+    .select("id, full_name, role")
+    .eq("council_id", councilId);
 
   if (selectedTermId) {
     const [
