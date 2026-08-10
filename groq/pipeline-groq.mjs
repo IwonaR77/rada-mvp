@@ -80,6 +80,32 @@ function sqlEscape(s) {
   return s.replace(/'/g, "''");
 }
 
+/**
+ * Polecenie nie zwracające wierszy (update). Osobno od supabaseQuery, bo tamta
+ * opakowuje SQL w `select ... from (<sql>) sub` — co dla SELECT-a jest sposobem
+ * na JSON, ale UPDATE w podzapytaniu jest błędem składni.
+ *
+ * Błąd spał tu od początku: lokalnie (agatka) idzie ścieżka `supabase db query`,
+ * która nic nie opakowuje, a w GitHub Actions pipeline nigdy dotąd nie trafił
+ * na sesję do przetworzenia — wszystkie przebiegi kończyły się na "brak sesji
+ * oczekujących" i nie dochodziły do żadnego zapisu.
+ */
+function supabaseExec(sql) {
+  if (process.env.SUPABASE_DB_URL) {
+    execFileSync(
+      "psql",
+      [process.env.SUPABASE_DB_URL, "-v", "ON_ERROR_STOP=1", "-q", "-c", sql],
+      { encoding: "utf8" }
+    );
+    return;
+  }
+  execFileSync("npx", ["supabase", "db", "query", "--linked", sql], {
+    encoding: "utf8",
+    cwd: REPO_ROOT,
+    timeout: 30000,
+  });
+}
+
 // Identyfikator posiedzenia u dostawcy transmisji. Rady spoza esesja.pl nie
 // mają esesja_id — bez tego wychodziła nazwa "sesja_null_<data>", a dwie takie
 // sesje nadpisywałyby sobie wpis w mp3-stats.json.
@@ -176,13 +202,13 @@ export async function processMeeting(m) {
       log(`UWAGA: nie znaleziono video_url dla ${name} — pomijam.`);
       return false;
     }
-    supabaseQuery(
+    supabaseExec(
       `update meeting set video_url = '${sqlEscape(videoUrl)}' where id = '${m.id}';`
     );
   }
 
   const { mp3 } = downloadAndConvert(name, videoUrl, sessionKey(m), m.date);
-  supabaseQuery(`update meeting set video_downloaded = true where id = '${m.id}';`);
+  supabaseExec(`update meeting set video_downloaded = true where id = '${m.id}';`);
 
   const chunkDir = path.join(WORK_DIR, `${name}-chunks`);
   const chunks = cutChunks(mp3, chunkDir, name);
