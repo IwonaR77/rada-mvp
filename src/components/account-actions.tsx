@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   setAccessLevel,
   revokeUserRole,
+  setAccountBlocked,
   approveAccessRequest,
   denyAccessRequest,
 } from "@/app/admin/konta/actions";
@@ -55,13 +56,24 @@ export function AccountActions(props: {
   appUserId: string;
   councils: Council[];
   grants?: Grant[];
+  /** Ustawione = konto zablokowane (Regulamin §5.6). */
+  blockedAt?: string | null;
+  blockedReason?: string | null;
   request?: {
     id: string;
     requestedLevel: string;
     scopeCouncilId: string | null;
   };
 }) {
-  const { mode, appUserId, councils, grants = [], request } = props;
+  const {
+    mode,
+    appUserId,
+    councils,
+    grants = [],
+    blockedAt = null,
+    blockedReason = null,
+    request,
+  } = props;
   const [open, setOpen] = useState(false);
   const [denyNote, setDenyNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +150,8 @@ export function AccountActions(props: {
           appUserId={appUserId}
           councils={councils}
           grants={grants}
+          blockedAt={blockedAt}
+          blockedReason={blockedReason}
           isPending={isPending}
           onClose={() => setOpen(false)}
           onSave={run}
@@ -163,6 +177,8 @@ function AccessEditor({
   appUserId,
   councils,
   grants,
+  blockedAt,
+  blockedReason,
   isPending,
   onClose,
   onSave,
@@ -170,6 +186,8 @@ function AccessEditor({
   appUserId: string;
   councils: Council[];
   grants: Grant[];
+  blockedAt: string | null;
+  blockedReason: string | null;
   isPending: boolean;
   onClose: () => void;
   onSave: (fn: () => Promise<{ error: string | null }>) => void;
@@ -178,7 +196,10 @@ function AccessEditor({
 
   return (
     <div className="flex w-full min-w-64 flex-col gap-3 rounded-lg bg-zinc-50 p-3 text-left dark:bg-zinc-900">
-      {grants.length === 0 && (
+      {/* Poziomy zostają widoczne i edytowalne także przy blokadzie: blokada
+          ich nie kasuje, tylko zawiesza, więc ukrycie ich sugerowałoby, że
+          odblokowanie zacznie od zera. */}
+      {grants.length === 0 && !blockedAt && (
         <p className="text-xs text-zinc-500">
           Ta osoba ma dziś tylko podstawowy dostęp do przeglądania.
         </p>
@@ -198,6 +219,14 @@ function AccessEditor({
         appUserId={appUserId}
         councils={councils}
         takenScopes={takenScopes}
+        isPending={isPending}
+        onSave={onSave}
+      />
+
+      <BlockSection
+        appUserId={appUserId}
+        blockedAt={blockedAt}
+        blockedReason={blockedReason}
         isPending={isPending}
         onSave={onSave}
       />
@@ -340,6 +369,103 @@ function AddScopeRow({
         </button>
       </div>
       <p className="text-xs text-zinc-500">{ADMIN_LEVELS[level].description}</p>
+    </div>
+  );
+}
+
+/**
+ * Blokada konta — ostatnia sekcja edytora, bo to najcięższa dostępna tu
+ * operacja: odcina wszystko naraz, niezależnie od nadanych poziomów.
+ */
+function BlockSection({
+  appUserId,
+  blockedAt,
+  blockedReason,
+  isPending,
+  onSave,
+}: {
+  appUserId: string;
+  blockedAt: string | null;
+  blockedReason: string | null;
+  isPending: boolean;
+  onSave: (fn: () => Promise<{ error: string | null }>) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [confirming, setConfirming] = useState(false);
+
+  if (blockedAt) {
+    return (
+      <div className="flex flex-col gap-1 border-t border-zinc-200 pt-2 dark:border-zinc-800">
+        <span className="text-xs font-medium text-rose-600 dark:text-rose-400">
+          Konto zablokowane {blockedAt.slice(0, 10)}
+        </span>
+        {blockedReason && (
+          <p className="text-xs text-zinc-500">{blockedReason}</p>
+        )}
+        <p className="text-xs text-zinc-500">
+          Osoba może się zalogować, ale nie widzi żadnych treści. Nadane
+          poziomy są zachowane i wrócą po odblokowaniu.
+        </p>
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={() => onSave(() => setAccountBlocked(appUserId, false, ""))}
+          className="self-start rounded-full border border-zinc-300 px-3 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+        >
+          Odblokuj konto
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1 border-t border-zinc-200 pt-2 dark:border-zinc-800">
+      {!confirming ? (
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          className="self-start text-xs text-zinc-500 underline hover:text-rose-600 dark:hover:text-rose-400"
+        >
+          Zablokuj konto
+        </button>
+      ) : (
+        <>
+          <span className="text-xs font-medium text-zinc-500">
+            Zablokować konto?
+          </span>
+          <p className="text-xs text-zinc-500">
+            Odcina dostęp do wszystkich treści, także przeglądania. Nadane
+            poziomy zostają zachowane i wrócą po odblokowaniu.
+          </p>
+          <input
+            type="text"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            maxLength={500}
+            placeholder="Powód (opcjonalnie, widoczny dla managerów)"
+            className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950"
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() =>
+                onSave(() => setAccountBlocked(appUserId, true, reason))
+              }
+              className="rounded-full bg-rose-600 px-3 py-1 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+            >
+              Tak, zablokuj
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="rounded-full border border-zinc-300 px-3 py-1 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-400"
+            >
+              Anuluj
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

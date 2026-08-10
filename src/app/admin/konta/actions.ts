@@ -302,6 +302,60 @@ export async function setAccessLevel(
   return { error: null };
 }
 
+/**
+ * Blokuje albo odblokowuje konto w Serwisie (Regulamin §5.6).
+ *
+ * Blokada jest stanem konta (`app_user.blocked_at`), a nie odebraniem
+ * uprawnień: samo zdjęcie „browse" nie działało, bo `grant_browse_permission()`
+ * wstawiało je z powrotem przy każdym logowaniu.
+ *
+ * Wierszy `user_role` celowo nie ruszamy — odblokowanie ma przywrócić
+ * poprzedni poziom, a nie kazać nadawać go od nowa. Dopóki konto jest
+ * zablokowane, `user_has_permission()` i tak zwraca fałsz dla wszystkiego.
+ *
+ * Zapis idzie przez funkcję `set_account_blocked` (SECURITY DEFINER):
+ * managerowie nie mają prawa zapisu do `app_user` i celowo tak zostaje.
+ */
+export async function setAccountBlocked(
+  targetAppUserId: string,
+  blocked: boolean,
+  reason: string
+) {
+  const { error: permError, supabase, userId } = await requireManager();
+  if (permError) return { error: permError };
+  if (!userId) return { error: "Musisz być zalogowany" };
+
+  if (targetAppUserId === userId) {
+    return { error: "Nie możesz zablokować własnego konta." };
+  }
+
+  const trimmed = reason.trim();
+  if (blocked && trimmed.length > 500) {
+    return { error: "Powód może mieć najwyżej 500 znaków." };
+  }
+
+  const { error } = await supabase.rpc("set_account_blocked", {
+    target_id: targetAppUserId,
+    blocked,
+    reason: blocked ? trimmed : "",
+  });
+  if (error) return { error: error.message };
+
+  await logAudit(
+    supabase,
+    userId,
+    targetAppUserId,
+    blocked ? "account_blocked" : "account_unblocked",
+    null,
+    blocked
+      ? `Zablokowano konto${trimmed ? `: ${trimmed}` : ""}`
+      : "Odblokowano konto"
+  );
+
+  revalidatePath("/admin/konta");
+  return { error: null };
+}
+
 export async function revokeUserRole(roleId: string) {
   const { error: permError, supabase, userId } = await requireManager();
   if (permError) return { error: permError };

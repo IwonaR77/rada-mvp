@@ -165,6 +165,9 @@ export type Database = {
       app_user: {
         Row: {
           avatar_url: string | null
+          blocked_at: string | null
+          blocked_by: string | null
+          blocked_reason: string | null
           created_at: string
           display_name: string | null
           favorite_council_id: string | null
@@ -178,6 +181,9 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          blocked_at?: string | null
+          blocked_by?: string | null
+          blocked_reason?: string | null
           created_at?: string
           display_name?: string | null
           favorite_council_id?: string | null
@@ -191,6 +197,9 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          blocked_at?: string | null
+          blocked_by?: string | null
+          blocked_reason?: string | null
           created_at?: string
           display_name?: string | null
           favorite_council_id?: string | null
@@ -203,6 +212,13 @@ export type Database = {
           votes_total?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "app_user_blocked_by_fkey"
+            columns: ["blocked_by"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "app_user_favorite_council_id_fkey"
             columns: ["favorite_council_id"]
@@ -1246,6 +1262,10 @@ export type Database = {
           meeting_id: string
           total: number
         }[]
+      }
+      set_account_blocked: {
+        Args: { target_id: string; blocked: boolean; reason?: string }
+        Returns: undefined
       }
       search_segments: {
         Args: { search_query: string; p_council_id?: string }

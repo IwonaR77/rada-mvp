@@ -158,7 +158,7 @@ export default async function AdminKontaPage({
     ? await supabase
         .from("app_user")
         .select(
-          "id, display_name, user_role(id, permissions, scope_council_id, council:scope_council_id(name))"
+          "id, display_name, blocked_at, blocked_reason, user_role(id, permissions, scope_council_id, council:scope_council_id(name))"
         )
         .in("id", pageIds)
     : { data: [] };
@@ -420,6 +420,15 @@ export default async function AdminKontaPage({
                             wniosek
                           </span>
                         )}
+                        {/* Blokada zawiesza uprawnienia, nie kasuje ich, więc
+                            chipy poziomów obok nadal pokazują to, co osoba
+                            odzyska po odblokowaniu — bez tej plakietki wiersz
+                            czytałby się jak konto czynne. */}
+                        {p.blocked_at && (
+                          <span className="ml-2 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
+                            zablokowane
+                          </span>
+                        )}
                       </th>
                       <td className="border-b border-zinc-100 p-3 dark:border-zinc-900">
                         <ul className="flex flex-col gap-1">
@@ -453,6 +462,8 @@ export default async function AdminKontaPage({
                             mode="grants"
                             appUserId={p.id}
                             councils={councilList}
+                            blockedAt={p.blocked_at}
+                            blockedReason={p.blocked_reason}
                             grants={tiers.map((g) => ({
                               id: g.id,
                               permissions: g.permissions,
