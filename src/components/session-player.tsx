@@ -757,14 +757,21 @@ export function SessionPlayer({
             )}
           </div>
 
-          <SpeakerGroup
-            title="Radni"
-            people={councilors.map((c) => ({
-              id: c.id,
-              label: c.name,
-              sub: null,
-              target: { type: "councilor" as const, id: c.id },
-            }))}
+          <SpeakerList
+            people={[
+              ...councilors.map((c) => ({
+                id: c.id,
+                label: c.name,
+                sub: null,
+                target: { type: "councilor" as const, id: c.id },
+              })),
+              ...officials.map((o) => ({
+                id: o.id,
+                label: o.full_name,
+                sub: o.role,
+                target: { type: "official" as const, id: o.id },
+              })),
+            ]}
             speakingIds={speakingIds}
             speakingSeconds={speakingSeconds}
             speakerFilter={speakerFilter}
@@ -772,24 +779,6 @@ export function SessionPlayer({
             onAssign={assignTo}
             disabled={selected.size === 0 || isPending}
           />
-
-          {officials.length > 0 && (
-            <SpeakerGroup
-              title="Urzędnicy"
-              people={officials.map((o) => ({
-                id: o.id,
-                label: o.full_name,
-                sub: o.role,
-                target: { type: "official" as const, id: o.id },
-              }))}
-              speakingIds={speakingIds}
-              speakingSeconds={speakingSeconds}
-              speakerFilter={speakerFilter}
-              onToggleFilter={toggleSpeakerFilter}
-              onAssign={assignTo}
-              disabled={selected.size === 0 || isPending}
-            />
-          )}
         </div>
       )}
     </div>
@@ -809,11 +798,16 @@ type SpeakerEntry = {
 };
 
 /**
- * Jedna kategoria na liście mówców (radni albo urzędnicy), z osobami
- * występującymi w tej sesji wyciągniętymi na górę.
+ * Lista mówców do przypisania, wspólna dla radnych i urzędników.
+ *
+ * Bez podziału na kategorie celowo: przy tagowaniu szuka się konkretnej osoby,
+ * a nie jej formalnej przynależności, a dwie listy znaczyły dwa miejsca do
+ * przewinięcia. Urzędnika poznaje się po dopisanej funkcji — kto go nie ma,
+ * jest radnym.
  *
  * Lista rady miejskiej ma 43 pozycje, a w jednej sesji pada mediana 10 różnych
- * mówców — bez tego podziału szuka się jednej czwartej listy wśród całości.
+ * mówców — bez wyciągnięcia ich na górę szuka się jednej czwartej listy
+ * wśród całości.
  *
  * Podział, a nie zmiana kolejności całej listy: pozycje nie przeskakują pod
  * kursorem w trakcie klikania. Przy tagowaniu setek segmentów lista
@@ -825,8 +819,7 @@ type SpeakerEntry = {
  * cokolwiek, i to jest dokładnie ten moment, w którym skrót jest najbardziej
  * potrzebny.
  */
-function SpeakerGroup({
-  title,
+function SpeakerList({
   people,
   speakingIds,
   speakingSeconds,
@@ -835,7 +828,6 @@ function SpeakerGroup({
   onAssign,
   disabled,
 }: {
-  title: string;
   people: SpeakerEntry[];
   speakingIds: Set<string>;
   /** Czas mówienia w tej sesji, w sekundach — porządek sekcji „W tej sesji". */
@@ -893,9 +885,6 @@ function SpeakerGroup({
 
   return (
     <div>
-      <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-        {title}
-      </h3>
       {/* Podpisy pojawiają się dopiero, gdy jest co wyciągnąć na górę —
           dla nietkniętej sesji lista wygląda dokładnie jak dotąd. */}
       {inSession.length > 0 ? (
