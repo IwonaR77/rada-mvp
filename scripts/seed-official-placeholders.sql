@@ -20,10 +20,15 @@ begin;
 -- wskazać tylko radnego TEJ rady albo urzędnika, więc bez wpisu jego
 -- wypowiedzi zostają nieprzypisane.
 --
--- Świadomy kompromis: to drugi wiersz dla tej samej osoby (pierwszy to
--- `councilor` w kadencji powiatu). Jego wystąpienia w gminie nie doliczą się
--- więc do profilu radnego powiatu. Model danych nie ma dziś jednej tożsamości
--- osoby ponad radami i nie warto jej wprowadzać dla pojedynczych wystąpień.
+-- To drugi wiersz dla tej samej osoby (pierwszy to `councilor` w kadencji
+-- powiatu), więc jego wystąpienia w gminie NIE doliczą się do profilu radnego
+-- powiatu. To zachowanie pożądane, nie ograniczenie do naprawienia:
+-- statystyki radnego mierzą jego pracę we WŁASNEJ radzie i są porównywane
+-- z pozostałymi radnymi tej samej rady. Doliczenie gościnnego wystąpienia
+-- w innej radzie zawyżałoby go wobec kolegów, którzy takiej okazji nie mieli.
+--
+-- Gdyby kiedyś powstała wspólna tożsamość osoby ponad radami, ta zasada musi
+-- zostać: wspólny profil owszem, wspólne liczniki aktywności nie.
 
 insert into public.official (full_name, role, council_id)
 select v.full_name, v.role, c.id
