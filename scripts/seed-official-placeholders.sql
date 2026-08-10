@@ -14,11 +14,23 @@
 
 begin;
 
+-- Osoby imienne spoza rady, które regularnie zabierają głos na jej sesjach —
+-- ta sama półka co „Zastępca Komendanta Powiatowego Policji", który leży tu od
+-- początku. Radny powiatu wystąpił na sesji rady miasta, a `segment` potrafi
+-- wskazać tylko radnego TEJ rady albo urzędnika, więc bez wpisu jego
+-- wypowiedzi zostają nieprzypisane.
+--
+-- Świadomy kompromis: to drugi wiersz dla tej samej osoby (pierwszy to
+-- `councilor` w kadencji powiatu). Jego wystąpienia w gminie nie doliczą się
+-- więc do profilu radnego powiatu. Model danych nie ma dziś jednej tożsamości
+-- osoby ponad radami i nie warto jej wprowadzać dla pojedynczych wystąpień.
+
 insert into public.official (full_name, role, council_id)
 select v.full_name, v.role, c.id
 from (values
   ('Mieszkaniec miasta', 'Mieszkaniec'),
-  ('Zaproszony gość',    'Gość')
+  ('Zaproszony gość',    'Gość'),
+  ('Janusz Karbowiak',   'Radny Powiatu Grójeckiego')
 ) as v(full_name, role)
 cross join public.council c
 where c.name = 'Rada Miejska w Grójcu'
