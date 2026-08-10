@@ -31,7 +31,11 @@ export default async function BrakDostepuPage() {
 
   // Konto odblokowane w międzyczasie — nie ma po co trzymać nikogo na tej
   // stronie tylko dlatego, że został na niej otwarty adres.
-  if (!me?.blocked_at) redirect("/");
+  //
+  // Warunek celowo wymaga ODCZYTANEGO wiersza bez blokady, a nie po prostu
+  // braku daty: gdyby zapytanie nic nie zwróciło, przekierowanie na "/"
+  // odbiłoby się od bramki w proxy z powrotem tutaj i powstałaby pętla.
+  if (me && !me.blocked_at) redirect("/");
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-5 px-6 py-16">
@@ -39,11 +43,13 @@ export default async function BrakDostepuPage() {
         Konto zablokowane
       </h1>
       <p className="text-zinc-600 dark:text-zinc-400">
-        Dostęp do treści Serwisu został zablokowany{" "}
-        {new Date(me.blocked_at).toLocaleDateString("pl-PL")} na podstawie §5.6
-        Regulaminu.
+        Dostęp do treści Serwisu został zablokowany
+        {me?.blocked_at
+          ? ` ${new Date(me.blocked_at).toLocaleDateString("pl-PL")}`
+          : ""}{" "}
+        na podstawie §5.6 Regulaminu.
       </p>
-      {me.blocked_reason && (
+      {me?.blocked_reason && (
         <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
           <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-500">
             Powód

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { LogoutLink } from "@/components/logout-link";
+import { isAccountBlocked } from "@/lib/blocked-account";
 
 export async function SiteHeader() {
   const supabase = await createClient();
@@ -11,7 +12,10 @@ export async function SiteHeader() {
   let favoriteCouncil: { id: string; name: string } | null = null;
   let manager = false;
   let pendingRequestCount = 0;
-  if (user) {
+  // Zablokowane konto ma ważną sesję, więc bez tego sprawdzenia dostawało
+  // pełne menu — a każdy odsyłacz w nim odbijał się od bramki w proxy.
+  const blocked = user ? await isAccountBlocked(supabase, user.id) : false;
+  if (user && !blocked) {
     const [{ data: appUser }, { data: isManager }] = await Promise.all([
       supabase
         .from("app_user")
@@ -36,12 +40,12 @@ export async function SiteHeader() {
     <header className="sticky top-0 z-50 flex items-center justify-between border-b border-zinc-200 bg-white/90 px-6 py-3 backdrop-blur dark:border-zinc-800 dark:bg-black/90">
       <div className="flex items-center gap-3 text-sm">
         <Link
-          href="/"
+          href={blocked ? "/brak-dostepu" : "/"}
           className="font-semibold tracking-tight text-zinc-950 dark:text-zinc-50"
         >
           Home
         </Link>
-        {favoriteCouncil && (
+        {favoriteCouncil && !blocked && (
           <>
             <span className="text-zinc-300 dark:text-zinc-700">·</span>
             <Link
@@ -88,6 +92,11 @@ export async function SiteHeader() {
             <span className="hidden text-zinc-500 sm:inline">
               {user.email}
             </span>
+            {blocked && (
+              <span className="rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
+                konto zablokowane
+              </span>
+            )}
             {manager && (
               <Link
                 href="/admin/konta"
@@ -97,12 +106,16 @@ export async function SiteHeader() {
                 {pendingRequestCount > 0 && ` (${pendingRequestCount})`}
               </Link>
             )}
-            <Link
-              href="/dostep"
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-            >
-              Uprawnienia
-            </Link>
+            {/* Wnioskowanie o uprawnienia jest dla zablokowanego konta
+                bez sensu — akcja i tak je odrzuci. */}
+            {!blocked && (
+              <Link
+                href="/dostep"
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+              >
+                Uprawnienia
+              </Link>
+            )}
             <LogoutLink className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100" />
           </>
         ) : (

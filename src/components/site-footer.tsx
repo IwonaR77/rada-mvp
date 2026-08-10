@@ -1,11 +1,17 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { isAccountBlocked } from "@/lib/blocked-account";
 
 export async function SiteFooter() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // Prompty czyta się z dysku, nie z bazy, więc RLS ich nie chroni — dla
+  // zablokowanego konta odsyłacze muszą zniknąć z menu, tak jak sama treść
+  // znika za bramką w proxy.
+  const blocked = user ? await isAccountBlocked(supabase, user.id) : false;
 
   return (
     <footer className="border-t border-zinc-200 px-6 py-4 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-500">
@@ -20,7 +26,7 @@ export async function SiteFooter() {
         >
           Polityka Prywatności
         </Link>
-        {user && (
+        {user && !blocked && (
           <>
             <span className="text-zinc-300 dark:text-zinc-700">·</span>
             <Link
