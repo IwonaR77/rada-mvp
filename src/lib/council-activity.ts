@@ -3,17 +3,36 @@ import { fetchAllRows } from "@/lib/supabase/fetch-all";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
+/**
+ * Łączny czas mówienia jednego radnego w kadencji — podstawa podium
+ * „najaktywniejsi / milczący" i porównań na profilu radnego.
+ */
 export type CouncilorStat = {
   id: string;
   fullName: string;
+  /** Klub radnego; `null`, gdy rada go nie podaje (tak jest dziś w obu radach). */
   party: string | null;
+  /**
+   * Suma długości otagowanych wypowiedzi. Zero znaczy „nikt nie otagował",
+   * a nie „milczał" — przy niskim pokryciu tagowania te dwa przypadki są
+   * nierozróżnialne i nie wolno ich mylić w tekstach o konkretnych osobach.
+   */
   totalSeconds: number;
 };
 
+/** Komplet danych o mówieniu w jednej kadencji: podium, heatmapa i jej osie. */
 export type SpeakingActivity = {
+  /** Skład rady w tej kadencji — wiersze heatmapy, także ci z zerem sekund. */
   councilors: { id: string; fullName: string }[];
+  /** Kolumny heatmapy: sesje z zaimportowanym transkryptem, od najnowszej. */
   heatmapMeetings: { id: string; date: string; title: string | null }[];
+  /** Sekundy mówienia: `[id mówcy][id sesji]`. Brak klucza = brak wypowiedzi. */
   heatmapMatrix: Record<string, Record<string, number>>;
+  /**
+   * Dodatkowe wiersze heatmapy dla urzędników (burmistrz, jego zastępca,
+   * zbiorczy wiersz „Pozostali urzędnicy”) — dołączane pod składem rady.
+   * Pusta tablica dla rady, w której nikt taki nie wystąpił.
+   */
   heatmapExtraRows: { id: string; fullName: string }[];
   stats: CouncilorStat[];
 };
@@ -26,9 +45,36 @@ const EMPTY_ACTIVITY: SpeakingActivity = {
   stats: [],
 };
 
-// Per-term speaking-time aggregation shared by the council hub (latest term
-// only, no switcher) and /sesje (full term switching) — same computation,
-// same heatmap shape, so it shouldn't drift into two implementations.
+/**
+ * Liczy, kto ile mówił w danej kadencji, i składa z tego dane pod podium
+ * i heatmapę.
+ *
+ * Wspólne dla huba rady (tylko najnowsza kadencja, bez przełącznika) i
+ * `/sesje` (pełne przełączanie kadencji) — ta sama arytmetyka i ten sam
+ * kształt heatmapy, żeby nie rozjechały się w dwie implementacje.
+ *
+ * Liczone są **wyłącznie segmenty o statusie `finalized`**: propozycje
+ * przypisania mówcy (redaktorskie i te z rozpoznawania głosu) nie mogą
+ * wpływać na publiczne statystyki o konkretnych osobach, dopóki nie
+ * zatwierdzi ich moderator.
+ *
+ * @param supabase Klient serwerowy — funkcja liczy po stronie serwera i
+ *   podlega RLS wołającego.
+ * @param termId Kadencja; wyznacza jednocześnie radę, bo `term` należy do
+ *   dokładnie jednej rady.
+ * @param officials Urzędnicy **tej samej rady** co kadencja. Lista przychodzi
+ *   z zewnątrz, bo wołający i tak ją pobiera do innych celów — ale musi być
+ *   zakresowana radą (`official.council_id`), inaczej urzędnicy jednej rady
+ *   trafią do heatmapy drugiej.
+ * @returns Puste `SpeakingActivity`, gdy kadencja nie ma składu; nigdy nie
+ *   rzuca wyjątku przy braku danych.
+ *
+ * @remarks
+ * Wyróżnienie burmistrza i jego zastępcy osobnymi wierszami jest z natury
+ * gminne. W radzie powiatu starosta i zarząd **są radnymi**, więc siedzą już
+ * w składzie rady, a `heatmapExtraRows` obejmie tam co najwyżej urzędników
+ * starostwa — to poprawne zachowanie, nie brakująca obsługa.
+ */
 export async function getSpeakingActivity(
   supabase: SupabaseClient,
   termId: string,
