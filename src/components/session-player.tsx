@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import ReactPlayer from "react-player";
 import ReactMarkdown from "react-markdown";
 import {
@@ -103,6 +104,8 @@ export function SessionPlayer({
   meetingDate,
   existingTopics,
   summary,
+  summaryPromptVersion,
+  currentPromptVersion,
   videoUrl,
   segments,
   councilors,
@@ -123,6 +126,9 @@ export function SessionPlayer({
   meetingDate: string;
   existingTopics: string[];
   summary: string | null;
+  /** Wersja promptu, którą wygenerowano ten tekst; null dla starszych wpisów. */
+  summaryPromptVersion: number | null;
+  currentPromptVersion: number;
   videoUrl: string;
   segments: Segment[];
   councilors: Person[];
@@ -365,6 +371,30 @@ export function SessionPlayer({
             <p className="text-zinc-400">Brak podsumowania.</p>
           )}
         </div>
+        {summary && (
+          // Podsumowania pisze model według wersjonowanego promptu, a kolejne
+          // wersje realnie zmieniają zakres (np. v4 dodał datę wygenerowania,
+          // v7 nazwę rady z nagłówka). Bez tej stopki czytelnik nie ma jak
+          // odróżnić tekstu sprzed dwóch podbić od świeżego.
+          <p className="text-xs text-zinc-400">
+            {summaryPromptVersion === null ? (
+              "Wygenerowano nieznaną wersją promptu podsumowań."
+            ) : summaryPromptVersion >= currentPromptVersion ? (
+              <>
+                Wygenerowano{" "}
+                <Link href="/prompt-podsumowania" className="underline hover:text-zinc-600 dark:hover:text-zinc-300">
+                  promptem v{summaryPromptVersion}
+                </Link>
+                .
+              </>
+            ) : (
+              // Strona /prompt-podsumowania pokazuje zawsze wersję aktualną,
+              // więc przy starszym podsumowaniu link prowadziłby do promptu,
+              // którym ten tekst NIE powstał — dlatego bez odsyłacza.
+              `Wygenerowano promptem v${summaryPromptVersion} — starszym niż obecny v${currentPromptVersion}.`
+            )}
+          </p>
+        )}
         {summaryManager}
       </div>
 

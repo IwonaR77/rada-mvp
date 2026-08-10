@@ -270,6 +270,8 @@ export default async function SessionPage({
         meetingDate={meeting.date}
         existingTopics={allTopics}
         summary={meeting.summary}
+        summaryPromptVersion={meeting.summary_prompt_version}
+        currentPromptVersion={CURRENT_SUMMARY_PROMPT_VERSION}
         videoUrl={meeting.video_url}
         segments={segments ?? []}
         councilors={councilors}
