@@ -23,7 +23,7 @@ export default async function SessionPage({
   const { data: meeting } = await supabase
     .from("meeting")
     .select(
-      "id, title, date, esesja_id, video_url, summary, summary_prompt_version, topics, term_id, term:term_id(council:council_id(id, name))"
+      "id, title, date, esesja_id, source_id, video_url, summary, summary_prompt_version, topics, term_id, term:term_id(council:council_id(id, name))"
     )
     .eq("id", id)
     .maybeSingle();
@@ -72,7 +72,10 @@ export default async function SessionPage({
       ),
       supabase
         .from("councilor_term")
-        .select("councilor:councilor_id(id, full_name)")
+        // role jedzie razem ze składem: nagłówek pobieranej transkrypcji
+        // podaje funkcje (przewodniczący, starosta...), żeby podsumowanie
+        // nie musiało ich zgadywać z przebiegu obrad.
+        .select("role, councilor:councilor_id(id, full_name)")
         .eq("term_id", meeting.term_id),
       // Urzędnicy są zakresowani radą: sesja powiatu nie może proponować do
       // otagowania urzędników gminy i odwrotnie.
@@ -185,7 +188,11 @@ export default async function SessionPage({
 
   const councilors = (roster ?? [])
     .filter((r) => r.councilor)
-    .map((r) => ({ id: r.councilor!.id, name: r.councilor!.full_name }));
+    .map((r) => ({
+      id: r.councilor!.id,
+      name: r.councilor!.full_name,
+      role: r.role ?? undefined,
+    }));
 
   const council = meeting.term?.council;
 
@@ -257,7 +264,9 @@ export default async function SessionPage({
       <SessionPlayer
         meetingId={meeting.id}
         meetingTitle={meeting.title ?? meeting.id}
-        esesjaId={meeting.esesja_id}
+        sessionKey={meeting.esesja_id ?? meeting.source_id}
+        sessionNumber={currentIndex >= 0 ? currentIndex + 1 : null}
+        councilName={council?.name ?? null}
         meetingDate={meeting.date}
         existingTopics={allTopics}
         summary={meeting.summary}

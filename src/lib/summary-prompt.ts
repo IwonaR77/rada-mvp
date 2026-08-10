@@ -7,7 +7,7 @@ import path from "path";
 //
 // Podbicie wersji = nowy plik w prompty/ (tak działa wersjonowanie promptów w
 // tym projekcie) i podmiana tej nazwy.
-export const SUMMARY_PROMPT_FILENAME = "Prompt_Podsumowania_Sesji_v6.md";
+export const SUMMARY_PROMPT_FILENAME = "Prompt_Podsumowania_Sesji_v7.md";
 
 const SUMMARY_PROMPT_PATH = path.join(
   process.cwd(),

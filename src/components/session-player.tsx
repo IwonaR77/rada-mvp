@@ -5,23 +5,19 @@ import { useRouter } from "next/navigation";
 import ReactPlayer from "react-player";
 import ReactMarkdown from "react-markdown";
 import {
+  buildSrt,
+  buildPlainText,
+  buildPlainTextWithSpeakers,
+  type Segment,
+  type Person,
+} from "@/lib/transcript-export";
+import {
   assignSegments,
   acceptProposedSegments,
   importTranscript,
   splitSegment,
 } from "@/app/sesje/[id]/actions";
 
-type Segment = {
-  id: string;
-  start_time: number;
-  end_time: number;
-  text: string;
-  confirmed_councilor_id: string | null;
-  confirmed_official_id: string | null;
-  status: string;
-};
-
-type Person = { id: string; name: string; role?: string };
 
 function formatTime(seconds: number) {
   const h = Math.floor(seconds / 3600);
@@ -32,90 +28,7 @@ function formatTime(seconds: number) {
     : `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function toSrtTimestamp(seconds: number) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  const ms = Math.round((seconds - Math.floor(seconds)) * 1000);
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
-}
 
-function buildSrt(segments: Segment[]) {
-  return segments
-    .map(
-      (s, i) =>
-        `${i + 1}\n${toSrtTimestamp(s.start_time)} --> ${toSrtTimestamp(s.end_time)}\n${s.text}\n`
-    )
-    .join("\n");
-}
-
-function buildPlainText(
-  segments: Segment[],
-  meta: {
-    esesjaId: string | null;
-    date: string;
-    title: string;
-    existingTopics: string[];
-  }
-) {
-  // A header up front so pasting this file straight into the summary
-  // prompt already carries the esesja_id/date/existing-tags it needs —
-  // no separate manual "fill in METADANE" step, no back-and-forth asking
-  // for it, and no drifting tag vocabulary across sessions.
-  const header = [
-    meta.esesjaId ? `esesja_id: ${meta.esesjaId}` : null,
-    `data: ${meta.date}`,
-    `tytuł: ${meta.title}`,
-    meta.existingTopics.length > 0
-      ? `tagi: ${meta.existingTopics.join(", ")}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
-  return `${header}\n\n${segments.map((s) => s.text).join("\n\n")}`;
-}
-
-// Same header as buildPlainText, but groups consecutive segments sharing
-// the same confirmed speaker into one labeled block instead of repeating
-// the name before every single segment — a run of segment-level cuts from
-// the same person reads as one continuous statement, not N separate ones.
-function buildPlainTextWithSpeakers(
-  segments: Segment[],
-  peopleById: Map<string, string>,
-  meta: {
-    esesjaId: string | null;
-    date: string;
-    title: string;
-    existingTopics: string[];
-  }
-) {
-  const header = [
-    meta.esesjaId ? `esesja_id: ${meta.esesjaId}` : null,
-    `data: ${meta.date}`,
-    `tytuł: ${meta.title}`,
-    meta.existingTopics.length > 0
-      ? `tagi: ${meta.existingTopics.join(", ")}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  const blocks: { label: string; texts: string[] }[] = [];
-  for (const s of segments) {
-    const assignedId = s.confirmed_councilor_id ?? s.confirmed_official_id;
-    const label = assignedId ? (peopleById.get(assignedId) ?? "?") : "Nieustalone";
-    const last = blocks[blocks.length - 1];
-    if (last && last.label === label) {
-      last.texts.push(s.text);
-    } else {
-      blocks.push({ label, texts: [s.text] });
-    }
-  }
-
-  const body = blocks.map((b) => `${b.label}:\n${b.texts.join("\n")}`).join("\n\n");
-
-  return `${header}\n\n${body}`;
-}
 
 // Splits s.text into words tagged with their character offset in the
 // original string, so clicking a word can tell the split action exactly
@@ -172,19 +85,21 @@ function slugify(text: string) {
 // glance too, not just by extension. Falls back to the old title-based
 // slug only for the rare meeting with no esesja_id.
 function sessionFileBase(
-  esesjaId: string | null,
+  sessionKey: string | null,
   date: string,
   title: string
 ) {
-  return esesjaId
-    ? `sesja_${esesjaId}_${date}_transkrypcja`
+  return sessionKey
+    ? `sesja_${sessionKey}_${date}_transkrypcja`
     : slugify(title);
 }
 
 export function SessionPlayer({
   meetingId,
   meetingTitle,
-  esesjaId,
+  sessionKey,
+  sessionNumber,
+  councilName,
   meetingDate,
   existingTopics,
   summary,
@@ -201,7 +116,10 @@ export function SessionPlayer({
 }: {
   meetingId: string;
   meetingTitle: string;
-  esesjaId: string | null;
+  /** esesja_id albo source_id — rady spoza esesja.pl nie mają tego pierwszego. */
+  sessionKey: string | null;
+  sessionNumber: number | null;
+  councilName: string | null;
   meetingDate: string;
   existingTopics: string[];
   summary: string | null;
@@ -513,9 +431,11 @@ export function SessionPlayer({
                   disabled={segments.length === 0}
                   onClick={() =>
                     downloadFile(
-                      `${sessionFileBase(esesjaId, meetingDate, meetingTitle)}.txt`,
+                      `${sessionFileBase(sessionKey, meetingDate, meetingTitle)}.txt`,
                       buildPlainText(segments, {
-                        esesjaId,
+                        sessionKey,
+                        sessionNumber,
+                        councilName,
                         date: meetingDate,
                         title: meetingTitle,
                         existingTopics,
@@ -531,13 +451,21 @@ export function SessionPlayer({
                   disabled={segments.length === 0}
                   onClick={() =>
                     downloadFile(
-                      `${sessionFileBase(esesjaId, meetingDate, meetingTitle)}_mowcy.txt`,
-                      buildPlainTextWithSpeakers(segments, peopleById, {
-                        esesjaId,
-                        date: meetingDate,
-                        title: meetingTitle,
-                        existingTopics,
-                      }),
+                      `${sessionFileBase(sessionKey, meetingDate, meetingTitle)}_mowcy.txt`,
+                      buildPlainTextWithSpeakers(
+                        segments,
+                        peopleById,
+                        councilors,
+                        officials,
+                        {
+                          sessionKey,
+                          sessionNumber,
+                          councilName,
+                          date: meetingDate,
+                          title: meetingTitle,
+                          existingTopics,
+                        }
+                      ),
                       "text/plain;charset=utf-8"
                     )
                   }
@@ -549,7 +477,7 @@ export function SessionPlayer({
                   disabled={segments.length === 0}
                   onClick={() =>
                     downloadFile(
-                      `${sessionFileBase(esesjaId, meetingDate, meetingTitle)}.srt`,
+                      `${sessionFileBase(sessionKey, meetingDate, meetingTitle)}.srt`,
                       buildSrt(segments),
                       "application/x-subrip;charset=utf-8"
                     )
