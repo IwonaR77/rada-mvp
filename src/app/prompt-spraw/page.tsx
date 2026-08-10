@@ -1,16 +1,13 @@
-import fs from "fs";
-import path from "path";
 import type { Metadata } from "next";
 import { LegalDocument } from "@/components/legal-document";
+import { readMattersPrompt } from "@/lib/matters-prompt";
 
 export const metadata: Metadata = {
   title: "Prompt: sprawy — Rada",
 };
 
-// Bump this filename when a new version is published to prompty/.
-const DOC_PATH = path.join(process.cwd(), "prompty", "Prompt_Sprawy_v5.md");
-
+// Widok publiczny pokazuje wariant gminny; powiatowy różni się filtrem
+// terytorialnym i jest pobierany z /prompt-spraw/pobierz?councilId=.
 export default function PromptSprawPage() {
-  const content = fs.readFileSync(DOC_PATH, "utf-8");
-  return <LegalDocument content={content} />;
+  return <LegalDocument content={readMattersPrompt("gmina")} />;
 }
