@@ -301,6 +301,58 @@ export async function undoAssignment(
   return { error: null };
 }
 
+/**
+ * Usuwa wpis z listy mówców — wyłącznie taki, który nigdy nikomu nie posłużył.
+ *
+ * Lista `official` puchnie przy każdym przeglądzie transkrypcji i łapie przy
+ * okazji literówki oraz osoby dodane „na wszelki wypadek". Bez usuwania
+ * zostają tam na zawsze i wydłużają listę, po której trzeba szukać przy
+ * każdym tagowaniu.
+ *
+ * Blokada na przypisanych wypowiedziach jest podwójna, celowo:
+ * `segment.confirmed_official_id` ma ON DELETE SET NULL, więc usunięcie osoby
+ * z otagowanymi wypowiedziami nie rzuciłoby błędu, tylko po cichu odpięło je
+ * wszystkie i wrzuciło z powrotem do puli nieprzypisanych — bez śladu, kto
+ * tam był. Sprawdzenie tutaj daje czytelny komunikat z liczbą, a polityka RLS
+ * (`scripts/migrate-official-cleanup.sql`) pilnuje tego samego niezależnie od
+ * tego, czy ktoś kiedyś obejdzie tę funkcję.
+ *
+ * Radnych ta akcja nie dotyczy — skład rady to nie jest lista do sprzątania
+ * przy tagowaniu.
+ */
+export async function deleteOfficial(meetingId: string, officialId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Musisz być zalogowana" };
+
+  const { count: used } = await supabase
+    .from("segment")
+    .select("id", { count: "exact", head: true })
+    .eq("confirmed_official_id", officialId);
+
+  if (used && used > 0) {
+    return {
+      error: `Nie usunięto — ta osoba ma ${used} przypisanych wypowiedzi. Najpierw przepisz je na kogoś innego.`,
+    };
+  }
+
+  const { error, count } = await supabase
+    .from("official")
+    .delete({ count: "exact" })
+    .eq("id", officialId);
+
+  if (error) return { error: error.message };
+  if (count === 0) {
+    return { error: "Brak uprawnień do usunięcia tej osoby (albo ma już wypowiedzi)." };
+  }
+
+  revalidatePath(`/sesje/${meetingId}`);
+  return { error: null };
+}
+
 // Moderators only — promotes already-proposed segments (editor-suggested or
 // LLM-suggested, see [[project_transcription_pipeline]] voice-embedding
 // work) to finalized. Never touches confirmed_councilor_id/confirmed_official_id

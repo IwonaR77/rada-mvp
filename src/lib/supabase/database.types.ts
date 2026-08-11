@@ -1288,6 +1288,13 @@ export type Database = {
           proposed_seconds: number
         }[]
       }
+      council_speaker_usage: {
+        Args: { p_council_id: string }
+        Returns: {
+          speaker_id: string
+          segments: number
+        }[]
+      }
       term_speaking_blocks: {
         Args: { p_term_id: string; p_max_gap?: number }
         Returns: {

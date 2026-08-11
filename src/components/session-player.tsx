@@ -18,6 +18,7 @@ import {
   importTranscript,
   splitSegment,
   undoAssignment,
+  deleteOfficial,
   type SegmentSnapshot,
 } from "@/app/sesje/[id]/actions";
 
@@ -112,6 +113,7 @@ export function SessionPlayer({
   segments,
   councilors,
   officials,
+  speakerUsage,
   isAdmin,
   canAssign,
   canFinalize,
@@ -136,6 +138,12 @@ export function SessionPlayer({
   segments: Segment[];
   councilors: Person[];
   officials: { id: string; full_name: string; role: string }[];
+  /**
+   * Ile wypowiedzi ma przypisanych każdy mówca w całej radzie (nie tylko w tej
+   * sesji). Brak klucza = zero. Odróżnia osobę faktycznie używaną od wpisu,
+   * który nigdy nikomu nie posłużył — tylko takie wolno usunąć.
+   */
+  speakerUsage: Record<string, number>;
   isAdmin: boolean;
   canAssign: boolean;
   canFinalize: boolean;
@@ -354,6 +362,20 @@ export function SessionPlayer({
         result.error ? null : { previous: result.previous ?? [], label }
       );
       setSelected(new Set());
+    });
+  }
+
+  function removeOfficial(id: string, label: string) {
+    if (
+      !window.confirm(
+        `Usunąć „${label}" z listy mówców tej rady? Nie ma przypisanych wypowiedzi, więc nic nie przepadnie.`
+      )
+    ) {
+      return;
+    }
+    startTransition(async () => {
+      const result = await deleteOfficial(meetingId, id);
+      setAssignError(result.error);
     });
   }
 
@@ -883,21 +905,28 @@ export function SessionPlayer({
                 id: c.id,
                 label: c.name,
                 sub: null,
+                // Radnych nie usuwa się z listy mówców — skład rady to nie
+                // jest lista do sprzątania przy tagowaniu.
+                removable: false,
                 target: { type: "councilor" as const, id: c.id },
               })),
               ...officials.map((o) => ({
                 id: o.id,
                 label: o.full_name,
                 sub: o.role,
+                removable: canFinalize,
                 target: { type: "official" as const, id: o.id },
               })),
             ]}
             speakingIds={speakingIds}
             speakingSeconds={speakingSeconds}
+            speakerUsage={speakerUsage}
             speakerFilter={speakerFilter}
             onToggleFilter={toggleSpeakerFilter}
             onAssign={assignTo}
+            onRemove={removeOfficial}
             disabled={selected.size === 0 || isPending}
+            actionsDisabled={isPending}
           />
         </div>
       )}
@@ -914,6 +943,8 @@ type SpeakerEntry = {
   label: string;
   /** Dopisek przy nazwisku — dla urzędników funkcja, dla radnych nic. */
   sub: string | null;
+  /** Czy w ogóle wolno tę pozycję usunąć (radni: nigdy; urzędnicy: moderator). */
+  removable: boolean;
   target: SpeakerTarget;
 };
 
@@ -943,19 +974,27 @@ function SpeakerList({
   people,
   speakingIds,
   speakingSeconds,
+  speakerUsage,
   speakerFilter,
   onToggleFilter,
   onAssign,
+  onRemove,
   disabled,
+  actionsDisabled,
 }: {
   people: SpeakerEntry[];
   speakingIds: Set<string>;
   /** Czas mówienia w tej sesji, w sekundach — porządek sekcji „W tej sesji". */
   speakingSeconds: Map<string, number>;
+  /** Liczba przypisanych wypowiedzi w całej radzie; brak klucza = zero. */
+  speakerUsage: Record<string, number>;
   speakerFilter: Set<string>;
   onToggleFilter: (id: string) => void;
   onAssign: (target: SpeakerTarget) => void;
+  onRemove: (id: string, label: string) => void;
   disabled: boolean;
+  /** Kosz blokujemy osobno: usuwanie nie wymaga zaznaczonych segmentów. */
+  actionsDisabled: boolean;
 }) {
   // Najwięcej mówiący na górze. Przy równym czasie alfabetycznie, żeby
   // kolejność była powtarzalna, a nie zależna od kolejności wczytania.
@@ -970,10 +1009,12 @@ function SpeakerList({
   // czasem dałoby im kolejność przypadkową.
   const rest = people.filter((p) => !speakingIds.has(p.id));
 
-  const row = (p: SpeakerEntry) => (
+  const row = (p: SpeakerEntry) => {
+    const usage = speakerUsage[p.id] ?? 0;
+    return (
     <li
       key={p.id}
-      className={`flex items-center gap-2 rounded-lg px-2 py-0.5 ${
+      className={`group flex items-center gap-2 rounded-lg px-2 py-0.5 ${
         speakingIds.has(p.id) ? "bg-emerald-50 dark:bg-emerald-950/30" : ""
       }`}
     >
@@ -983,6 +1024,20 @@ function SpeakerList({
         onChange={() => onToggleFilter(p.id)}
         className="shrink-0"
       />
+      {/* Wyróżnik ma być dyskretny, więc kropka, nie liczba: przy tagowaniu
+          liczy się jedna informacja — czy ta pozycja komukolwiek kiedykolwiek
+          posłużyła. Pusty placeholder o tej samej szerokości trzyma nazwiska
+          w jednej kolumnie, żeby brak kropki nie przesuwał wiersza. */}
+      {usage > 0 ? (
+        <span
+          title={`Ma przypisane wypowiedzi: ${usage}`}
+          className="w-1.5 shrink-0 text-center text-[10px] leading-none text-emerald-600/70 dark:text-emerald-500/70"
+        >
+          ●
+        </span>
+      ) : (
+        <span className="w-1.5 shrink-0" aria-hidden />
+      )}
       <button
         disabled={disabled}
         onClick={() => onAssign(p.target)}
@@ -1000,8 +1055,24 @@ function SpeakerList({
           </span>
         )}
       </button>
+      {/* Kosz tylko przy pozycjach bez ani jednej przypisanej wypowiedzi —
+          usunięcie osoby, która je ma, odpięłoby je po cichu (ON DELETE SET
+          NULL). Widoczny dopiero po najechaniu, żeby nie robić z listy
+          mówców panelu administracyjnego. */}
+      {p.removable && usage === 0 && (
+        <button
+          disabled={actionsDisabled}
+          onClick={() => onRemove(p.id, p.label)}
+          title="Usuń z listy mówców — ta osoba nie ma żadnych wypowiedzi"
+          aria-label={`Usuń ${p.label} z listy mówców`}
+          className="shrink-0 rounded px-1 text-zinc-300 opacity-0 transition-opacity hover:text-red-600 focus:opacity-100 disabled:opacity-30 group-hover:opacity-100 dark:text-zinc-600 dark:hover:text-red-400"
+        >
+          🗑
+        </button>
+      )}
     </li>
-  );
+    );
+  };
 
   return (
     <div>

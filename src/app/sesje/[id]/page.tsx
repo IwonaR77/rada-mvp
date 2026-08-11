@@ -126,6 +126,17 @@ export default async function SessionPage({
     ...new Set((topicRows ?? []).flatMap((r) => r.topics ?? [])),
   ].sort((a, b) => a.localeCompare(b, "pl"));
 
+  // Ile wypowiedzi ma przypisanych każdy mówca w CAŁEJ radzie, nie tylko w tej
+  // sesji — na liście przy tagowaniu odróżnia osobę faktycznie używaną od
+  // wpisu, który nigdy nikomu nie posłużył (literówka, osoba dodana „na
+  // wszelki wypadek"). Tylko te drugie da się usunąć.
+  const { data: usageRows } = councilId
+    ? await supabase.rpc("council_speaker_usage", { p_council_id: councilId })
+    : { data: null };
+  const speakerUsage = Object.fromEntries(
+    (usageRows ?? []).map((r) => [r.speaker_id, Number(r.segments)])
+  );
+
   let isAdmin = false;
   let canAssign = false;
   let finalizePermission = false;
@@ -277,6 +288,7 @@ export default async function SessionPage({
         segments={segments ?? []}
         councilors={councilors}
         officials={officials ?? []}
+        speakerUsage={speakerUsage}
         isAdmin={isAdmin}
         canAssign={canAssign}
         canFinalize={finalizePermission}
