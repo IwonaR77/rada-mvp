@@ -852,14 +852,29 @@ export function SessionPlayer({
             <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-500">
               Filtruj po mówcy
             </h3>
-            {speakerFilter.size > 0 && (
+            {/* Lista mówców przychodzi z serwera jako props, więc nowa osoba
+                dopisana w bazie w trakcie tagowania nie pojawia się sama.
+                `router.refresh()` dociąga ją, NIE gubiąc stanu komponentu —
+                zaznaczone segmenty, filtry i kursor skoku zostają. Przeładowanie
+                strony (F5) kasowałoby to wszystko. */}
+            <div className="flex items-center gap-3">
               <button
-                onClick={() => setSpeakerFilter(new Set())}
-                className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
+                onClick={() => startTransition(() => router.refresh())}
+                disabled={isPending}
+                title="Dociąga nowo dodanych mówców bez utraty zaznaczenia"
+                className="text-xs text-zinc-500 underline hover:text-zinc-700 disabled:opacity-40 dark:hover:text-zinc-300"
               >
-                Wyświetl wszystko
+                ↻ Odśwież listę
               </button>
-            )}
+              {speakerFilter.size > 0 && (
+                <button
+                  onClick={() => setSpeakerFilter(new Set())}
+                  className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
+                >
+                  Wyświetl wszystko
+                </button>
+              )}
+            </div>
           </div>
 
           <SpeakerList
