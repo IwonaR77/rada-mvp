@@ -152,6 +152,11 @@ export async function getSpeakingActivity(
   const pozostaliIds = new Set(
     officials
       .filter((o) => o.id !== burmistrz?.id && o.id !== zastepcaBurmistrza?.id)
+      // „Nieustalony mówca" to pozycja techniczna: znaczy „sprawdzone, nie da
+      // się ustalić kto mówi". Wpuszczenie jej do wiersza „Pozostali
+      // urzędnicy" dopisywałoby urzędnikom czas wypowiedzi, o których wiadomo
+      // tylko tyle, że nie wiadomo, czyje są.
+      .filter((o) => o.role !== "Nie do ustalenia")
       .map((o) => o.id)
   );
   let pozostaliHasData = false;
