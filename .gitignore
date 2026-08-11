@@ -95,3 +95,4 @@ __pycache__/
 # .remove_*: staged for deletion during folder cleanup — renamed here, not yet
 # deleted, so they stay out of git while under review
 .remove_*
+wnioski/
