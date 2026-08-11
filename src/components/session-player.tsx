@@ -17,6 +17,8 @@ import {
   acceptProposedSegments,
   importTranscript,
   splitSegment,
+  undoAssignment,
+  type SegmentSnapshot,
 } from "@/app/sesje/[id]/actions";
 
 
@@ -170,6 +172,16 @@ export function SessionPlayer({
   const [forceReimport, setForceReimport] = useState(false);
   const [splittingId, setSplittingId] = useState<string | null>(null);
   const [splitError, setSplitError] = useState<string | null>(null);
+  // Jedno cofnięcie, nie historia zmian: pamiętamy wyłącznie ostatnie
+  // przypisanie i tylko do najbliższej innej akcji. Świadomie bez stosu —
+  // przy tagowaniu setek segmentów głębokie cofanie po kilku minutach klikania
+  // trafiałoby w stan, którego już się nie pamięta, a to gorsze niż brak
+  // cofania. Stan żyje w komponencie, więc odświeżenie strony go kasuje.
+  const [lastAssignment, setLastAssignment] = useState<{
+    previous: SegmentSnapshot[];
+    label: string;
+  } | null>(null);
+  const [assignError, setAssignError] = useState<string | null>(null);
   const router = useRouter();
 
   const activeSegment = segments.find(
@@ -296,13 +308,29 @@ export function SessionPlayer({
   }
 
   function assignTo(target: { type: "councilor" | "official"; id: string }) {
+    const ids = Array.from(selected);
+    const label = peopleById.get(target.id) ?? "?";
     startTransition(async () => {
-      await assignSegments(meetingId, Array.from(selected), target);
+      const result = await assignSegments(meetingId, ids, target);
+      setAssignError(result.error);
+      setLastAssignment(
+        result.error ? null : { previous: result.previous ?? [], label }
+      );
       setSelected(new Set());
     });
   }
 
+  function undoLastAssignment() {
+    if (!lastAssignment) return;
+    startTransition(async () => {
+      const result = await undoAssignment(meetingId, lastAssignment.previous);
+      setAssignError(result.error);
+      if (!result.error) setLastAssignment(null);
+    });
+  }
+
   function acceptSelected() {
+    setLastAssignment(null);
     startTransition(async () => {
       await acceptProposedSegments(meetingId, selectedProposedIds);
       setSelected(new Set());
@@ -317,6 +345,7 @@ export function SessionPlayer({
     ) {
       return;
     }
+    setLastAssignment(null);
     startTransition(async () => {
       await acceptProposedSegments(
         meetingId,
@@ -328,6 +357,9 @@ export function SessionPlayer({
 
   function handleSplit(segmentId: string, offset: number) {
     setSplitError(null);
+    // Podział tworzy nowe segmenty w miejsce starego, więc migawka sprzed
+    // podziału wskazywałaby na wiersze, których już nie ma.
+    setLastAssignment(null);
     startTransition(async () => {
       const result = await splitSegment(meetingId, segmentId, offset);
       if (result.error) setSplitError(result.error);
@@ -719,6 +751,28 @@ export function SessionPlayer({
           <p className="text-sm text-zinc-500">
             Zaznaczono: {selected.size} segment(ów)
           </p>
+
+          {/* Nad listą mówców, a nie pod nią: pomyłkę widać od razu po
+              kliknięciu, a lista bywa długa i przycisk pod nią byłby poza
+              ekranem dokładnie wtedy, gdy jest potrzebny. */}
+          {lastAssignment && (
+            <button
+              disabled={isPending}
+              onClick={undoLastAssignment}
+              className="rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2 text-left text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-40 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/60"
+            >
+              ↶ Cofnij ostatnie przypisanie
+              <span className="mt-0.5 block text-xs font-normal opacity-80">
+                {lastAssignment.previous.length} segm. → {lastAssignment.label}
+              </span>
+            </button>
+          )}
+
+          {assignError && (
+            <p className="text-sm text-red-600 dark:text-red-400">
+              {assignError}
+            </p>
+          )}
 
           {canFinalize && proposedSegments.length > 0 && (
             <div className="flex flex-col gap-2 rounded-2xl border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/30">

@@ -143,6 +143,19 @@ export async function deleteSummaryFeedback(
   return { error: null };
 }
 
+/**
+ * Stan segmentu sprzed zmiany — tyle, ile trzeba, żeby go przywrócić.
+ * `assignSegments` zwraca to wołającemu, a `undoAssignment` przyjmuje z powrotem.
+ */
+export type SegmentSnapshot = {
+  id: string;
+  confirmed_councilor_id: string | null;
+  confirmed_official_id: string | null;
+  status: string;
+};
+
+const SEGMENT_STATUSES = ["open", "proposed", "finalized"];
+
 export async function assignSegments(
   meetingId: string,
   segmentIds: string[],
@@ -176,6 +189,15 @@ export async function assignSegments(
   });
   const targetStatus = canFinalize ? "finalized" : "proposed";
 
+  // Stan sprzed zapisu, czytany PRZED UPDATE — to jedyny moment, w którym
+  // jeszcze istnieje. Idzie do klienta jako materiał na jedno cofnięcie
+  // (patrz `undoAssignment`); nie zapisujemy go nigdzie po stronie serwera,
+  // bo historia zmian to osobna, większa funkcja.
+  const { data: previous } = await supabase
+    .from("segment")
+    .select("id, confirmed_councilor_id, confirmed_official_id, status")
+    .in("id", segmentIds);
+
   const { error, count } = await supabase
     .from("segment")
     .update(
@@ -195,6 +217,83 @@ export async function assignSegments(
   if (count !== segmentIds.length) {
     return {
       error: `Zapisano tylko ${count} z ${segmentIds.length} zaznaczonych segmentów — reszta wymaga wyższych uprawnień.`,
+    };
+  }
+
+  revalidatePath(`/sesje/${meetingId}`);
+  return { error: null, previous: previous ?? [] };
+}
+
+/**
+ * Cofa JEDNO ostatnie przypisanie mówcy — przywraca segmentom stan z migawki,
+ * którą zwrócił `assignSegments`.
+ *
+ * Migawka przychodzi od klienta i nie jest zaufana, ale też nie musi być:
+ * zapis idzie tą samą drogą co każdy inny, więc RLS przepuści dokładnie to,
+ * co wołający i tak mógłby ustawić ręcznie z panelu. Podrobiona migawka nie
+ * daje więc nic ponad to, co użytkownik ma i tak. Zakres sesji i dozwolone
+ * statusy sprawdzamy mimo to, żeby błędne dane kończyły się komunikatem,
+ * a nie naruszeniem CHECK-a albo zapisem do cudzej sesji.
+ *
+ * Świadome uproszczenie: przywrócony segment dostaje `finalized_by`
+ * cofającego, a nie osoby, która go pierwotnie zatwierdziła. Za bieżący stan
+ * odpowiada ten, kto zrobił ostatni ruch — a pełne odtworzenie autorstwa
+ * wymagałoby historii zmian, której świadomie tu nie budujemy.
+ */
+export async function undoAssignment(
+  meetingId: string,
+  previous: SegmentSnapshot[]
+) {
+  if (previous.length === 0) return { error: "Nie ma czego cofnąć" };
+  if (previous.some((s) => !SEGMENT_STATUSES.includes(s.status))) {
+    return { error: "Nieznany status segmentu w danych do cofnięcia" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "Musisz być zalogowana" };
+
+  // Jeden UPDATE na każdy różny stan docelowy zamiast jednego na segment —
+  // zaznaczenie to zwykle jeden mówca i jeden status, więc realnie schodzi
+  // to do jednego, dwóch zapytań.
+  const groups = new Map<string, { snapshot: SegmentSnapshot; ids: string[] }>();
+  for (const snapshot of previous) {
+    const key = `${snapshot.confirmed_councilor_id ?? ""}|${snapshot.confirmed_official_id ?? ""}|${snapshot.status}`;
+    const group = groups.get(key);
+    if (group) group.ids.push(snapshot.id);
+    else groups.set(key, { snapshot, ids: [snapshot.id] });
+  }
+
+  let restored = 0;
+  for (const { snapshot, ids } of groups.values()) {
+    const { error, count } = await supabase
+      .from("segment")
+      .update(
+        {
+          confirmed_councilor_id: snapshot.confirmed_councilor_id,
+          confirmed_official_id: snapshot.confirmed_official_id,
+          status: snapshot.status,
+          finalized_by: snapshot.status === "open" ? null : user.id,
+          finalized_at:
+            snapshot.status === "finalized" ? new Date().toISOString() : null,
+        },
+        { count: "exact" }
+      )
+      .in("id", ids)
+      // Migawka pochodzi z tej strony, więc segmenty muszą należeć do tej sesji.
+      .eq("meeting_id", meetingId);
+
+    if (error) return { error: error.message };
+    restored += count ?? 0;
+  }
+
+  if (restored === 0) return { error: "Brak uprawnień do cofnięcia tej zmiany" };
+  if (restored !== previous.length) {
+    return {
+      error: `Cofnięto tylko ${restored} z ${previous.length} segmentów — reszta wymaga wyższych uprawnień.`,
     };
   }
 
