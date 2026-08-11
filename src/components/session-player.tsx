@@ -152,6 +152,7 @@ export function SessionPlayer({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const activeRowRef = useRef<HTMLLIElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const hasAppliedInitialSeek = useRef(false);
   // While the user is scrolling ahead of playback to pre-tag segments,
   // don't yank them back to the currently playing row on every segment
@@ -182,6 +183,10 @@ export function SessionPlayer({
     label: string;
   } | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
+  // Dokąd doszło ostatnie „następny nieprzypisany". Trzymane osobno od
+  // zaznaczenia i od odtwarzania, bo przeskakiwanie po dziurach to inna
+  // czynność niż tagowanie tego, co akurat leci.
+  const [jumpCursor, setJumpCursor] = useState<string | null>(null);
   const router = useRouter();
 
   const activeSegment = segments.find(
@@ -296,6 +301,38 @@ export function SessionPlayer({
       rangeIds.forEach((rid) => next.add(rid));
       return next;
     });
+  }
+
+  /**
+   * Przewija listę do kolejnego segmentu bez mówcy — bez zmiany filtra, żeby
+   * sąsiedztwo zostało widoczne (po nim najczęściej poznaje się, kto mówi).
+   *
+   * Punkt startu: ostatni przeskok, a przy pierwszym kliknięciu segment, który
+   * akurat leci. Po dojściu do końca zawija na początek, więc przycisk nigdy
+   * nie robi „nic" przy niepustej liście dziur.
+   */
+  function jumpToNextUnassigned() {
+    const list = visibleSegments;
+    const from = jumpCursor ?? activeSegment?.id ?? null;
+    const fromIndex = from ? list.findIndex((s) => s.id === from) : -1;
+    const next =
+      list.slice(fromIndex + 1).find(isUnassigned) ?? list.find(isUnassigned);
+    if (!next) return;
+
+    setJumpCursor(next.id);
+    // Bez tego efekt podążania za odtwarzaniem ściągnąłby widok z powrotem
+    // przy najbliższej zmianie segmentu.
+    followPlaybackRef.current = false;
+
+    const container = listRef.current;
+    const row = document.getElementById(`seg-${next.id}`);
+    if (!container || !row) return;
+    // Przewijamy samą listę, nie stronę — `scrollIntoView` ruszyłby całym
+    // widokiem, odsuwając odtwarzacz.
+    const delta =
+      row.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    container.scrollTop +=
+      delta - container.clientHeight / 2 + row.clientHeight / 2;
   }
 
   function toggleSpeakerFilter(id: string) {
@@ -502,6 +539,18 @@ export function SessionPlayer({
             </button>
           </div>
 
+          {/* Skok do dziury zamiast filtrowania: filtr „Nieustalone" pokazuje
+              same dziury, a wtedy nie widać, co padło obok — a to zwykle
+              jedyna wskazówka, kto mówi. */}
+          <button
+            onClick={jumpToNextUnassigned}
+            disabled={!visibleSegments.some(isUnassigned)}
+            title="Przewija listę do kolejnego segmentu bez przypisanego mówcy"
+            className="rounded-full border border-amber-300 px-3 py-1 text-sm text-amber-800 hover:bg-amber-50 disabled:opacity-40 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40"
+          >
+            ↓ {jumpCursor ? "Następny" : "Pierwszy"} nieprzypisany
+          </button>
+
           <div className="ml-auto flex gap-2">
             {canDownloadTranscript && (
               <>
@@ -571,6 +620,7 @@ export function SessionPlayer({
 
         {taggingProgress && <div className="mb-3">{taggingProgress}</div>}
         <ul
+          ref={listRef}
           onWheel={() => {
             followPlaybackRef.current = false;
           }}
@@ -599,6 +649,7 @@ export function SessionPlayer({
             return (
               <li
                 key={s.id}
+                id={`seg-${s.id}`}
                 ref={isActive ? activeRowRef : undefined}
                 className={`flex items-start gap-2 rounded-xl px-2 py-2 transition-colors ${
                   isActive
