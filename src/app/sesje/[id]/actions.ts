@@ -11,12 +11,23 @@ type AssignTarget =
   | { type: "councilor"; id: string }
   | { type: "official"; id: string };
 
-// Uwagi do promptu i wgrywanie podsumowań to praca redakcyjna nad tym, co
-// serwis mówi o realnych ludziach — dlatego pełny dostęp (manager), a nie
-// moderator. Zakres liczy się per rada: manager Grójca nie redaguje powiatu.
-async function requireSummaryManager(
+// Wgrywanie podsumowań to praca redakcyjna nad tym, co serwis mówi o realnych
+// ludziach — dlatego pełny dostęp (manager). Uwagi do promptu są od niej
+// oddzielone: zgłasza je ten, kto siedzi w transkrypcie i widzi, czego
+// podsumowanie nie wyłapało, czyli moderator. Zakres liczy się per rada:
+// manager ani moderator Grójca nie redagują powiatu.
+/**
+ * Uprawnienie do operacji na podsumowaniu tej sesji.
+ *
+ * `full_access` to wgrywanie podsumowań (manager), `finalize_vote` to same
+ * uwagi (moderator). Nie trzeba sprawdzać obu naraz: `user_has_permission`
+ * traktuje `full_access` jak wildcard, więc pytanie o `finalize_vote`
+ * przepuszcza managera automatycznie.
+ */
+async function requireSummaryAccess(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  meetingId: string
+  meetingId: string,
+  perm: "full_access" | "finalize_vote"
 ): Promise<{ ok: false; error: string } | { ok: true; userId: string }> {
   const {
     data: { user },
@@ -30,12 +41,12 @@ async function requireSummaryManager(
     .maybeSingle();
   if (!meeting) return { ok: false, error: "Nie ma takiej sesji" };
 
-  const { data: isManager } = await supabase.rpc("user_has_permission", {
+  const { data: allowed } = await supabase.rpc("user_has_permission", {
     uid: user.id,
-    perm: "full_access",
+    perm,
     target_council_id: meeting.term?.council_id ?? undefined,
   });
-  if (!isManager) return { ok: false, error: "Brak uprawnień" };
+  if (!allowed) return { ok: false, error: "Brak uprawnień" };
 
   return { ok: true, userId: user.id };
 }
@@ -53,7 +64,7 @@ const FEEDBACK_MAX_LENGTH = 5_000;
  */
 export async function importSummary(meetingId: string, markdown: string) {
   const supabase = await createClient();
-  const auth = await requireSummaryManager(supabase, meetingId);
+  const auth = await requireSummaryAccess(supabase, meetingId, "full_access");
   if (!auth.ok) return { error: auth.error };
 
   if (markdown.length > SUMMARY_MAX_LENGTH) {
@@ -86,10 +97,10 @@ export async function importSummary(meetingId: string, markdown: string) {
   };
 }
 
-/** Uwaga managera: czego prompt nie wyłapał w tej konkretnej sesji. */
+/** Uwaga moderatora lub managera: czego prompt nie wyłapał w tej sesji. */
 export async function addSummaryFeedback(meetingId: string, body: string) {
   const supabase = await createClient();
-  const auth = await requireSummaryManager(supabase, meetingId);
+  const auth = await requireSummaryAccess(supabase, meetingId, "finalize_vote");
   if (!auth.ok) return { error: auth.error };
 
   const trimmed = body.trim();
@@ -124,7 +135,7 @@ export async function deleteSummaryFeedback(
   feedbackId: string
 ) {
   const supabase = await createClient();
-  const auth = await requireSummaryManager(supabase, meetingId);
+  const auth = await requireSummaryAccess(supabase, meetingId, "finalize_vote");
   if (!auth.ok) return { error: auth.error };
 
   // Polityka RLS przepuszcza kasowanie tylko autorowi — filtr po author_id

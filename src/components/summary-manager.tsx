@@ -18,22 +18,30 @@ export type SummaryFeedbackEntry = {
 };
 
 /**
- * Narzędzia managera przy podsumowaniu sesji. Podsumowania powstają poza
- * serwisem (prompt → czat → gotowy plik .md), więc ten panel obsługuje całą
- * pętlę: pobranie promptu, wgranie wyniku i zapisanie uwagi, czego prompt nie
- * wyłapał — żeby nie ginęło to w rozmowie.
+ * Panel przy podsumowaniu sesji. Podsumowania powstają poza serwisem
+ * (prompt → czat → gotowy plik .md), więc obsługuje całą pętlę: pobranie
+ * promptu, wgranie wyniku i zapisanie uwagi, czego prompt nie wyłapał — żeby
+ * nie ginęło to w rozmowie.
+ *
+ * Dwa poziomy w jednym panelu, bo to jedna pętla pracy: manager (`canImport`)
+ * widzi całość, moderator tylko uwagi. Uwagi zgłasza ten, kto siedzi
+ * w transkrypcie i widzi, czego podsumowanie nie wyłapało — a to moderator,
+ * nie manager.
  */
 export function SummaryManager({
   meetingId,
   currentPromptVersion,
   summaryPromptVersion,
   hasSummary,
+  canImport,
   feedback,
 }: {
   meetingId: string;
   currentPromptVersion: number;
   summaryPromptVersion: number | null;
   hasSummary: boolean;
+  /** Manager: pobranie promptu i wgranie .md. Moderator dostaje same uwagi. */
+  canImport: boolean;
   feedback: SummaryFeedbackEntry[];
 }) {
   const router = useRouter();
@@ -104,7 +112,7 @@ export function SummaryManager({
     <div className="flex flex-col gap-4 rounded-2xl border border-dashed border-zinc-300 p-4 dark:border-zinc-700">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="mr-auto text-xs font-medium uppercase tracking-wide text-zinc-500">
-          Podsumowanie — narzędzia managera
+          {canImport ? "Podsumowanie — narzędzia managera" : "Podsumowanie — uwagi"}
         </h3>
         <span className="text-xs text-zinc-400">
           {hasSummary
@@ -114,6 +122,7 @@ export function SummaryManager({
         </span>
       </div>
 
+      {canImport && (
       <div className="flex flex-wrap items-center gap-2">
         <a
           href={`/prompt-podsumowania/pobierz?meetingId=${meetingId}`}
@@ -133,6 +142,7 @@ export function SummaryManager({
           />
         </label>
       </div>
+      )}
 
       <div className="flex flex-col gap-2">
         <label

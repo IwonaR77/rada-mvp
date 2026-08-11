@@ -141,7 +141,10 @@ export default async function SessionPage({
   let canAssign = false;
   let finalizePermission = false;
   let canDownloadTranscript = false;
+  // Wgrywanie podsumowań (manager) i zgłaszanie uwag do nich (moderator) to
+  // dwa różne uprawnienia — patrz komentarz przy `requireSummaryAccess`.
   let canManageSummary = false;
+  let canCommentSummary = false;
   if (user) {
     const { data: appUser } = await supabase
       .from("app_user")
@@ -181,11 +184,12 @@ export default async function SessionPage({
     finalizePermission = Boolean(canFinalize);
     canDownloadTranscript = Boolean(canDownload);
     canManageSummary = Boolean(isManager);
+    canCommentSummary = Boolean(canFinalize) || Boolean(isManager);
   }
 
-  // Uwagi do promptu widzi tylko manager tej rady (polityka RLS na
+  // Uwagi do promptu widzi moderator i manager tej rady (polityka RLS na
   // summary_feedback), więc zapytanie ma sens dopiero po sprawdzeniu.
-  const feedbackRows = canManageSummary
+  const feedbackRows = canCommentSummary
     ? (
         await supabase
           .from("summary_feedback")
@@ -315,18 +319,19 @@ export default async function SessionPage({
           })()
         }
         summaryManager={
-          canManageSummary ? (
+          canCommentSummary ? (
             <SummaryManager
               meetingId={meeting.id}
               currentPromptVersion={CURRENT_SUMMARY_PROMPT_VERSION}
               summaryPromptVersion={meeting.summary_prompt_version}
               hasSummary={Boolean(meeting.summary)}
+              canImport={canManageSummary}
               feedback={feedbackRows.map((f) => ({
                 id: f.id,
                 body: f.body,
                 createdAt: f.created_at,
                 promptVersion: f.prompt_version,
-                authorName: f.author?.display_name ?? "Manager",
+                authorName: f.author?.display_name ?? "Bez nazwy",
                 isOwn: f.author?.id === user?.id,
               }))}
             />
