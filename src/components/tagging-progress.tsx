@@ -33,11 +33,11 @@ export function TaggingProgress({
       <div className="flex items-baseline justify-between text-xs text-zinc-500">
         <span>{label}</span>
         <span>
-          {finalizedPct.toFixed(1)}% potwierdzone
+          {formatPct(finalizedPct)}% potwierdzone
           {proposedSeconds > 0 && (
             <span className="text-zinc-400">
               {" "}
-              · {proposedPct.toFixed(1)}% zaproponowane
+              · {formatPct(proposedPct)}% zaproponowane
             </span>
           )}
         </span>
@@ -61,8 +61,27 @@ export function TaggingProgress({
   );
 }
 
+/**
+ * Dokładność jest tu funkcją użytkową, nie kosmetyką.
+ *
+ * Przy 97 godzinach nagrania jedno miejsce po przecinku znaczy działkę co
+ * 0,1 h, czyli 6 minut — kilka otagowanych segmentów nie rusza takiej liczby
+ * ani o krok i praca wygląda na bezowocną. Godziny z minutami dają działkę
+ * co minutę, więc licznik reaguje na każde kilka segmentów.
+ */
 function formatHours(seconds: number) {
-  const hours = seconds / 3600;
-  if (hours < 1) return `${Math.round(seconds / 60)} min`;
-  return `${hours.toFixed(1).replace(".", ",")} h`;
+  const totalMinutes = Math.round(seconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return m === 0 ? `${h} h` : `${h} h ${m} min`;
+}
+
+/**
+ * Dwa miejsca po przecinku z tego samego powodu: przy 97 godzinach 0,01%
+ * to ok. 35 sekund nagrania, czyli mniej więcej jeden segment. Procent
+ * przestaje wtedy stać w miejscu przez pół godziny pracy.
+ */
+function formatPct(value: number) {
+  return value.toFixed(2).replace(".", ",");
 }
