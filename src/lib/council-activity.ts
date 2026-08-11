@@ -26,7 +26,21 @@ export type SpeakingActivity = {
   councilors: { id: string; fullName: string }[];
   /** Kolumny heatmapy: sesje z zaimportowanym transkryptem, od najnowszej. */
   heatmapMeetings: { id: string; date: string; title: string | null }[];
-  /** Sekundy mówienia: `[id mówcy][id sesji]`. Brak klucza = brak wypowiedzi. */
+  /**
+   * Sekundy mówienia: `[id mówcy][id sesji]`. Brak klucza = brak wypowiedzi.
+   *
+   * Liczone per BLOK (przylegające segmenty jednego mówcy, od początku
+   * pierwszego do końca ostatniego), a nie przez sumowanie długości
+   * pojedynczych segmentów — pauza w środku jednej ciągłej wypowiedzi to
+   * nadal czas, w którym mówca trzymał głos. Różnica na dzisiejszych danych
+   * to +17%. Szczegóły i uzasadnienie progu: `term_speaking_blocks`
+   * w `scripts/migrate-speaking-blocks.sql`.
+   *
+   * Uwaga: `stats` (podium) liczy nadal per segment, więc suma wiersza
+   * heatmapy jest WYŻSZA niż `totalSeconds` tej samej osoby. To świadoma
+   * różnica, nie rozjazd do naprawienia w locie — zmiana `stats` przesunęłaby
+   * wszystkie dotychczasowe liczby na profilach radnych.
+   */
   heatmapMatrix: Record<string, Record<string, number>>;
   /**
    * Dodatkowe wiersze heatmapy dla urzędników (burmistrz, jego zastępca,
@@ -36,6 +50,14 @@ export type SpeakingActivity = {
   heatmapExtraRows: { id: string; fullName: string }[];
   stats: CouncilorStat[];
 };
+
+/**
+ * Przerwa (w sekundach), po której blok się kończy, mimo że kolejny segment
+ * należy do tego samego mówcy. Bez progu pojedynczy błąd tagowania potrafi
+ * skleić dwugodzinny „blok" — taki w bazie jest. Wartości 30–120 s dają wyniki
+ * w granicach 2% od siebie, więc to nie jest pokrętło do strojenia liczb.
+ */
+const SPEAKING_BLOCK_MAX_GAP_SECONDS = 60;
 
 const EMPTY_ACTIVITY: SpeakingActivity = {
   councilors: [],
@@ -80,7 +102,8 @@ export async function getSpeakingActivity(
   termId: string,
   officials: { id: string; full_name: string; role: string }[]
 ): Promise<SpeakingActivity> {
-  const [{ data: roster }, segments, { data: meetingRows }] = await Promise.all([
+  const [{ data: roster }, segments, { data: meetingRows }, { data: blockRows }] =
+    await Promise.all([
     supabase
       .from("councilor_term")
       .select("party, councilor:councilor_id(id, full_name)")
@@ -115,6 +138,13 @@ export async function getSpeakingActivity(
       // too rather than rely on it staying true.
       .neq("meeting_type", "komisja")
       .order("date", { ascending: false }),
+    // Bloki liczy baza, nie aplikacja: poprawny podział wymaga kolejności
+    // WSZYSTKICH segmentów sesji, także nieotagowanych, a powyższy fetch
+    // ściąga wyłącznie `finalized` — patrz komentarz przy funkcji.
+    supabase.rpc("term_speaking_blocks", {
+      p_term_id: termId,
+      p_max_gap: SPEAKING_BLOCK_MAX_GAP_SECONDS,
+    }),
   ]);
 
   if (!roster) return EMPTY_ACTIVITY;
@@ -124,6 +154,8 @@ export async function getSpeakingActivity(
     .map((r) => ({ id: r.councilor!.id, fullName: r.councilor!.full_name }));
 
   const heatmapMatrix: Record<string, Record<string, number>> = {};
+
+  // Podium liczy nadal per segment — patrz uwaga przy `heatmapMatrix`.
   const totals = new Map<string, number>();
   for (const s of segments) {
     if (!s.confirmed_councilor_id) continue;
@@ -132,9 +164,6 @@ export async function getSpeakingActivity(
       s.confirmed_councilor_id,
       (totals.get(s.confirmed_councilor_id) ?? 0) + duration
     );
-    heatmapMatrix[s.confirmed_councilor_id] ??= {};
-    heatmapMatrix[s.confirmed_councilor_id][s.meeting_id] =
-      (heatmapMatrix[s.confirmed_councilor_id][s.meeting_id] ?? 0) + duration;
   }
 
   // Burmistrz and his deputy get their own heatmap rows (they're frequent,
@@ -161,21 +190,24 @@ export async function getSpeakingActivity(
   );
   let pozostaliHasData = false;
 
-  for (const s of segments) {
-    if (!s.confirmed_official_id) continue;
-    const duration = Number(s.end_time) - Number(s.start_time);
-    const key =
-      s.confirmed_official_id === burmistrz?.id
+  // Jeden przebieg po wynikach RPC — radni trafiają do heatmapy pod własnym
+  // id, urzędnicy przez powyższe składanie wierszy.
+  for (const row of blockRows ?? []) {
+    const seconds = Number(row.total_seconds);
+    const key = row.is_councilor_flag
+      ? row.speaker_id
+      : row.speaker_id === burmistrz?.id
         ? burmistrz.id
-        : s.confirmed_official_id === zastepcaBurmistrza?.id
+        : row.speaker_id === zastepcaBurmistrza?.id
           ? zastepcaBurmistrza.id
-          : pozostaliIds.has(s.confirmed_official_id)
+          : pozostaliIds.has(row.speaker_id)
             ? POZOSTALI_URZEDNICY_ID
             : null;
     if (!key) continue;
     if (key === POZOSTALI_URZEDNICY_ID) pozostaliHasData = true;
     heatmapMatrix[key] ??= {};
-    heatmapMatrix[key][s.meeting_id] = (heatmapMatrix[key][s.meeting_id] ?? 0) + duration;
+    heatmapMatrix[key][row.mtg_id] =
+      (heatmapMatrix[key][row.mtg_id] ?? 0) + seconds;
   }
 
   const heatmapExtraRows = [

@@ -1288,6 +1288,15 @@ export type Database = {
           proposed_seconds: number
         }[]
       }
+      term_speaking_blocks: {
+        Args: { p_term_id: string; p_max_gap?: number }
+        Returns: {
+          speaker_id: string
+          mtg_id: string
+          is_councilor_flag: boolean
+          total_seconds: number
+        }[]
+      }
       term_attendance_stats: {
         Args: { p_term_id: string }
         Returns: {
