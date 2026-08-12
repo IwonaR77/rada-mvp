@@ -738,20 +738,34 @@ export function SessionPlayer({
                         </span>
                         <span>{s.text}</span>
                       </div>
-                      {assignedId && (
-                        <span
-                          className={`text-xs ${
-                            isActive
-                              ? "text-zinc-300"
-                              : isProposed
-                                ? "text-blue-700 dark:text-blue-400"
-                                : "text-zinc-400"
-                          }`}
-                        >
-                          {peopleById.get(assignedId) ?? "?"}
-                          {isProposed && " — propozycja, czeka na zatwierdzenie"}
-                        </span>
-                      )}
+                      {/* Linijka mówcy stoi w układzie zawsze, także pusta.
+                          Renderowana warunkowo dopisywała wiersz dopiero po
+                          przypisaniu, więc cała lista poniżej przeskakiwała
+                          w dół dokładnie w chwili klikania kolejnych
+                          segmentów. `truncate` trzyma ją przy jednej linii —
+                          dłuższy dopisek o propozycji też nie zmieni
+                          wysokości. */}
+                      <span
+                        title={
+                          assignedId ? peopleById.get(assignedId) ?? "?" : undefined
+                        }
+                        className={`block w-full truncate text-xs ${
+                          isActive
+                            ? "text-zinc-300"
+                            : isProposed
+                              ? "text-blue-700 dark:text-blue-400"
+                              : "text-zinc-400"
+                        }`}
+                      >
+                        {assignedId ? (
+                          <>
+                            {peopleById.get(assignedId) ?? "?"}
+                            {isProposed && " — propozycja, czeka na zatwierdzenie"}
+                          </>
+                        ) : (
+                          " "
+                        )}
+                      </span>
                     </button>
                     {canFinalize && (
                       <button
