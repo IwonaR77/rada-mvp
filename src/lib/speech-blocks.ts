@@ -13,8 +13,11 @@
  * Przerwa, do której dwa segmenty tej samej osoby wciąż uchodzą za jedną
  * wypowiedź. Krótkie wtrącenie z sali („tak", „proszę") mieści się poniżej
  * progu i nie rozbija bloku na dwa.
+ *
+ * Podniesione z 20 s po obejrzeniu realnych bloków: przy 20 s końcowe
+ * „Dziękuję" po odpowiedzi z sali odrywało się jako osobna wypowiedź.
  */
-export const BLOCK_MERGE_GAP_SECONDS = 20;
+export const BLOCK_MERGE_GAP_SECONDS = 30;
 
 /**
  * Od tej przerwy dwa bloki uznajemy za odległe — czyli za osobne wejścia do
