@@ -66,14 +66,19 @@ export function mergeIntoBlocks(
   return blocks;
 }
 
-/** Pozycja na osi nagrania: 12:34, a przy dłuższych sesjach 1:02:03. */
+/**
+ * Pozycja na osi nagrania: 05:11, a przy dłuższych sesjach 1:02:03.
+ *
+ * Minuty z wiodącym zerem, żeby znaczniki w kolumnie miały tę samą szerokość —
+ * bez tego „5:11" i „12:34" rozjeżdżały początek tekstu obok.
+ */
 export function formatClock(seconds: number) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
   return h > 0
     ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-    : `${m}:${String(s).padStart(2, "0")}`;
+    : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 /** Długość przerwy słownie — podpis separatora, nie pozycja na osi. */

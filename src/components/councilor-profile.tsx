@@ -7,12 +7,8 @@ import { CURRENT_COUNCILOR_EVALUATION_PROMPT_VERSION } from "@/lib/councilor-eva
 import { getSpeakingActivity } from "@/lib/council-activity";
 import { compareToAverage } from "@/lib/compare-to-average";
 import { PercentileMeter } from "@/components/percentile-meter";
-import {
-  mergeIntoBlocks,
-  formatClock,
-  formatGap,
-  DISTANT_BLOCK_GAP_SECONDS,
-} from "@/lib/speech-blocks";
+import { mergeIntoBlocks } from "@/lib/speech-blocks";
+import { CouncilorSpeeches } from "@/components/councilor-speeches";
 import { clusterByAgreement } from "@/lib/hierarchical-clustering";
 
 const MATTER_ROLE_LABEL: Record<string, string> = {
@@ -280,8 +276,6 @@ export async function CouncilorProfile({
     }))
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  const totalBlocks = speechSessions.reduce((n, s) => n + s.blocks.length, 0);
-
   const sessionActivityOutdated =
     Boolean(councilor.session_activity_synthesis) &&
     (councilor.session_activity_synthesis_prompt_version ?? 0) <
@@ -329,294 +323,234 @@ export async function CouncilorProfile({
         </div>
       </div>
 
-      <section className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
-          Frekwencja i aktywność
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <PercentileMeter
-            label="Na sesjach"
-            valueLabel={
-              sessionAttendancePct === null
-                ? "Brak sesji z sygnałem obecności."
-                : `${sessionAttendancePct}% (${sessionsPresent}/${sessionsWithSignal} sesji)`
-            }
-            compareLabel={sessionAttendanceComparison?.band}
-            percentile={sessionAttendanceComparison?.percentile ?? null}
-          />
-          <PercentileMeter
-            label="Na głosowaniach"
-            valueLabel={
-              attendancePct === null
-                ? "Brak zarejestrowanych głosowań."
-                : `${attendancePct}%`
-            }
-            compareLabel={voteAttendanceComparison?.band}
-            percentile={voteAttendanceComparison?.percentile ?? null}
-          />
-          <PercentileMeter
-            label="Przy mikrofonie"
-            valueLabel={
-              sessionsSpokenIn === 0
-                ? "Brak zarejestrowanych wypowiedzi."
-                : `${formatSpeakingDuration(totalSpeakingSeconds)}, na ${sessionsSpokenIn} ${sessionsSpokenIn === 1 ? "sesji" : "sesjach"}`
-            }
-            compareLabel={activityComparison?.band}
-            percentile={activityComparison?.percentile ?? null}
-          />
-        </div>
-      </section>
-
-      {councilor.interpellation_synthesis && (
-        <section>
-          <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
-            O czym pisze do urzędu
+      {/* Wypowiedzi w drugiej kolumnie, nie pod spodem: to archiwum do
+          przeglądania obok liczb, a nie kolejna sekcja na końcu profilu.
+          Dopiero od xl — niżej kolumna zwęziłaby transkrypcję do paska.
+          Własne przewijanie, bo panel bywa dłuższy niż cała reszta. */}
+      <div className="flex flex-col gap-8 xl:flex-row xl:items-start">
+        <div className="flex min-w-0 flex-1 flex-col gap-8">
+        <section className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+          <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
+            Frekwencja i aktywność
           </h2>
-          <div className="rounded-2xl border border-zinc-200 p-4 text-sm leading-relaxed text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
-            <ReactMarkdown
-              components={{
-                p: (props) => <p className="mb-0" {...props} />,
-                a: (props) => (
-                  <a
-                    {...props}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900 hover:decoration-zinc-500 dark:decoration-zinc-700 dark:hover:text-zinc-100"
-                  />
-                ),
-              }}
-            >
-              {councilor.interpellation_synthesis}
-            </ReactMarkdown>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <PercentileMeter
+              label="Na sesjach"
+              valueLabel={
+                sessionAttendancePct === null
+                  ? "Brak sesji z sygnałem obecności."
+                  : `${sessionAttendancePct}% (${sessionsPresent}/${sessionsWithSignal} sesji)`
+              }
+              compareLabel={sessionAttendanceComparison?.band}
+              percentile={sessionAttendanceComparison?.percentile ?? null}
+            />
+            <PercentileMeter
+              label="Na głosowaniach"
+              valueLabel={
+                attendancePct === null
+                  ? "Brak zarejestrowanych głosowań."
+                  : `${attendancePct}%`
+              }
+              compareLabel={voteAttendanceComparison?.band}
+              percentile={voteAttendanceComparison?.percentile ?? null}
+            />
+            <PercentileMeter
+              label="Przy mikrofonie"
+              valueLabel={
+                sessionsSpokenIn === 0
+                  ? "Brak zarejestrowanych wypowiedzi."
+                  : `${formatSpeakingDuration(totalSpeakingSeconds)}, na ${sessionsSpokenIn} ${sessionsSpokenIn === 1 ? "sesji" : "sesjach"}`
+              }
+              compareLabel={activityComparison?.band}
+              percentile={activityComparison?.percentile ?? null}
+            />
           </div>
-          <p className="mt-2 text-xs text-zinc-400">
-            Synteza tematów interpelacji — porównanie z przebiegiem dyskusji
-            na sesji jest dostępne tylko tam, gdzie dana sesja ma już gotowe
-            podsumowanie (nie wszystkie sesje kadencji są jeszcze
-            rozpisane).
-          </p>
         </section>
-      )}
 
-      <section>
-        <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
-          Aktywność na sesjach i zaangażowanie w sprawy
-          {termRow?.term?.label ? ` — ${termRow.term.label}` : ""}
-        </h2>
-
-        {councilor.session_activity_synthesis && (
-          <>
+        {councilor.interpellation_synthesis && (
+          <section>
+            <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
+              O czym pisze do urzędu
+            </h2>
             <div className="rounded-2xl border border-zinc-200 p-4 text-sm leading-relaxed text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
               <ReactMarkdown
                 components={{
-                  p: (props) => <p className="mb-2 last:mb-0" {...props} />,
+                  p: (props) => <p className="mb-0" {...props} />,
+                  a: (props) => (
+                    <a
+                      {...props}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900 hover:decoration-zinc-500 dark:decoration-zinc-700 dark:hover:text-zinc-100"
+                    />
+                  ),
                 }}
               >
-                {councilor.session_activity_synthesis}
+                {councilor.interpellation_synthesis}
               </ReactMarkdown>
             </div>
-            {sessionActivityOutdated && (
-              <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                Wygenerowane wg starszej wersji kryteriów oceny — do odświeżenia.
-              </p>
-            )}
-          </>
+            <p className="mt-2 text-xs text-zinc-400">
+              Synteza tematów interpelacji — porównanie z przebiegiem dyskusji
+              na sesji jest dostępne tylko tam, gdzie dana sesja ma już gotowe
+              podsumowanie (nie wszystkie sesje kadencji są jeszcze
+              rozpisane).
+            </p>
+          </section>
         )}
 
-        {matters.length > 0 && (
-          <div className="mt-4">
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-              Sprawy ({matters.length})
-            </h3>
-            <ul className="flex flex-col divide-y divide-zinc-200 rounded-2xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-              {matters.map(({ role, matter }) => (
+        <section>
+          <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
+            Aktywność na sesjach i zaangażowanie w sprawy
+            {termRow?.term?.label ? ` — ${termRow.term.label}` : ""}
+          </h2>
+
+          {councilor.session_activity_synthesis && (
+            <>
+              <div className="rounded-2xl border border-zinc-200 p-4 text-sm leading-relaxed text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
+                <ReactMarkdown
+                  components={{
+                    p: (props) => <p className="mb-2 last:mb-0" {...props} />,
+                  }}
+                >
+                  {councilor.session_activity_synthesis}
+                </ReactMarkdown>
+              </div>
+              {sessionActivityOutdated && (
+                <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                  Wygenerowane wg starszej wersji kryteriów oceny — do odświeżenia.
+                </p>
+              )}
+            </>
+          )}
+
+          {matters.length > 0 && (
+            <div className="mt-4">
+              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Sprawy ({matters.length})
+              </h3>
+              <ul className="flex flex-col divide-y divide-zinc-200 rounded-2xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+                {matters.map(({ role, matter }) => (
+                  <li
+                    key={matter.id}
+                    className="flex flex-col gap-1.5 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                  >
+                    <Link
+                      href={`/rada/${matter.council_id}`}
+                      className="text-sm text-zinc-800 hover:underline dark:text-zinc-200"
+                    >
+                      {matter.title}
+                    </Link>
+                    <div className="flex shrink-0 gap-1.5">
+                      <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                        {MATTER_ROLE_LABEL[role] ?? role}
+                      </span>
+                      <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                        {MATTER_STATUS_LABEL[matter.status] ?? matter.status}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+
+        {votingBloc.length > 0 && (
+          <section>
+            <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
+              Korelacja głosowań
+            </h2>
+            <p className="mb-4 text-xs text-zinc-500">
+              Grupa radnych, z którymi ten radny najczęściej głosuje tak samo w
+              uchwałach bez jednomyślności — wyznaczona automatycznie
+              (klastrowanie), nie z deklaracji klubowej. Pełna macierz dla
+              całej rady jest na stronie sesji.
+            </p>
+            <ul className="flex flex-col gap-1.5">
+              {votingBloc.map((s) => (
                 <li
-                  key={matter.id}
-                  className="flex flex-col gap-1.5 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                  key={s.id}
+                  className="flex items-center justify-between gap-2 text-sm"
                 >
                   <Link
-                    href={`/rada/${matter.council_id}`}
-                    className="text-sm text-zinc-800 hover:underline dark:text-zinc-200"
+                    href={`/radny/${s.id}`}
+                    className="truncate text-zinc-700 hover:underline dark:text-zinc-300"
                   >
-                    {matter.title}
+                    {s.fullName}
                   </Link>
-                  <div className="flex shrink-0 gap-1.5">
-                    <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-                      {MATTER_ROLE_LABEL[role] ?? role}
-                    </span>
-                    <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-                      {MATTER_STATUS_LABEL[matter.status] ?? matter.status}
-                    </span>
-                  </div>
+                  <span className="shrink-0 font-mono text-xs text-zinc-400">
+                    {Math.round(s.agreementPct)}%
+                  </span>
                 </li>
               ))}
             </ul>
-          </div>
+          </section>
         )}
-      </section>
 
-      <section>
-        <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
-          Wypowiedzi na sesjach
-          {totalBlocks > 0 && ` (${totalBlocks} na ${speechSessions.length} ${speechSessions.length === 1 ? "sesji" : "sesjach"})`}
-        </h2>
-        {totalBlocks === 0 ? (
-          <p className="text-sm text-zinc-500">
-            Brak przypisanych wypowiedzi tego radnego. Nie znaczy to, że
-            milczał — sesje są rozpisywane stopniowo.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {speechSessions.map((session, i) => (
-              <details
-                key={session.meetingId}
-                open={i === 0}
-                className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800"
-              >
-                <summary className="cursor-pointer text-sm text-zinc-800 marker:text-zinc-400 dark:text-zinc-200">
-                  {formatDate(session.date)}
-                  <span className="text-zinc-400">
-                    {" "}
-                    — {session.blocks.length}{" "}
-                    {session.blocks.length === 1 ? "wypowiedź" : "wypowiedzi"}
-                  </span>
-                  {session.title && (
-                    <span className="mt-0.5 block text-xs text-zinc-500">
-                      {session.title}
-                    </span>
-                  )}
-                </summary>
-
-                <div className="mt-3">
-                  {session.blocks.map((b) => (
-                    <div key={b.start}>
-                      {/* Przerwa między blokami rysowana proporcjonalnie do
-                          tego, czym jest: krótka to oddech w tej samej
-                          dyskusji, dłuższa to osobne wejście do dyskusji
-                          gdzie indziej w porządku obrad. Granica sesji ma
-                          osobny, mocniejszy podział — nagłówek grupy. */}
-                      {b.gapBefore !== null &&
-                        (b.gapBefore >= DISTANT_BLOCK_GAP_SECONDS ? (
-                          <div className="my-3 flex items-center gap-2 text-[11px] text-zinc-400">
-                            <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
-                            <span className="shrink-0">
-                              {formatGap(b.gapBefore)} przerwy
-                            </span>
-                            <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
-                          </div>
-                        ) : (
-                          <div className="my-2 h-px bg-zinc-100 dark:bg-zinc-800" />
-                        ))}
-                      <Link
-                        href={`/sesje/${session.meetingId}?t=${Math.floor(b.start)}`}
-                        className="group flex gap-3 rounded-lg px-1 py-1 hover:bg-zinc-50 dark:hover:bg-zinc-900"
-                      >
-                        <span className="shrink-0 font-mono text-xs leading-6 text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300">
-                          {formatClock(b.start)}
-                        </span>
-                        <span className="text-sm leading-6 text-zinc-700 dark:text-zinc-300">
-                          {b.text}
-                        </span>
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-              </details>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {votingBloc.length > 0 && (
         <section>
           <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
-            Korelacja głosowań
+            Wszystkie interpelacje i zapytania ({interpellations?.length ?? 0})
           </h2>
-          <p className="mb-4 text-xs text-zinc-500">
-            Grupa radnych, z którymi ten radny najczęściej głosuje tak samo w
-            uchwałach bez jednomyślności — wyznaczona automatycznie
-            (klastrowanie), nie z deklaracji klubowej. Pełna macierz dla
-            całej rady jest na stronie sesji.
-          </p>
-          <ul className="flex flex-col gap-1.5">
-            {votingBloc.map((s) => (
-              <li
-                key={s.id}
-                className="flex items-center justify-between gap-2 text-sm"
-              >
-                <Link
-                  href={`/radny/${s.id}`}
-                  className="truncate text-zinc-700 hover:underline dark:text-zinc-300"
-                >
-                  {s.fullName}
-                </Link>
-                <span className="shrink-0 font-mono text-xs text-zinc-400">
-                  {Math.round(s.agreementPct)}%
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      <section>
-        <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
-          Wszystkie interpelacje i zapytania ({interpellations?.length ?? 0})
-        </h2>
-        {!interpellations || interpellations.length === 0 ? (
-          <p className="text-sm text-zinc-500">
-            Brak zarejestrowanych interpelacji tego radnego.
-          </p>
-        ) : (
-          <ul className="flex flex-col divide-y divide-zinc-200 rounded-2xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-            {interpellations.map((i) => (
-              <li key={i.id} className="flex flex-col gap-1.5 p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-zinc-400">
-                    {formatDate(i.submitted_date)}
-                  </span>
-                  {i.pdf_url && (
-                    <a
-                      href={i.pdf_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
-                    >
-                      Pobierz PDF
-                    </a>
-                  )}
-                </div>
-                <span className="text-sm text-zinc-800 dark:text-zinc-200">
-                  {i.title}
-                </span>
-                {i.response_author_name ? (
-                  <p className="text-xs text-zinc-500">
-                    Odpowiedź: {i.response_author_name}
-                    {i.response_date && ` — ${formatDate(i.response_date)}`}
-                    {i.response_pdf_url && (
-                      <>
-                        {" "}
-                        <a
-                          href={i.response_pdf_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="underline hover:text-zinc-700 dark:hover:text-zinc-300"
-                        >
-                          (PDF)
-                        </a>
-                      </>
+          {!interpellations || interpellations.length === 0 ? (
+            <p className="text-sm text-zinc-500">
+              Brak zarejestrowanych interpelacji tego radnego.
+            </p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-zinc-200 rounded-2xl border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+              {interpellations.map((i) => (
+                <li key={i.id} className="flex flex-col gap-1.5 p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-zinc-400">
+                      {formatDate(i.submitted_date)}
+                    </span>
+                    {i.pdf_url && (
+                      <a
+                        href={i.pdf_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
+                      >
+                        Pobierz PDF
+                      </a>
                     )}
-                  </p>
-                ) : (
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
-                    Brak odpowiedzi
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                  </div>
+                  <span className="text-sm text-zinc-800 dark:text-zinc-200">
+                    {i.title}
+                  </span>
+                  {i.response_author_name ? (
+                    <p className="text-xs text-zinc-500">
+                      Odpowiedź: {i.response_author_name}
+                      {i.response_date && ` — ${formatDate(i.response_date)}`}
+                      {i.response_pdf_url && (
+                        <>
+                          {" "}
+                          <a
+                            href={i.response_pdf_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline hover:text-zinc-700 dark:hover:text-zinc-300"
+                          >
+                            (PDF)
+                          </a>
+                        </>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      Brak odpowiedzi
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        </div>
+
+        <aside className="w-full xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:w-80 xl:shrink-0 2xl:w-96 xl:overflow-y-auto">
+          <CouncilorSpeeches sessions={speechSessions} />
+        </aside>
+      </div>
     </div>
   );
 }
