@@ -327,13 +327,13 @@ export async function CouncilorProfile({
           przeglądania obok liczb, a nie kolejna sekcja na końcu profilu.
           Dopiero od xl — niżej kolumna zwęziłaby transkrypcję do paska.
           Własne przewijanie, bo panel bywa dłuższy niż cała reszta. */}
-      <div className="flex flex-col gap-8 xl:flex-row xl:items-start">
+      <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-8">
         <section className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
           <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
             Frekwencja i aktywność
           </h2>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
             <PercentileMeter
               label="Na sesjach"
               valueLabel={
@@ -547,7 +547,7 @@ export async function CouncilorProfile({
         </section>
         </div>
 
-        <aside className="w-full xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:w-80 xl:shrink-0 2xl:w-96 xl:overflow-y-auto">
+        <aside className="w-full min-w-0 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:flex-1 lg:overflow-y-auto">
           <CouncilorSpeeches sessions={speechSessions} />
         </aside>
       </div>

@@ -7,7 +7,7 @@ export default async function CouncilorPage({
 }) {
   const { id } = await params;
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-12">
+    <div className="mx-auto flex w-full max-w-[110rem] flex-1 flex-col px-6 py-12">
       <CouncilorProfile councilorId={id} />
     </div>
   );

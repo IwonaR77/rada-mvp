@@ -42,7 +42,7 @@ export default async function RadniLayout({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-6 py-12">
+    <div className="mx-auto flex w-full max-w-[110rem] flex-1 flex-col gap-6 px-6 py-12">
       <div>
         <Link href={`/rada/${council.id}`} className="text-sm text-zinc-500 hover:underline">
           ← {council.name}
