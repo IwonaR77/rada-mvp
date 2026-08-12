@@ -12,6 +12,7 @@ import {
   type Segment,
   type Person,
 } from "@/lib/transcript-export";
+import { formatClock as formatTime } from "@/lib/speech-blocks";
 import {
   assignSegments,
   acceptProposedSegments,
@@ -21,17 +22,6 @@ import {
   deleteOfficial,
   type SegmentSnapshot,
 } from "@/app/sesje/[id]/actions";
-
-
-function formatTime(seconds: number) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  return h > 0
-    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-    : `${m}:${String(s).padStart(2, "0")}`;
-}
-
 
 
 // Splits s.text into words tagged with their character offset in the
