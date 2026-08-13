@@ -146,6 +146,165 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function normalizeToken(s) {
+  return s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+// Szuka w strumieniu słów miejsca, od którego zaczyna się dany segment —
+// dopasowując do trzech pierwszych tokenów naraz, bo pojedyncze („i”, „to”,
+// „proszę”) trafiają w setki miejsc.
+//
+// Tryb `prefix` jest dla segmentów z uciętym tekstem (patrz
+// retimeSegmentsFromWords): „wysoko” ma wtedy trafić w słowo „wysokości”.
+// Uruchamiany dopiero, gdy dopasowanie dokładne zawiedzie, i z progiem 3
+// znaków — krótsze przedrostki pasowałyby do zbyt wielu słów.
+function findRun(wordTokens, tokens, from, windowSize, prefix = false) {
+  const probe = tokens.slice(0, Math.min(3, tokens.length));
+  const matches = (word, token) =>
+    word === token || (prefix && token.length >= 3 && word.startsWith(token));
+  const limit = Math.min(wordTokens.length, from + windowSize);
+  for (let i = from; i < limit; i++) {
+    let ok = true;
+    for (let k = 0; k < probe.length; k++) {
+      if (!matches(wordTokens[i + k] ?? "", probe[k])) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return i;
+  }
+  return -1;
+}
+
+/**
+ * Przepisuje czasy segmentów ze znaczników słów.
+ *
+ * Whisper podaje granice segmentów jako osobną predykcję modelu, a nie pomiar —
+ * wokół dłuższych pauz potrafi się mylić o kilka–kilkanaście sekund (realnie
+ * zaobserwowane na sesji 77320: „Bardzo proszę Pani Radna Kozłowska” o 9 s za
+ * wcześnie). Znaczniki słów w tej samej odpowiedzi API liczone są z
+ * cross-attention i trafiają w to miejsce co do ułamka sekundy — więc czas
+ * segmentu bierzemy z jego pierwszego i ostatniego słowa.
+ *
+ * Dopasowanie idzie sekwencyjnie (słowa i segmenty są w tej samej kolejności i
+ * pochodzą z tej samej odpowiedzi), z oknem na resynchronizację. Segment,
+ * którego nie da się pewnie odnaleźć, zachowuje oryginalne czasy — gorsze niż
+ * ze słów, ale nigdy nie gorsze niż dotąd.
+ *
+ * Przy okazji tekst segmentu też bierzemy ze słów, bo pole `text` segmentu
+ * potrafi wrócić z Groq ucięte na wielobajtowych znakach („przeglądałem” →
+ * „przegl”, „budżet” → „bud”) — na sesji 77320 dotyczyło to 7 z 533 segmentów,
+ * a lista słów w tej samej odpowiedzi była za każdym razem poprawna. Poza tymi
+ * przypadkami sklejony tekst jest znak w znak taki sam (sprawdzone: 240 z 243
+ * segmentów pierwszego kawałka identyczne, jedyna różnica to właśnie segment
+ * uszkodzony).
+ */
+export function retimeSegmentsFromWords(segments, words) {
+  if (!words?.length) return { segments, retimed: 0, kept: segments.length };
+  const wordTokens = words.map((w) => normalizeToken(w.word ?? ""));
+  const tokensPerSegment = segments.map((seg) =>
+    seg.text
+      .trim()
+      .split(/\s+/)
+      .map(normalizeToken)
+      .filter(Boolean)
+  );
+
+  // Przebieg 1: dopasowania pewne (dokładne, a jak nie — po przedrostku).
+  const spans = new Array(segments.length).fill(null);
+  let pointer = 0;
+  for (let i = 0; i < segments.length; i++) {
+    const tokens = tokensPerSegment[i];
+    if (tokens.length === 0) continue;
+    let startIdx = findRun(wordTokens, tokens, pointer, 200);
+    if (startIdx === -1) {
+      startIdx = findRun(wordTokens, tokens, pointer, 200, true);
+    }
+    if (startIdx === -1) continue;
+    // Whisper czasem inaczej dzieli liczby czy skróty, więc liczba tokenów
+    // segmentu bywa o kilka różna od liczby słów — koniec doprecyzowujemy
+    // szukając ostatniego tokenu w okolicy pozycji oczekiwanej.
+    const expectedEnd = startIdx + tokens.length - 1;
+    let endIdx = Math.min(expectedEnd, words.length - 1);
+    const lastToken = tokens[tokens.length - 1];
+    for (let d = 0; d <= 3; d++) {
+      if (wordTokens[expectedEnd - d]?.startsWith(lastToken)) {
+        endIdx = expectedEnd - d;
+        break;
+      }
+      if (wordTokens[expectedEnd + d]?.startsWith(lastToken)) {
+        endIdx = expectedEnd + d;
+        break;
+      }
+    }
+    spans[i] = [startIdx, Math.max(startIdx, Math.min(endIdx, words.length - 1))];
+    pointer = spans[i][1] + 1;
+  }
+
+  // Przebieg 2: segmenty bez dopasowania. Skoro sąsiedzi trafili, to szukane
+  // słowa leżą dokładnie w luce między nimi — wystarczy ją rozdzielić po
+  // liczbie tokenów. Ratuje to przypadki uszkodzone od pierwszego słowa
+  // („Pa Radnym dzi…” zamiast „Państwu Radnym dziękuję…”), gdzie nie ma za co
+  // złapać dopasowania.
+  for (let i = 0; i < segments.length; i++) {
+    if (spans[i] || tokensPerSegment[i].length === 0) continue;
+    let runEnd = i;
+    while (runEnd + 1 < segments.length && !spans[runEnd + 1]) runEnd++;
+    let prevWord = -1;
+    for (let k = i - 1; k >= 0; k--) {
+      if (spans[k]) {
+        prevWord = spans[k][1];
+        break;
+      }
+    }
+    let nextWord = words.length;
+    for (let k = runEnd + 1; k < segments.length; k++) {
+      if (spans[k]) {
+        nextWord = spans[k][0];
+        break;
+      }
+    }
+    const available = nextWord - prevWord - 1;
+    const totalTokens = tokensPerSegment
+      .slice(i, runEnd + 1)
+      .reduce((sum, t) => sum + t.length, 0);
+    if (available <= 0 || totalTokens === 0) {
+      i = runEnd;
+      continue;
+    }
+    let cursor = prevWord + 1;
+    for (let k = i; k <= runEnd; k++) {
+      const share = Math.round((tokensPerSegment[k].length / totalTokens) * available);
+      const take = k === runEnd ? nextWord - cursor : Math.max(1, share);
+      const endIdx = Math.min(cursor + take - 1, nextWord - 1);
+      if (endIdx >= cursor) spans[k] = [cursor, endIdx];
+      cursor = endIdx + 1;
+    }
+    i = runEnd;
+  }
+
+  let retimed = 0;
+  let kept = 0;
+  const out = segments.map((seg, i) => {
+    const span = spans[i];
+    if (!span) {
+      kept++;
+      return seg;
+    }
+    retimed++;
+    return {
+      ...seg,
+      start: words[span[0]].start,
+      end: words[span[1]].end,
+      text: words
+        .slice(span[0], span[1] + 1)
+        .map((w) => (w.word ?? "").trim())
+        .join(" "),
+    };
+  });
+  return { segments: out, retimed, kept };
+}
+
 // Wysyła kawałki (z cutChunks) do Groq i scala wynik w jedną, zdeduplikowaną
 // listę segmentów {start, end, text} (czasy globalne, względem całego audio).
 export async function transcribeChunks(apiKey, chunks, { log = console.log } = {}) {
@@ -160,12 +319,22 @@ export async function transcribeChunks(apiKey, chunks, { log = console.log } = {
         model: "whisper-large-v3",
         language: "pl",
         response_format: "verbose_json",
-        timestamp_granularities: ["segment"],
+        timestamp_granularities: ["segment", "word"],
       })
       .withResponse();
 
-    const segments = data.segments ?? [];
+    // Czasy segmentów z Groq bywają rozjechane o kilka–kilkanaście sekund
+    // wokół pauz — bierzemy je ze znaczników słów (patrz
+    // retimeSegmentsFromWords). Nadal potrzebujemy podziału na segmenty:
+    // słowa same z siebie nie niosą granic zdań.
+    const { segments, retimed, kept: keptOriginalTimes } =
+      retimeSegmentsFromWords(data.segments ?? [], data.words ?? []);
+    if (keptOriginalTimes > 0) {
+      log(`  ${retimed} segment(ów) przeczasowanych ze słów, ${keptOriginalTimes} bez dopasowania (czasy oryginalne).`);
+    }
+
     const kept = [];
+    let droppedEmpty = 0;
     for (const seg of segments) {
       // Czasy w odpowiedzi Groq są względne do wysłanego pliku (który zaczyna
       // się w extractStart, nie nominalStart) — stąd offset = extractStart.
@@ -176,9 +345,17 @@ export async function transcribeChunks(apiKey, chunks, { log = console.log } = {
         droppedOverlap++;
         continue;
       }
+      // Na dłuższych fragmentach ciszy (przerwa w obradach, zepsuty dźwięk)
+      // Whisper wypełnia pustkę halucynacją — na sesji 77320 było to 29 razy
+      // „Dziękuję.” równo co 30 s. Poznać je po zerowej długości: nie stoi za
+      // nimi żadne wypowiedziane słowo, więc zakres słów wychodzi pusty.
+      if (globalEnd - globalStart <= 0.05) {
+        droppedEmpty++;
+        continue;
+      }
       kept.push({ start: globalStart, end: globalEnd, text: seg.text.trim() });
     }
-    log(`  ${segments.length} segmentów (${kept.length} po odfiltrowaniu zakładki).`);
+    log(`  ${segments.length} segmentów (${kept.length} po odfiltrowaniu zakładki${droppedEmpty > 0 ? `, odrzucono ${droppedEmpty} pustych z ciszy` : ""}).`);
     perChunkKept.push(kept);
 
     // Bramka bezpieczeństwa pod rate-limit (Faza 5 planu) — backstop, nie
