@@ -211,7 +211,7 @@ export default async function CouncilSessionsPage({
     .slice(0, 3);
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-10 px-6 py-16">
+    <div className="mx-auto flex w-full max-w-[110rem] flex-1 flex-col gap-10 px-6 py-16">
       {selectedTermId && <LiveMeetingRefresh termId={selectedTermId} />}
       <div>
         <Link
