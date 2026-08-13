@@ -34,7 +34,10 @@ export function SessionNeighborNav({
   if (meetings.length <= 1) return null;
 
   return (
-    <nav className="flex items-center gap-1.5 overflow-x-auto text-sm">
+    // pb-4: pasek przewijania w Chrome jest nakładkowy — nie zajmuje miejsca
+    // w układzie, tylko rysuje się przy dolnej krawędzi na zawartości. Bez
+    // tego zapasu zachodził na pastylki.
+    <nav className="flex items-center gap-1.5 overflow-x-auto pb-4 text-sm">
       {meetings.map((m) => {
         const isCurrent = m.id === currentId;
         const tooltipParts = [m.date];

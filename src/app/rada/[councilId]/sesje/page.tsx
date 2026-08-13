@@ -325,7 +325,10 @@ export default async function CouncilSessionsPage({
                 Brak zarejestrowanych sesji w tej kadencji.
               </p>
             ) : (
-              <div className="overflow-x-auto pb-2">
+              // pb-4, nie pb-2: pasek przewijania w Chrome jest nakładkowy —
+              // nie zajmuje miejsca w układzie, tylko rysuje się przy dolnej
+              // krawędzi na zawartości. Przy pb-2 zachodził na pastylki.
+              <div className="overflow-x-auto pb-4">
                 <div className="flex min-w-max items-start gap-1.5 px-2 pt-2">
                   {meetings.map((m) => {
                     const status = m.transcript_status ?? "nie rozpisana";
