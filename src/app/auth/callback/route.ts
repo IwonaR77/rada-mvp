@@ -37,20 +37,12 @@ export async function GET(request: NextRequest) {
         await supabase.rpc("grant_browse_permission", { uid: data.user.id });
       }
 
-      // No explicit `next` (e.g. a deep link) — default a returning user
-      // straight to their favorite council instead of the map. Home still
-      // links to "/" for anyone who wants the map itself.
-      let destination = nextParam ?? "/";
-      if (!nextParam && data.user) {
-        const { data: appUser } = await supabase
-          .from("app_user")
-          .select("favorite_council_id")
-          .eq("id", data.user.id)
-          .maybeSingle();
-        if (appUser?.favorite_council_id) {
-          destination = `/rada/${appUser.favorite_council_id}`;
-        }
-      }
+      // Bez jawnego `next` (np. z głębokiego linku) idziemy na "/", które samo
+      // rozstrzyga, czy użytkownik ma ulubioną radę, czy zobaczy mapę. Ten
+      // wybór stał kiedyś tutaj, ale wtedy działał tylko w chwili logowania —
+      // wejście na stronę z już aktywną sesją omijało callback i lądowało na
+      // mapie mimo ustawionej ulubionej rady.
+      const destination = nextParam ?? "/";
       // A relative Location header instead of NextResponse.redirect(url) —
       // see /logout/route.ts for why an absolute URL built from the
       // request's origin isn't safe here.

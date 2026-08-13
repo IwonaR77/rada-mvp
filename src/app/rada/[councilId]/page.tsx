@@ -68,7 +68,7 @@ export default async function CouncilHubPage({
   return (
     <div className="mx-auto flex w-full max-w-[110rem] flex-1 flex-col gap-10 px-6 py-16">
       <div>
-        <Link href="/" className="text-sm text-zinc-500 hover:underline">
+        <Link href="/mapa" className="text-sm text-zinc-500 hover:underline">
           ← Mapa
         </Link>
         <div className="mt-2 flex items-center gap-3">

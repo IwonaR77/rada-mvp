@@ -47,6 +47,16 @@ export async function SiteHeader() {
         </Link>
         {favoriteCouncil && !blocked && (
           <>
+            {/* Dla kogoś z ulubioną radą "Home" prowadzi już do niej, nie na
+                mapę — bez tego wejścia mapa zostałaby bez żadnego linku. Komu
+                ulubiona nie jest ustawiona, temu mapę daje samo "Home". */}
+            <span className="text-zinc-300 dark:text-zinc-700">·</span>
+            <Link
+              href="/mapa"
+              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            >
+              Mapa
+            </Link>
             <span className="text-zinc-300 dark:text-zinc-700">·</span>
             <Link
               href={`/rada/${favoriteCouncil.id}`}
