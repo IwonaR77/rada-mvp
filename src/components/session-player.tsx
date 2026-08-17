@@ -891,6 +891,28 @@ export function SessionPlayer({
                               )}
                             </span>
                           </button>
+                          {/* Flaga „przesunięty względem nagrania". Widoczna dla
+                              każdego zalogowanego, nie tylko dla tagujących:
+                              przesunięcie zauważa ten, kto ogląda. */}
+                          <button
+                            onClick={() => przelaczFlage(s.id)}
+                            disabled={isPending}
+                            title={
+                              flagi.has(s.id)
+                                ? "Zdejmij oznaczenie przesunięcia w czasie"
+                                : "Oznacz: segment przesunięty względem nagrania"
+                            }
+                            aria-pressed={flagi.has(s.id)}
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-xs disabled:opacity-40 ${
+                              flagi.has(s.id)
+                                ? "text-red-600 dark:text-red-400"
+                                : isActive
+                                  ? "opacity-60 hover:opacity-100"
+                                  : "text-zinc-400 hover:bg-zinc-200 hover:text-red-600 dark:hover:bg-zinc-700 dark:hover:text-red-400"
+                            }`}
+                          >
+                            ⚑
+                          </button>
                           {canFinalize && (
                             <button
                               onClick={() => setSplittingId(s.id)}
