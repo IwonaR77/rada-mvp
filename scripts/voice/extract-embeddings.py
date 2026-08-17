@@ -77,7 +77,12 @@ def main():
     p.add_argument("--segmenty", help="JSON z listą segmentów, gdy nie z groundtruth")
     p.add_argument("--out", required=True)
     p.add_argument("--polowki", action="store_true")
-    p.add_argument("--min-czas", type=float, default=2.0)
+    # 1,5 s, nie 2,0: zmierzone 17.08.2026 na 105 wypowiedziach 1,5–2 s osób
+    # SPOZA rejestru — przy progu 0,70 żadna nie dostała przypisania, a
+    # najwyższe fałszywe podobieństwo sięgnęło 0,592 (margines 0,108, czyli
+    # większy niż 0,06 przy segmentach dłuższych). Poniżej 1,5 s nie schodzimy
+    # z innego powodu: przy tym progu rozpoznaje się tam 2,5% segmentów.
+    p.add_argument("--min-czas", type=float, default=1.5)
     p.add_argument("--modele", default="resnet34")
     p.add_argument("--tylko-czyste", action="store_true",
                    help="tylko segmenty ze środka czyjejś wypowiedzi, realne osoby")
