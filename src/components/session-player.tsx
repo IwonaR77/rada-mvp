@@ -230,6 +230,21 @@ export function SessionPlayer({
     );
   }
 
+  // Kto prowadzi te obrady — osoba mówiąca najdłużej. Pasek przy wierszu
+  // rozróżnia WYŁĄCZNIE „prowadzący / ktoś inny", a nie poszczególne osoby:
+  // w transkrypcji po każdym może mówić każdy, a nie istnieje paleta, w której
+  // dowolne dwie z dwudziestu kilku barw zostają rozróżnialne (także przy
+  // zaburzeniach widzenia barw). Tożsamość niesie nazwisko w wierszu, kolor
+  // niesie tylko „to zmiana".
+  const prowadzacyId = [...speakingSeconds.entries()].sort(
+    (a, b) => b[1] - a[1]
+  )[0]?.[0];
+
+  // Pozycja w PEŁNEJ liście — po niej poznajemy, czy dwa sąsiednie wiersze
+  // naprawdę sąsiadują w nagraniu. Przy włączonym filtrze potrafią dzielić
+  // pół godziny obrad, a wtedy „ten sam mówca" nie znaczy „ta sama wypowiedź".
+  const pozycjaSegmentu = new Map(segments.map((s, i) => [s.id, i]));
+
   const proposedSegments = segments.filter((s) => s.status === "proposed");
   const selectedProposedIds = Array.from(selected).filter((id) =>
     proposedSegments.some((s) => s.id === id)
@@ -631,6 +646,19 @@ export function SessionPlayer({
         </div>
 
         {taggingProgress && <div className="mb-3">{taggingProgress}</div>}
+        {prowadzacyId && (
+          <p className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400">
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-[3px] rounded-full bg-zinc-400 dark:bg-zinc-500" />
+              {peopleById.get(prowadzacyId)?.split(" (")[0] ?? "prowadzący"}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-[3px] rounded-full bg-violet-500 dark:bg-violet-400" />
+              ktoś inny
+            </span>
+            <span>przerwa w pasku = zmiana mówcy</span>
+          </p>
+        )}
         <ul
           ref={listRef}
           onWheel={() => {
@@ -654,16 +682,29 @@ export function SessionPlayer({
                       : "Brak segmentów dla tej sesji."}
             </li>
           )}
-          {visibleSegments.map((s) => {
+          {visibleSegments.map((s, i) => {
             const isActive = activeSegment?.id === s.id;
             const assignedId = s.confirmed_councilor_id ?? s.confirmed_official_id;
             const isProposed = Boolean(assignedId) && s.status === "proposed";
+            const poprzedni = i > 0 ? visibleSegments[i - 1] : null;
+            const kontynuacja = Boolean(
+              assignedId &&
+                poprzedni &&
+                getAssignedId(poprzedni) === assignedId &&
+                pozycjaSegmentu.get(s.id) ===
+                  (pozycjaSegmentu.get(poprzedni.id) ?? -2) + 1
+            );
+            const pasek = !assignedId
+              ? "bg-transparent"
+              : assignedId === prowadzacyId
+                ? "bg-zinc-400 dark:bg-zinc-500"
+                : "bg-violet-500 dark:bg-violet-400";
             return (
               <li
                 key={s.id}
                 id={`seg-${s.id}`}
                 ref={isActive ? activeRowRef : undefined}
-                className={`flex items-start gap-2 rounded-xl px-2 py-2 transition-colors ${
+                className={`relative flex items-start gap-2 rounded-xl py-2 pl-4 pr-2 transition-colors ${
                   isActive
                     ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                     : !assignedId
@@ -673,6 +714,16 @@ export function SessionPlayer({
                         : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 }`}
               >
+                {/* Pasek mówcy. Pozycjonowany absolutnie i z przerwą u góry
+                    przy zmianie mówcy — dzięki temu blok jednej osoby czyta się
+                    jako jeden ciągły pasek, a wysokość wiersza nie zmienia się
+                    ani przy przypisaniu, ani przy zmianie filtra. */}
+                <span
+                  aria-hidden
+                  className={`absolute bottom-0 left-1 w-[3px] rounded-full ${
+                    kontynuacja ? "top-0" : "top-2"
+                  } ${pasek}`}
+                />
                 {canAssign && splittingId !== s.id && (
                   <input
                     type="checkbox"
@@ -739,12 +790,22 @@ export function SessionPlayer({
                         title={
                           assignedId ? peopleById.get(assignedId) ?? "?" : undefined
                         }
+                        // Nazwisko stoi w KAŻDYM wierszu, także w środku
+                        // długiej wypowiedzi — przy weryfikacji przewija się
+                        // setki wierszy i odsyłanie wzroku do początku bloku
+                        // kosztowałoby więcej, niż daje oszczędność miejsca.
+                        // Zmianę mówcy niesie kontrast: pierwszy wiersz bloku
+                        // czytelny, kolejne przygaszone.
                         className={`block w-full truncate text-xs ${
                           isActive
                             ? "text-zinc-300"
                             : isProposed
-                              ? "text-blue-700 dark:text-blue-400"
-                              : "text-zinc-400"
+                              ? kontynuacja
+                                ? "text-blue-700/50 dark:text-blue-400/50"
+                                : "font-medium text-blue-700 dark:text-blue-400"
+                              : kontynuacja
+                                ? "text-zinc-400/60 dark:text-zinc-500/60"
+                                : "font-medium text-zinc-500 dark:text-zinc-400"
                         }`}
                       >
                         {assignedId ? (
