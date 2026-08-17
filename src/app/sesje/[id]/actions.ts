@@ -602,3 +602,62 @@ export async function importTranscript(
   revalidatePath("/rada/[councilId]", "page");
   return { error: null, count: segments.length };
 }
+
+/**
+ * Powód flagi „ten segment jest przesunięty względem nagrania”.
+ *
+ * Znaczniki czasu zwykle zgadzają się z dźwiękiem, ale zdarzają się wyjątki —
+ * a przesunięty segment psuje nie tylko czytanie transkryptu: rozpoznawanie
+ * mówcy głosem wycina wtedy dźwięk z cudzej wypowiedzi albo z ciszy. Flagi
+ * zbierają materiał do zmierzenia skali zjawiska (patrz backlog).
+ */
+// Bez `export`: w pliku z dyrektywą "use server" wszystkie eksporty muszą być
+// asynchronicznymi funkcjami — wyeksportowana stała wywala build.
+const POWOD_PRZESUNIECIE = "desync";
+
+/**
+ * Wstawia albo zdejmuje własną flagę przesunięcia na segmencie.
+ *
+ * Przełącznik, a nie osobne akcje: to jedno kliknięcie w interfejsie, a stan
+ * i tak trzeba sprawdzić po stronie serwera — RLS pozwala usunąć wyłącznie
+ * własną flagę, więc cudzej i tak nie ruszymy.
+ */
+export async function toggleSegmentFlag(meetingId: string, segmentId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Musisz być zalogowana" };
+
+  const { data: istniejaca } = await supabase
+    .from("flag")
+    .select("id")
+    .eq("segment_id", segmentId)
+    .eq("app_user_id", user.id)
+    .eq("reason", POWOD_PRZESUNIECIE)
+    .maybeSingle();
+
+  if (istniejaca) {
+    // `count` zamiast samego braku błędu: brakująca polityka RLS nie zgłasza
+    // wyjątku, tylko cicho nie usuwa wiersza (patrz feedback_rls_silent_denial).
+    const { error, count } = await supabase
+      .from("flag")
+      .delete({ count: "exact" })
+      .eq("id", istniejaca.id);
+    if (error) return { error: error.message };
+    if (count === 0) return { error: "Nie udało się zdjąć flagi." };
+    revalidatePath(`/sesje/${meetingId}`);
+    return { error: null, flagged: false };
+  }
+
+  const { error } = await supabase.from("flag").insert({
+    segment_id: segmentId,
+    app_user_id: user.id,
+    reason: POWOD_PRZESUNIECIE,
+    status: "open",
+  });
+  if (error) return { error: error.message };
+
+  revalidatePath(`/sesje/${meetingId}`);
+  return { error: null, flagged: true };
+}

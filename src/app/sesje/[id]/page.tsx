@@ -145,6 +145,7 @@ export default async function SessionPage({
   // dwa różne uprawnienia — patrz komentarz przy `requireSummaryAccess`.
   let canManageSummary = false;
   let canCommentSummary = false;
+  let flaggedSegments: { segmentId: string; mine: boolean }[] = [];
   if (user) {
     const { data: appUser } = await supabase
       .from("app_user")
@@ -183,6 +184,19 @@ export default async function SessionPage({
     canAssign = Boolean(canVote) || Boolean(canFinalize);
     finalizePermission = Boolean(canFinalize);
     canDownloadTranscript = Boolean(canDownload);
+
+    // Flagi „segment przesunięty względem nagrania" — po złączeniu przez
+    // segment, a nie listą identyfikatorów: filtr `in` jedzie w adresie URL,
+    // więc lista półtora tysiąca segmentów sesji by się w nim nie zmieściła.
+    const { data: flagi } = await supabase
+      .from("flag")
+      .select("segment_id, app_user_id, segment:segment_id!inner(meeting_id)")
+      .eq("segment.meeting_id", id)
+      .eq("reason", "desync");
+    flaggedSegments = (flagi ?? []).map((f) => ({
+      segmentId: f.segment_id,
+      mine: f.app_user_id === user.id,
+    }));
     canManageSummary = Boolean(isManager);
     canCommentSummary = Boolean(canFinalize) || Boolean(isManager);
   }
@@ -297,6 +311,7 @@ export default async function SessionPage({
         canAssign={canAssign}
         canFinalize={finalizePermission}
         canDownloadTranscript={canDownloadTranscript}
+        flaggedSegments={flaggedSegments}
         taggingProgress={
           // Liczone z segmentów już pobranych na tę stronę — postęp tej jednej
           // sesji nie wymaga osobnego zapytania, w odróżnieniu od widoku rady.

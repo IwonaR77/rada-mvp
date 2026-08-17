@@ -20,6 +20,7 @@ import {
   splitSegment,
   undoAssignment,
   deleteOfficial,
+  toggleSegmentFlag,
   type SegmentSnapshot,
 } from "@/app/sesje/[id]/actions";
 
@@ -108,6 +109,7 @@ export function SessionPlayer({
   canAssign,
   canFinalize,
   canDownloadTranscript,
+  flaggedSegments,
   summaryManager,
   taggingProgress,
   initialSeek,
@@ -138,6 +140,8 @@ export function SessionPlayer({
   canAssign: boolean;
   canFinalize: boolean;
   canDownloadTranscript: boolean;
+  /** Segmenty oznaczone jako przesunięte względem nagrania; `mine` = moja flaga. */
+  flaggedSegments: { segmentId: string; mine: boolean }[];
   /**
    * Panel managera pod podsumowaniem (wgranie .md, prompt, uwagi). Wchodzi
    * gotowym węzłem, a nie flagą uprawnień — o tym, czy manager go widzi,
@@ -185,6 +189,12 @@ export function SessionPlayer({
   // zaznaczenia i od odtwarzania, bo przeskakiwanie po dziurach to inna
   // czynność niż tagowanie tego, co akurat leci.
   const [jumpCursor, setJumpCursor] = useState<string | null>(null);
+  // Flagi trzymane w stanie, nie czytane z propsów przy każdym renderze:
+  // kliknięcie ma dać efekt natychmiast, a `revalidatePath` po stronie serwera
+  // i tak dojdzie chwilę później.
+  const [flagi, setFlagi] = useState<Set<string>>(
+    () => new Set(flaggedSegments.map((f) => f.segmentId))
+  );
   const router = useRouter();
 
   const activeSegment = segments.find(
@@ -485,6 +495,31 @@ export function SessionPlayer({
         return;
       }
       setSelected(new Set());
+    });
+  }
+
+  function przelaczFlage(segmentId: string) {
+    const bylo = flagi.has(segmentId);
+    // Optymistycznie: przestawiamy od razu, a przy błędzie cofamy. Flaga to
+    // notatka robocza, nie zmiana w danych o ludziach — czekanie na serwer
+    // przy każdym kliknięciu spowalniałoby przeglądanie sesji.
+    setFlagi((poprzednie) => {
+      const nowe = new Set(poprzednie);
+      if (bylo) nowe.delete(segmentId);
+      else nowe.add(segmentId);
+      return nowe;
+    });
+    startTransition(async () => {
+      const wynik = await toggleSegmentFlag(meetingId, segmentId);
+      if (wynik?.error) {
+        setAssignError(wynik.error);
+        setFlagi((poprzednie) => {
+          const nowe = new Set(poprzednie);
+          if (bylo) nowe.add(segmentId);
+          else nowe.delete(segmentId);
+          return nowe;
+        });
+      }
     });
   }
 
