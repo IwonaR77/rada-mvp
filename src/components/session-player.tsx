@@ -274,7 +274,7 @@ export function SessionPlayer({
   // mają zostać te same po włączeniu filtra.
   const ROTACJA = [
     "bg-violet-600 dark:bg-violet-500",
-    "bg-teal-600",
+    "bg-emerald-600 dark:bg-emerald-500",
     "bg-orange-600",
   ];
   const KOLOR_PROWADZACEGO = "bg-zinc-700 dark:bg-zinc-300";
