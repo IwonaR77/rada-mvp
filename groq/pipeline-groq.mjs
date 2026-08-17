@@ -190,7 +190,15 @@ function downloadAndConvert(name, videoUrl, sessionId, date) {
   return { mp4, mp3 };
 }
 
-export async function processMeeting(m) {
+/**
+ * @param m wiersz z `meeting` (id, esesja_id, source_id, date, video_url)
+ * @param importArgs dodatkowe flagi dla scripts/import-transcript.mjs.
+ *   Domyślnie puste — normalny bieg to sesja bez segmentów. Potrzebne przy
+ *   RĘCZNYM powtórzeniu transkrypcji sesji, która segmenty już ma
+ *   (`--force`, `--kopia <zrzut>`): bez nich import słusznie odmawia, ale
+ *   dowiadujemy się o tym dopiero po opłaconej transkrypcji.
+ */
+export async function processMeeting(m, importArgs = []) {
   const name = sessionName(m);
   log(`Przetwarzam ${name}...`);
 
@@ -232,7 +240,7 @@ export async function processMeeting(m) {
   // miała esesja_id; dla rady spoza esesja.pl import przerywał pracę
   // dokładnie tutaj — po pobraniu nagrania i opłaconej transkrypcji, czyli
   // w najgorszym możliwym momencie.
-  execFileSync("node", ["scripts/import-transcript.mjs", vttPath, "--meeting", m.id], {
+  execFileSync("node", ["scripts/import-transcript.mjs", vttPath, "--meeting", m.id, ...importArgs], {
     cwd: REPO_ROOT,
     stdio: "inherit",
     timeout: 5 * 60 * 1000,
@@ -241,7 +249,10 @@ export async function processMeeting(m) {
   // Sprzątanie — bez znaczenia na efemerycznym runnerze GH Actions (znika i
   // tak), ale istotne przy ręcznym odpaleniu na agatka (dysk nie jest z gumy).
   rmSync(chunkDir, { recursive: true, force: true });
-  rmSync(vttPath, { force: true });
+  // Przy ręcznym powtórzeniu (importArgs) zostawiamy .vtt — transkrypcja jest
+  // płatna, a to jedyna kopia poza bazą, gdyby coś w odtwarzaniu przypisań
+  // wymagało powrotu do surowego wyniku.
+  if (importArgs.length === 0) rmSync(vttPath, { force: true });
   rmSync(path.join(WORK_DIR, `${name}.mp4`), { force: true });
   rmSync(mp3, { force: true });
 

@@ -15,19 +15,27 @@
 //                       meeting first. Refuses unconditionally if any
 //                       existing segment is already finalized (tagged) —
 //                       that's real admin work, never silently discarded.
+//   --kopia <plik>     Zdejmuje tę blokadę, ale tylko po okazaniu świeżego
+//                       zrzutu przypisań tej sesji (plik z
+//                       scripts/save-segment-assignments.mjs). Zatwierdzone
+//                       segmenty idą wtedy do skasowania razem z resztą,
+//                       a przypisania odtwarza po imporcie
+//                       scripts/restore-segment-assignments.mjs. Wymaga --force.
 //   --dry-run          Parse and resolve the meeting, print a summary, do
 //                       not touch the database.
 
-import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
+import { supabaseQuery, sqlEscape } from "./lib/db.mjs";
 
 function parseArgs(argv) {
-  const args = { file: null, meeting: null, force: false, dryRun: false };
+  const args = { file: null, meeting: null, force: false, dryRun: false, kopia: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--meeting") args.meeting = argv[++i];
     else if (a === "--force") args.force = true;
+    else if (a === "--kopia") args.kopia = argv[++i];
     else if (a === "--dry-run") args.dryRun = true;
     else if (!a.startsWith("--")) args.file = a;
     else {
@@ -37,11 +45,41 @@ function parseArgs(argv) {
   }
   if (!args.file) {
     console.error(
-      "Użycie: node scripts/import-transcript.mjs <plik.vtt> [--meeting <uuid>] [--force] [--dry-run]"
+      "Użycie: node scripts/import-transcript.mjs <plik.vtt> [--meeting <uuid>] [--force] [--kopia <zrzut.json>] [--dry-run]"
     );
     process.exit(1);
   }
+  if (args.kopia && !args.force) {
+    console.error("--kopia działa tylko razem z --force.");
+    process.exit(1);
+  }
   return args;
+}
+
+// Blokadę na zatwierdzonych segmentach zdejmuje wyłącznie okazanie zrzutu,
+// z którego da się je potem odtworzyć — i to zrzutu TEJ sesji, nie
+// przypadkowego pliku pod ręką. Sprawdzamy więc treść, nie samo istnienie.
+function sprawdzKopie(kopiaPath, meetingId) {
+  if (!existsSync(kopiaPath)) {
+    console.error(`Nie ma pliku zrzutu: ${kopiaPath}`);
+    process.exit(1);
+  }
+  let zrzut;
+  try {
+    zrzut = JSON.parse(readFileSync(kopiaPath, "utf8"));
+  } catch {
+    console.error(`Zrzut ${kopiaPath} nie jest poprawnym JSON-em.`);
+    process.exit(1);
+  }
+  if (zrzut.meeting_id !== meetingId) {
+    console.error(
+      `Zrzut ${kopiaPath} dotyczy innej sesji (${zrzut.meeting_id ?? "brak meeting_id"}).`
+    );
+    process.exit(1);
+  }
+  const ile = zrzut.przypisania?.length ?? 0;
+  console.log(`Zrzut przypisań: ${kopiaPath} (${ile} zatwierdzonych segmentów).`);
+  return ile;
 }
 
 function timeToSeconds(h, m, s, ms) {
@@ -82,34 +120,10 @@ function parseVtt(content) {
   return segments;
 }
 
-function sqlEscape(text) {
-  return text.replace(/'/g, "''");
-}
-
-// `npx supabase db query --linked` zależy od keyringu/D-Bus sesji desktopowej
-// (auth CLI Supabase) — działa lokalnie na agatka, ale nie w headless CI
-// (GitHub Actions), patrz scripts/backup-db.sh dla tego samego ustalenia.
-// Gdy SUPABASE_DB_URL jest ustawiony (sekret w CI), używamy bezpośredniego
-// połączenia przez psql zamiast CLI — bez zmiany zachowania lokalnie, gdzie
-// SUPABASE_DB_URL zwykle nie jest ustawiony.
-function supabaseQuery(sql) {
-  if (process.env.SUPABASE_DB_URL) {
-    const wrapped = `select coalesce(json_agg(row_to_json(sub)), '[]'::json) from (${sql.replace(/;\s*$/, "")}) sub;`;
-    const out = execFileSync(
-      "psql",
-      [process.env.SUPABASE_DB_URL, "-t", "-A", "-c", wrapped],
-      { encoding: "utf8" }
-    );
-    return JSON.parse(out.trim() || "[]");
-  }
-  const out = execFileSync(
-    "npx",
-    ["supabase", "db", "query", "--linked", "--output", "json", sql],
-    { encoding: "utf8" }
-  );
-  return JSON.parse(out).rows ?? [];
-}
-
+// Dostęp do bazy jest wspólny (scripts/lib/db.mjs) — tamta wersja przechodzi
+// do porządku nad kodem wyjścia ≠ 0 z poprawnym wynikiem na stdout, co
+// telemetria CLI Supabase potrafi zrobić. Lokalna kopia tego nie miała
+// i przewracała import na losowym uruchomieniu.
 function runSqlFile(sqlPath) {
   if (process.env.SUPABASE_DB_URL) {
     execFileSync("psql", [process.env.SUPABASE_DB_URL, "-v", "ON_ERROR_STOP=1", "-f", sqlPath], {
@@ -160,17 +174,28 @@ function main() {
   const finalizedCount = Number(
     existing.find((r) => r.status === "finalized")?.n ?? 0
   );
-  const openCount = Number(existing.find((r) => r.status === "open")?.n ?? 0);
+  const totalCount = existing.reduce((suma, r) => suma + Number(r.n), 0);
 
-  if (finalizedCount > 0) {
+  if (finalizedCount > 0 && !args.kopia) {
     console.error(
-      `Ta sesja ma już ${finalizedCount} oznaczonych (finalized) segmentów — przerywam, żeby nic nie skasować. Obsłuż ręcznie.`
+      `Ta sesja ma już ${finalizedCount} oznaczonych (finalized) segmentów — przerywam, żeby nic nie skasować. ` +
+        `Zrób zrzut (scripts/save-segment-assignments.mjs) i podaj go przez --kopia.`
     );
     process.exit(1);
   }
-  if (openCount > 0 && !args.force) {
+  if (args.kopia) {
+    const wZrzucie = sprawdzKopie(args.kopia, meetingId);
+    if (wZrzucie < finalizedCount) {
+      console.error(
+        `Zrzut ma ${wZrzucie} przypisań, a w bazie jest ${finalizedCount} zatwierdzonych segmentów — ` +
+          `zrzut jest nieaktualny. Zrób go jeszcze raz.`
+      );
+      process.exit(1);
+    }
+  }
+  if (totalCount > 0 && !args.force) {
     console.error(
-      `Ta sesja ma już ${openCount} segmentów (status open). Użyj --force, by je zastąpić.`
+      `Ta sesja ma już ${totalCount} segmentów. Użyj --force, by je zastąpić.`
     );
     process.exit(1);
   }
@@ -189,9 +214,14 @@ function main() {
   }
 
   const statements = [];
-  if (openCount > 0) {
+  if (totalCount > 0) {
+    // Kasujemy wszystko poza zatwierdzonym — chyba że zatwierdzone jest
+    // zabezpieczone zrzutem (--kopia), wtedy też idzie. Wcześniej znikały
+    // tylko segmenty `open`, więc reimport sesji z propozycjami zostawiał
+    // je obok nowych i transkrypcja dublowała się w połowie.
+    const warunek = args.kopia ? "" : " and status <> 'finalized'";
     statements.push(
-      `delete from segment where meeting_id = '${meetingId}' and status = 'open';`
+      `delete from segment where meeting_id = '${meetingId}'${warunek};`
     );
   }
   const values = segments
