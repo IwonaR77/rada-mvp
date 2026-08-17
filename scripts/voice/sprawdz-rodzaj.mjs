@@ -28,6 +28,25 @@ import { supabaseQuery, REPO_ROOT } from "../lib/db.mjs";
 const ZENSKIE = /[aiyeęąóu]ł(am|abym)\b/iu;
 const MESKIE = /[aiyeęąóu]ł(em|bym)\b/iu;
 
+/**
+ * Odsiewa rzeczowniki w narzędniku, zanim zadziała reguła morfologiczna.
+ *
+ * Dwa sita, bo samo wyliczanie rdzeni okazało się studnią bez dna („działem",
+ * „udziałem", „materiałem", „ogółem"…). Ogólna zasada: narzędnik rzeczownika
+ * prawie zawsze stoi PO przyimku („z udziałem") albo po przymiotniku
+ * w narzędniku („kwalifikowanym materiałem"), a forma czasownika w 1. osobie
+ * nie ma przed sobą ani jednego, ani drugiego.
+ */
+function bezNarzednika(tekst) {
+  return tekst
+    .replace(RZECZOWNIKI, "")
+    .replace(
+      /\b(z|ze|nad|pod|przed|za|między|pomiędzy|wraz|z\s+\p{L}+)\s+\p{L}+ł(em|am)\b/giu,
+      ""
+    )
+    .replace(/\p{L}+(ym|im|om)\s+\p{L}+ł(em|am)\b/giu, "");
+}
+
 // Rdzenie, których narzędnik ma dokładnie tę samą postać co czasownik
 // („działem", „ciałem", „ogółem"). Reguła morfologiczna ich nie odsieje, bo
 // przed „ł" stoi tam ta sama samogłoska co w „czytałem".
@@ -36,7 +55,7 @@ const MESKIE = /[aiyeęąóu]ł(em|bym)\b/iu;
 // czasowników („powiedziałem", „widziałem", „siedziałem") i test po cichu
 // wycinał właśnie te formy, których miał szukać.
 const RZECZOWNIKI =
-  /\b(protokoł|wydział|podział|źródł|dział|koł|czoł|ciał|dzieł|tł|stoł|okoł|zespoł|osiedl|ogół|mysł|węzł|hasł|krzesł|artykuł|tytuł|rozdział|paragraf)em\b/giu;
+  /\b(protokoł|wydział|podział|udział|oddział|przedział|źródł|dział|koł|czoł|ciał|dzieł|tł|stoł|okoł|zespoł|osiedl|ogół|mysł|węzł|hasł|krzesł|artykuł|tytuł|rozdział|paragraf)em\b/giu;
 
 function parseArgs(argv) {
   const args = { status: "all" };
@@ -97,7 +116,7 @@ function main() {
     if (!s.mowca) continue;
     if (args.status !== "all" && s.status !== args.status) continue;
 
-    const tekst = (s.text ?? "").replace(RZECZOWNIKI, "");
+    const tekst = bezNarzednika(s.text ?? "");
     const z = ZENSKIE.test(tekst);
     const m = MESKIE.test(tekst);
     if (!z && !m) continue;
