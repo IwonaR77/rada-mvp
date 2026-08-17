@@ -516,8 +516,11 @@ export function SessionPlayer({
                 Źródło: {videoSourceLabel(videoUrl)}
               </p>
             )}
-          </div>
-          <div className="flex w-full min-w-0 flex-col gap-3 overflow-hidden lg:aspect-video lg:w-1/2">
+
+            {/* Wyszukiwarka, filtry, skoki i pobieranie stoją pod
+                nagraniem, a nie nad listą: prawa kolumna ma pokazywać
+                wyłącznie wypowiedzi, a każdy pasek narzędzi nad nią
+                zjadał wysokość, której lista i tak ma mało. */}
             <div className="flex flex-wrap items-center gap-2">
               <input
                 type="text"
@@ -637,8 +640,10 @@ export function SessionPlayer({
                 )}
               </div>
             </div>
-
             {taggingProgress && <div className="mb-3">{taggingProgress}</div>}
+          </div>
+          <div className="flex w-full min-w-0 flex-col gap-3 overflow-hidden lg:aspect-video lg:w-1/2">
+
             {prowadzacyId && (
               <p className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400">
                 <span className="flex items-center gap-1.5">
