@@ -494,401 +494,412 @@ export function SessionPlayer({
 
   return (
     <div className="flex flex-col gap-6 lg:flex-row">
-      <div className="flex w-full flex-col gap-3 lg:order-first lg:flex-1">
-        <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-          Podsumowanie
-        </h2>
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-zinc-200 p-4 text-sm leading-relaxed text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
-          {summary ? (
-            <ReactMarkdown
-              components={{
-                h1: (props) => (
-                  <h3 className="mb-2 mt-4 text-base font-semibold text-zinc-900 first:mt-0 dark:text-zinc-100" {...props} />
-                ),
-                h2: (props) => (
-                  <h3 className="mb-2 mt-4 text-sm font-semibold text-zinc-900 first:mt-0 dark:text-zinc-100" {...props} />
-                ),
-                h3: (props) => (
-                  <h4 className="mb-1 mt-3 text-sm font-semibold text-zinc-900 dark:text-zinc-100" {...props} />
-                ),
-                p: (props) => <p className="mb-3 last:mb-0" {...props} />,
-                ul: (props) => <ul className="mb-3 list-disc space-y-1 pl-5" {...props} />,
-                ol: (props) => <ol className="mb-3 list-decimal space-y-1 pl-5" {...props} />,
-                li: (props) => <li {...props} />,
-                strong: (props) => <strong className="font-semibold text-zinc-900 dark:text-zinc-100" {...props} />,
-              }}
-            >
-              {summary}
-            </ReactMarkdown>
-          ) : (
-            <p className="text-zinc-400">Brak podsumowania.</p>
-          )}
-        </div>
-        {summary && (
-          // Podsumowania pisze model według wersjonowanego promptu, a kolejne
-          // wersje realnie zmieniają zakres (np. v4 dodał datę wygenerowania,
-          // v7 nazwę rady z nagłówka). Bez tej stopki czytelnik nie ma jak
-          // odróżnić tekstu sprzed dwóch podbić od świeżego.
-          <p className="text-xs text-zinc-400">
-            {summaryPromptVersion === null ? (
-              "Wygenerowano nieznaną wersją promptu podsumowań."
-            ) : summaryPromptVersion >= currentPromptVersion ? (
-              <>
-                Wygenerowano{" "}
-                <Link href="/prompt-podsumowania" className="underline hover:text-zinc-600 dark:hover:text-zinc-300">
-                  promptem v{summaryPromptVersion}
-                </Link>
-                .
-              </>
-            ) : (
-              // Strona /prompt-podsumowania pokazuje zawsze wersję aktualną,
-              // więc przy starszym podsumowaniu link prowadziłby do promptu,
-              // którym ten tekst NIE powstał — dlatego bez odsyłacza.
-              `Wygenerowano promptem v${summaryPromptVersion} — starszym niż obecny v${currentPromptVersion}.`
-            )}
-          </p>
-        )}
-        {summaryManager}
-      </div>
-
-      <div className="flex flex-1 flex-col gap-6">
-        <ReactPlayer
-          ref={videoRef}
-          src={videoUrl}
-          controls
-          onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-          onLoadedMetadata={handleLoadedMetadata}
-          style={{ width: "100%", height: "auto", aspectRatio: "16/9" }}
-        />
-        {videoSourceLabel(videoUrl) && (
-          <p className="-mt-4 text-xs text-zinc-400">
-            Źródło: {videoSourceLabel(videoUrl)}
-          </p>
-        )}
-
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Szukaj w tej sesji..."
-            className="rounded-full border border-zinc-300 bg-white px-4 py-1.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500"
-          />
-          <div className="inline-flex rounded-full border border-zinc-200 p-0.5 text-sm dark:border-zinc-800">
-            <button
-              onClick={() => setFilter("all")}
-              className={`rounded-full px-3 py-1 transition-colors ${
-                filter === "all"
-                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                  : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-              }`}
-            >
-              Wszystkie
-            </button>
-            <button
-              onClick={() => setFilter("unassigned")}
-              className={`rounded-full px-3 py-1 transition-colors ${
-                filter === "unassigned"
-                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                  : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-              }`}
-            >
-              Nieustalone{unassignedCount > 0 && ` (${unassignedCount})`}
-            </button>
-            <button
-              onClick={() => setFilter("proposed")}
-              className={`rounded-full px-3 py-1 transition-colors ${
-                filter === "proposed"
-                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                  : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-              }`}
-            >
-              Niezaakceptowane{proposedCount > 0 && ` (${proposedCount})`}
-            </button>
-          </div>
-
-          {/* Skok do dziury zamiast filtrowania: filtr „Nieustalone" pokazuje
-              same dziury, a wtedy nie widać, co padło obok — a to zwykle
-              jedyna wskazówka, kto mówi. */}
-          <button
-            onClick={jumpToNextUnassigned}
-            disabled={!visibleSegments.some(isUnassigned)}
-            title="Przewija listę do kolejnego segmentu bez przypisanego mówcy"
-            className="rounded-full border border-amber-300 px-3 py-1 text-sm text-amber-800 hover:bg-amber-50 disabled:opacity-40 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40"
-          >
-            ↓ {jumpCursor ? "Następny" : "Pierwszy"} nieprzypisany
-          </button>
-
-          <div className="ml-auto flex gap-2">
-            {canDownloadTranscript && (
-              <>
-                <button
-                  disabled={segments.length === 0}
-                  onClick={() =>
-                    downloadFile(
-                      `${sessionFileBase(sessionKey, meetingDate, meetingTitle)}.txt`,
-                      buildPlainText(segments, {
-                        sessionKey,
-                        sessionNumber,
-                        councilName,
-                        date: meetingDate,
-                        title: meetingTitle,
-                        existingTopics,
-                      }),
-                      "text/plain;charset=utf-8"
-                    )
-                  }
-                  className="rounded-full border border-zinc-300 px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                >
-                  Pobierz .txt
-                </button>
-                <button
-                  disabled={segments.length === 0}
-                  onClick={() =>
-                    downloadFile(
-                      `${sessionFileBase(sessionKey, meetingDate, meetingTitle)}_mowcy.txt`,
-                      buildPlainTextWithSpeakers(
-                        segments,
-                        peopleById,
-                        councilors,
-                        officials,
-                        {
-                          sessionKey,
-                          sessionNumber,
-                          councilName,
-                          date: meetingDate,
-                          title: meetingTitle,
-                          existingTopics,
-                        }
-                      ),
-                      "text/plain;charset=utf-8"
-                    )
-                  }
-                  className="rounded-full border border-zinc-300 px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                >
-                  Pobierz .txt (z mówcami)
-                </button>
-                <button
-                  disabled={segments.length === 0}
-                  onClick={() =>
-                    downloadFile(
-                      `${sessionFileBase(sessionKey, meetingDate, meetingTitle)}.srt`,
-                      buildSrt(segments),
-                      "application/x-subrip;charset=utf-8"
-                    )
-                  }
-                  className="rounded-full border border-zinc-300 px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                >
-                  Pobierz .srt
-                </button>
-              </>
+      <div className="flex min-w-0 flex-1 flex-col gap-6">
+        {/* Wideo i lista wypowiedzi obok siebie, w równych połówkach:
+            przy weryfikowaniu przypisań patrzy się na jedno i drugie
+            naraz, a nagranie nad listą spychało ją poza dolną krawędź
+            ekranu. `aspect-video` na kolumnie z listą daje jej dokładnie
+            tę samą wysokość co odtwarzacz — obie kolumny są tej samej
+            szerokości i mają ten sam stosunek boków. */}
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+          <div className="flex w-full flex-col gap-6 lg:w-1/2">
+            <ReactPlayer
+              ref={videoRef}
+              src={videoUrl}
+              controls
+              onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+              onLoadedMetadata={handleLoadedMetadata}
+              style={{ width: "100%", height: "auto", aspectRatio: "16/9" }}
+            />
+            {videoSourceLabel(videoUrl) && (
+              <p className="-mt-4 text-xs text-zinc-400">
+                Źródło: {videoSourceLabel(videoUrl)}
+              </p>
             )}
           </div>
-        </div>
+          <div className="flex w-full min-w-0 flex-col gap-3 overflow-hidden lg:aspect-video lg:w-1/2">
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Szukaj w tej sesji..."
+                className="rounded-full border border-zinc-300 bg-white px-4 py-1.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500"
+              />
+              <div className="inline-flex rounded-full border border-zinc-200 p-0.5 text-sm dark:border-zinc-800">
+                <button
+                  onClick={() => setFilter("all")}
+                  className={`rounded-full px-3 py-1 transition-colors ${
+                    filter === "all"
+                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                  }`}
+                >
+                  Wszystkie
+                </button>
+                <button
+                  onClick={() => setFilter("unassigned")}
+                  className={`rounded-full px-3 py-1 transition-colors ${
+                    filter === "unassigned"
+                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                  }`}
+                >
+                  Nieustalone{unassignedCount > 0 && ` (${unassignedCount})`}
+                </button>
+                <button
+                  onClick={() => setFilter("proposed")}
+                  className={`rounded-full px-3 py-1 transition-colors ${
+                    filter === "proposed"
+                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                  }`}
+                >
+                  Niezaakceptowane{proposedCount > 0 && ` (${proposedCount})`}
+                </button>
+              </div>
 
-        {taggingProgress && <div className="mb-3">{taggingProgress}</div>}
-        {prowadzacyId && (
-          <p className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400">
-            <span className="flex items-center gap-1.5">
-              <span className={`h-3 w-[3px] rounded-full ${KOLOR_PROWADZACEGO}`} />
-              {peopleById.get(prowadzacyId)?.split(" (")[0] ?? "prowadzący"}
-            </span>
-            <span className="flex items-center gap-1.5">
-              {ROTACJA.map((kolor) => (
-                <span key={kolor} className={`h-3 w-[3px] rounded-full ${kolor}`} />
-              ))}
-              pozostali mówcy
-            </span>
-            <span>
-              kolor rotuje przy zmianie mówcy (nie oznacza konkretnej osoby),
-              przerwa w pasku = granica wypowiedzi
-            </span>
-          </p>
-        )}
-        <ul
-          ref={listRef}
-          onWheel={() => {
-            followPlaybackRef.current = false;
-          }}
-          onTouchMove={() => {
-            followPlaybackRef.current = false;
-          }}
-          className="flex max-h-[32rem] flex-col gap-1 overflow-y-auto overscroll-contain rounded-2xl border border-zinc-200 p-2 dark:border-zinc-800"
-        >
-          {visibleSegments.length === 0 && (
-            <li className="p-4 text-center text-zinc-500">
-              {normalizedQuery
-                ? `Brak wyników dla „${query}".`
-                : speakerFilter.size > 0
-                  ? "Brak wypowiedzi zaznaczonych mówców w tej sesji."
-                  : filter === "unassigned"
-                    ? "Wszystkie segmenty mają przypisanego mówcę."
-                    : filter === "proposed"
-                      ? "Brak niezaakceptowanych propozycji."
-                      : "Brak segmentów dla tej sesji."}
-            </li>
-          )}
-          {visibleSegments.map((s, i) => {
-            const isActive = activeSegment?.id === s.id;
-            const assignedId = s.confirmed_councilor_id ?? s.confirmed_official_id;
-            const isProposed = Boolean(assignedId) && s.status === "proposed";
-            const poprzedni = i > 0 ? visibleSegments[i - 1] : null;
-            const kontynuacja = Boolean(
-              assignedId &&
-                poprzedni &&
-                getAssignedId(poprzedni) === assignedId &&
-                pozycjaSegmentu.get(s.id) ===
-                  (pozycjaSegmentu.get(poprzedni.id) ?? -2) + 1
-            );
-            // Na podświetlonym wierszu grafit zlewa się z tłem, więc tam
-            // prowadzący dostaje odwrócony odcień.
-            const pasek =
-              isActive && assignedId === prowadzacyId
-                ? "bg-zinc-300 dark:bg-zinc-700"
-                : kolorPaska.get(s.id) ?? "bg-transparent";
-            return (
-              <li
-                key={s.id}
-                id={`seg-${s.id}`}
-                ref={isActive ? activeRowRef : undefined}
-                className={`relative flex items-start gap-2 rounded-xl py-2 pl-4 pr-2 transition-colors ${
-                  isActive
-                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                    : !assignedId
-                      ? "bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
-                      : isProposed
-                        ? "bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/30 dark:hover:bg-blue-950/50"
-                        : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                }`}
+              {/* Skok do dziury zamiast filtrowania: filtr „Nieustalone" pokazuje
+                  same dziury, a wtedy nie widać, co padło obok — a to zwykle
+                  jedyna wskazówka, kto mówi. */}
+              <button
+                onClick={jumpToNextUnassigned}
+                disabled={!visibleSegments.some(isUnassigned)}
+                title="Przewija listę do kolejnego segmentu bez przypisanego mówcy"
+                className="rounded-full border border-amber-300 px-3 py-1 text-sm text-amber-800 hover:bg-amber-50 disabled:opacity-40 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40"
               >
-                {/* Pasek mówcy. Pozycjonowany absolutnie i z przerwą u góry
-                    przy zmianie mówcy — dzięki temu blok jednej osoby czyta się
-                    jako jeden ciągły pasek, a wysokość wiersza nie zmienia się
-                    ani przy przypisaniu, ani przy zmianie filtra. */}
-                <span
-                  aria-hidden
-                  className={`absolute bottom-0 left-1 w-[3px] rounded-full ${
-                    kontynuacja ? "top-0" : "top-2"
-                  } ${pasek}`}
-                />
-                {canAssign && splittingId !== s.id && (
-                  <input
-                    type="checkbox"
-                    checked={selected.has(s.id)}
-                    onChange={(e) => {
-                      const shiftKey = (e.nativeEvent as MouseEvent).shiftKey;
-                      handleSegmentClick(s.id, shiftKey);
-                    }}
-                    className="mt-1 shrink-0"
-                  />
-                )}
-                {splittingId === s.id ? (
-                  <div className="flex flex-1 flex-col gap-1 text-sm">
-                    <p className="text-xs text-zinc-500">
-                      Kliknij słowo, od którego zaczyna się druga wypowiedź:
-                    </p>
-                    <div className="flex flex-wrap gap-x-1">
-                      {wordsWithOffsets(s.text).map(({ word, offset }, i) =>
-                        i === 0 ? (
-                          <span key={offset}>{word}</span>
-                        ) : (
-                          <button
-                            key={offset}
-                            disabled={isPending}
-                            onClick={() => handleSplit(s.id, offset)}
-                            className="rounded hover:bg-blue-200 hover:underline dark:hover:bg-blue-900"
-                          >
-                            {word}
-                          </button>
-                        )
-                      )}
-                    </div>
-                    <button
-                      onClick={() => setSplittingId(null)}
-                      className="self-start text-xs text-zinc-500 underline"
-                    >
-                      Anuluj
-                    </button>
-                  </div>
-                ) : (
+                ↓ {jumpCursor ? "Następny" : "Pierwszy"} nieprzypisany
+              </button>
+
+              <div className="ml-auto flex gap-2">
+                {canDownloadTranscript && (
                   <>
                     <button
-                      onClick={() => handleSeek(s.start_time)}
-                      className="flex flex-1 flex-col gap-0.5 text-left text-sm"
+                      disabled={segments.length === 0}
+                      onClick={() =>
+                        downloadFile(
+                          `${sessionFileBase(sessionKey, meetingDate, meetingTitle)}.txt`,
+                          buildPlainText(segments, {
+                            sessionKey,
+                            sessionNumber,
+                            councilName,
+                            date: meetingDate,
+                            title: meetingTitle,
+                            existingTopics,
+                          }),
+                          "text/plain;charset=utf-8"
+                        )
+                      }
+                      className="rounded-full border border-zinc-300 px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
                     >
-                      <div className="flex gap-3">
-                        <span
-                          className={`shrink-0 font-mono ${
-                            isActive ? "" : "text-zinc-400"
-                          }`}
-                        >
-                          {formatTime(s.start_time)}
-                        </span>
-                        <span>{s.text}</span>
-                      </div>
-                      {/* Linijka mówcy stoi w układzie zawsze, także pusta.
-                          Renderowana warunkowo dopisywała wiersz dopiero po
-                          przypisaniu, więc cała lista poniżej przeskakiwała
-                          w dół dokładnie w chwili klikania kolejnych
-                          segmentów. `truncate` trzyma ją przy jednej linii —
-                          dłuższy dopisek o propozycji też nie zmieni
-                          wysokości. */}
-                      <span
-                        title={
-                          assignedId ? peopleById.get(assignedId) ?? "?" : undefined
-                        }
-                        // Nazwisko stoi w KAŻDYM wierszu, także w środku
-                        // długiej wypowiedzi — przy weryfikacji przewija się
-                        // setki wierszy i odsyłanie wzroku do początku bloku
-                        // kosztowałoby więcej, niż daje oszczędność miejsca.
-                        // Zmianę mówcy niesie kontrast: pierwszy wiersz bloku
-                        // czytelny, kolejne przygaszone.
-                        className={`block w-full truncate text-xs ${
-                          isActive
-                            ? "text-zinc-300"
-                            : isProposed
-                              ? kontynuacja
-                                ? "text-blue-700/50 dark:text-blue-400/50"
-                                : "font-medium text-blue-700 dark:text-blue-400"
-                              : kontynuacja
-                                ? "text-zinc-400/60 dark:text-zinc-500/60"
-                                : "font-medium text-zinc-500 dark:text-zinc-400"
-                        }`}
-                      >
-                        {assignedId ? (
-                          <>
-                            {peopleById.get(assignedId) ?? "?"}
-                            {isProposed && " — propozycja, czeka na zatwierdzenie"}
-                          </>
-                        ) : (
-                          " "
-                        )}
-                      </span>
+                      Pobierz .txt
                     </button>
-                    {canFinalize && (
-                      <button
-                        onClick={() => setSplittingId(s.id)}
-                        title="Podziel segment (dwóch mówców w jednym segmencie)"
-                        className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${
-                          isActive
-                            ? "hover:bg-zinc-700 dark:hover:bg-zinc-300"
-                            : "text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                        }`}
-                      >
-                        ✂️
-                      </button>
-                    )}
+                    <button
+                      disabled={segments.length === 0}
+                      onClick={() =>
+                        downloadFile(
+                          `${sessionFileBase(sessionKey, meetingDate, meetingTitle)}_mowcy.txt`,
+                          buildPlainTextWithSpeakers(
+                            segments,
+                            peopleById,
+                            councilors,
+                            officials,
+                            {
+                              sessionKey,
+                              sessionNumber,
+                              councilName,
+                              date: meetingDate,
+                              title: meetingTitle,
+                              existingTopics,
+                            }
+                          ),
+                          "text/plain;charset=utf-8"
+                        )
+                      }
+                      className="rounded-full border border-zinc-300 px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                    >
+                      Pobierz .txt (z mówcami)
+                    </button>
+                    <button
+                      disabled={segments.length === 0}
+                      onClick={() =>
+                        downloadFile(
+                          `${sessionFileBase(sessionKey, meetingDate, meetingTitle)}.srt`,
+                          buildSrt(segments),
+                          "application/x-subrip;charset=utf-8"
+                        )
+                      }
+                      className="rounded-full border border-zinc-300 px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                    >
+                      Pobierz .srt
+                    </button>
                   </>
                 )}
-              </li>
-            );
-          })}
-        </ul>
-        {splitError && (
-          <p className="text-sm text-red-600 dark:text-red-400">
-            {splitError}
-          </p>
-        )}
+              </div>
+            </div>
+
+            {taggingProgress && <div className="mb-3">{taggingProgress}</div>}
+            {prowadzacyId && (
+              <p className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400">
+                <span className="flex items-center gap-1.5">
+                  <span className={`h-3 w-[3px] rounded-full ${KOLOR_PROWADZACEGO}`} />
+                  {peopleById.get(prowadzacyId)?.split(" (")[0] ?? "prowadzący"}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  {ROTACJA.map((kolor) => (
+                    <span key={kolor} className={`h-3 w-[3px] rounded-full ${kolor}`} />
+                  ))}
+                  pozostali mówcy
+                </span>
+                <span>
+                  kolor rotuje przy zmianie mówcy (nie oznacza konkretnej osoby),
+                  przerwa w pasku = granica wypowiedzi
+                </span>
+              </p>
+            )}
+            <ul
+              ref={listRef}
+              onWheel={() => {
+                followPlaybackRef.current = false;
+              }}
+              onTouchMove={() => {
+                followPlaybackRef.current = false;
+              }}
+              className="flex max-h-[32rem] min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain rounded-2xl border border-zinc-200 p-2 lg:max-h-none dark:border-zinc-800"
+            >
+              {visibleSegments.length === 0 && (
+                <li className="p-4 text-center text-zinc-500">
+                  {normalizedQuery
+                    ? `Brak wyników dla „${query}".`
+                    : speakerFilter.size > 0
+                      ? "Brak wypowiedzi zaznaczonych mówców w tej sesji."
+                      : filter === "unassigned"
+                        ? "Wszystkie segmenty mają przypisanego mówcę."
+                        : filter === "proposed"
+                          ? "Brak niezaakceptowanych propozycji."
+                          : "Brak segmentów dla tej sesji."}
+                </li>
+              )}
+              {visibleSegments.map((s, i) => {
+                const isActive = activeSegment?.id === s.id;
+                const assignedId = s.confirmed_councilor_id ?? s.confirmed_official_id;
+                const isProposed = Boolean(assignedId) && s.status === "proposed";
+                const poprzedni = i > 0 ? visibleSegments[i - 1] : null;
+                const kontynuacja = Boolean(
+                  assignedId &&
+                    poprzedni &&
+                    getAssignedId(poprzedni) === assignedId &&
+                    pozycjaSegmentu.get(s.id) ===
+                      (pozycjaSegmentu.get(poprzedni.id) ?? -2) + 1
+                );
+                // Na podświetlonym wierszu grafit zlewa się z tłem, więc tam
+                // prowadzący dostaje odwrócony odcień.
+                const pasek =
+                  isActive && assignedId === prowadzacyId
+                    ? "bg-zinc-300 dark:bg-zinc-700"
+                    : kolorPaska.get(s.id) ?? "bg-transparent";
+                return (
+                  <li
+                    key={s.id}
+                    id={`seg-${s.id}`}
+                    ref={isActive ? activeRowRef : undefined}
+                    className={`relative flex items-start gap-2 rounded-xl py-2 pl-4 pr-2 transition-colors ${
+                      isActive
+                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                        : !assignedId
+                          ? "bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
+                          : isProposed
+                            ? "bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/30 dark:hover:bg-blue-950/50"
+                            : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    }`}
+                  >
+                    {/* Pasek mówcy. Pozycjonowany absolutnie i z przerwą u góry
+                        przy zmianie mówcy — dzięki temu blok jednej osoby czyta się
+                        jako jeden ciągły pasek, a wysokość wiersza nie zmienia się
+                        ani przy przypisaniu, ani przy zmianie filtra. */}
+                    <span
+                      aria-hidden
+                      className={`absolute bottom-0 left-1 w-[3px] rounded-full ${
+                        kontynuacja ? "top-0" : "top-2"
+                      } ${pasek}`}
+                    />
+                    {canAssign && splittingId !== s.id && (
+                      <input
+                        type="checkbox"
+                        checked={selected.has(s.id)}
+                        onChange={(e) => {
+                          const shiftKey = (e.nativeEvent as MouseEvent).shiftKey;
+                          handleSegmentClick(s.id, shiftKey);
+                        }}
+                        className="mt-1 shrink-0"
+                      />
+                    )}
+                    {splittingId === s.id ? (
+                      <div className="flex flex-1 flex-col gap-1 text-sm">
+                        <p className="text-xs text-zinc-500">
+                          Kliknij słowo, od którego zaczyna się druga wypowiedź:
+                        </p>
+                        <div className="flex flex-wrap gap-x-1">
+                          {wordsWithOffsets(s.text).map(({ word, offset }, i) =>
+                            i === 0 ? (
+                              <span key={offset}>{word}</span>
+                            ) : (
+                              <button
+                                key={offset}
+                                disabled={isPending}
+                                onClick={() => handleSplit(s.id, offset)}
+                                className="rounded hover:bg-blue-200 hover:underline dark:hover:bg-blue-900"
+                              >
+                                {word}
+                              </button>
+                            )
+                          )}
+                        </div>
+                        <button
+                          onClick={() => setSplittingId(null)}
+                          className="self-start text-xs text-zinc-500 underline"
+                        >
+                          Anuluj
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleSeek(s.start_time)}
+                          className="flex flex-1 flex-col gap-0.5 text-left text-sm"
+                        >
+                          <div className="flex gap-3">
+                            <span
+                              className={`shrink-0 font-mono ${
+                                isActive ? "" : "text-zinc-400"
+                              }`}
+                            >
+                              {formatTime(s.start_time)}
+                            </span>
+                            <span>{s.text}</span>
+                          </div>
+                          {/* Linijka mówcy stoi w układzie zawsze, także pusta.
+                              Renderowana warunkowo dopisywała wiersz dopiero po
+                              przypisaniu, więc cała lista poniżej przeskakiwała
+                              w dół dokładnie w chwili klikania kolejnych
+                              segmentów. `truncate` trzyma ją przy jednej linii —
+                              dłuższy dopisek o propozycji też nie zmieni
+                              wysokości. */}
+                          <span
+                            title={
+                              assignedId ? peopleById.get(assignedId) ?? "?" : undefined
+                            }
+                            // Nazwisko stoi w KAŻDYM wierszu, także w środku
+                            // długiej wypowiedzi — przy weryfikacji przewija się
+                            // setki wierszy i odsyłanie wzroku do początku bloku
+                            // kosztowałoby więcej, niż daje oszczędność miejsca.
+                            // Zmianę mówcy niesie kontrast: pierwszy wiersz bloku
+                            // czytelny, kolejne przygaszone.
+                            className={`block w-full truncate text-xs ${
+                              isActive
+                                ? "text-zinc-300"
+                                : isProposed
+                                  ? kontynuacja
+                                    ? "text-blue-700/50 dark:text-blue-400/50"
+                                    : "font-medium text-blue-700 dark:text-blue-400"
+                                  : kontynuacja
+                                    ? "text-zinc-400/60 dark:text-zinc-500/60"
+                                    : "font-medium text-zinc-500 dark:text-zinc-400"
+                            }`}
+                          >
+                            {assignedId ? (
+                              <>
+                                {peopleById.get(assignedId) ?? "?"}
+                                {isProposed && " — propozycja, czeka na zatwierdzenie"}
+                              </>
+                            ) : (
+                              " "
+                            )}
+                          </span>
+                        </button>
+                        {canFinalize && (
+                          <button
+                            onClick={() => setSplittingId(s.id)}
+                            title="Podziel segment (dwóch mówców w jednym segmencie)"
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${
+                              isActive
+                                ? "hover:bg-zinc-700 dark:hover:bg-zinc-300"
+                                : "text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                            }`}
+                          >
+                            ✂️
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            {splitError && (
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {splitError}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex w-full flex-col gap-3">
+          <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Podsumowanie
+          </h2>
+          <div className="rounded-2xl border border-zinc-200 p-4 text-sm leading-relaxed text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
+            {summary ? (
+              <ReactMarkdown
+                components={{
+                  h1: (props) => (
+                    <h3 className="mb-2 mt-4 text-base font-semibold text-zinc-900 first:mt-0 dark:text-zinc-100" {...props} />
+                  ),
+                  h2: (props) => (
+                    <h3 className="mb-2 mt-4 text-sm font-semibold text-zinc-900 first:mt-0 dark:text-zinc-100" {...props} />
+                  ),
+                  h3: (props) => (
+                    <h4 className="mb-1 mt-3 text-sm font-semibold text-zinc-900 dark:text-zinc-100" {...props} />
+                  ),
+                  p: (props) => <p className="mb-3 last:mb-0" {...props} />,
+                  ul: (props) => <ul className="mb-3 list-disc space-y-1 pl-5" {...props} />,
+                  ol: (props) => <ol className="mb-3 list-decimal space-y-1 pl-5" {...props} />,
+                  li: (props) => <li {...props} />,
+                  strong: (props) => <strong className="font-semibold text-zinc-900 dark:text-zinc-100" {...props} />,
+                }}
+              >
+                {summary}
+              </ReactMarkdown>
+            ) : (
+              <p className="text-zinc-400">Brak podsumowania.</p>
+            )}
+          </div>
+          {summary && (
+            // Podsumowania pisze model według wersjonowanego promptu, a kolejne
+            // wersje realnie zmieniają zakres (np. v4 dodał datę wygenerowania,
+            // v7 nazwę rady z nagłówka). Bez tej stopki czytelnik nie ma jak
+            // odróżnić tekstu sprzed dwóch podbić od świeżego.
+            <p className="text-xs text-zinc-400">
+              {summaryPromptVersion === null ? (
+                "Wygenerowano nieznaną wersją promptu podsumowań."
+              ) : summaryPromptVersion >= currentPromptVersion ? (
+                <>
+                  Wygenerowano{" "}
+                  <Link href="/prompt-podsumowania" className="underline hover:text-zinc-600 dark:hover:text-zinc-300">
+                    promptem v{summaryPromptVersion}
+                  </Link>
+                  .
+                </>
+              ) : (
+                // Strona /prompt-podsumowania pokazuje zawsze wersję aktualną,
+                // więc przy starszym podsumowaniu link prowadziłby do promptu,
+                // którym ten tekst NIE powstał — dlatego bez odsyłacza.
+                `Wygenerowano promptem v${summaryPromptVersion} — starszym niż obecny v${currentPromptVersion}.`
+              )}
+            </p>
+          )}
+          {summaryManager}
+        </div>
 
         {isAdmin && (
           <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-zinc-300 p-6 text-center dark:border-zinc-700">
