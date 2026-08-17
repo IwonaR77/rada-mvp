@@ -167,6 +167,22 @@ export type SegmentSnapshot = {
 
 const SEGMENT_STATUSES = ["open", "proposed", "finalized"];
 
+/**
+ * Dzieli listę identyfikatorów na paczki mieszczące się w adresie URL.
+ *
+ * PostgREST przyjmuje filtr `in` w adresie, a nie w ciele żądania, więc lista
+ * identyfikatorów (po 36 znaków każdy) potrafi urosnąć ponad limit długości —
+ * przy 882 propozycjach sesji było to ~33 kB i całe żądanie wracało błędem
+ * 400, wyglądając jak martwy przycisk. 200 na paczkę to ~7,5 kB adresu.
+ */
+function paczki(ids: string[], rozmiar = 200): string[][] {
+  const out: string[][] = [];
+  for (let i = 0; i < ids.length; i += rozmiar) {
+    out.push(ids.slice(i, i + rozmiar));
+  }
+  return out;
+}
+
 export async function assignSegments(
   meetingId: string,
   segmentIds: string[],
@@ -204,26 +220,35 @@ export async function assignSegments(
   // jeszcze istnieje. Idzie do klienta jako materiał na jedno cofnięcie
   // (patrz `undoAssignment`); nie zapisujemy go nigdzie po stronie serwera,
   // bo historia zmian to osobna, większa funkcja.
-  const { data: previous } = await supabase
-    .from("segment")
-    .select("id, confirmed_councilor_id, confirmed_official_id, status")
-    .in("id", segmentIds);
+  const previous: SegmentSnapshot[] = [];
+  for (const paczka of paczki(segmentIds)) {
+    const { data } = await supabase
+      .from("segment")
+      .select("id, confirmed_councilor_id, confirmed_official_id, status")
+      .in("id", paczka);
+    if (data) previous.push(...data);
+  }
 
-  const { error, count } = await supabase
-    .from("segment")
-    .update(
-      {
-        confirmed_councilor_id: target.type === "councilor" ? target.id : null,
-        confirmed_official_id: target.type === "official" ? target.id : null,
-        status: targetStatus,
-        finalized_by: user.id,
-        finalized_at: targetStatus === "finalized" ? new Date().toISOString() : null,
-      },
-      { count: "exact" }
-    )
-    .in("id", segmentIds);
+  let zapisanych = 0;
+  for (const paczka of paczki(segmentIds)) {
+    const { error, count } = await supabase
+      .from("segment")
+      .update(
+        {
+          confirmed_councilor_id: target.type === "councilor" ? target.id : null,
+          confirmed_official_id: target.type === "official" ? target.id : null,
+          status: targetStatus,
+          finalized_by: user.id,
+          finalized_at: targetStatus === "finalized" ? new Date().toISOString() : null,
+        },
+        { count: "exact" }
+      )
+      .in("id", paczka);
 
-  if (error) return { error: error.message };
+    if (error) return { error: error.message };
+    zapisanych += count ?? 0;
+  }
+  const count = zapisanych;
   if (count === 0) return { error: "Brak uprawnień do tej zmiany" };
   if (count !== segmentIds.length) {
     return {
@@ -395,23 +420,30 @@ export async function acceptProposedSegments(
   });
   if (!canFinalize) return { error: "Brak uprawnień do zatwierdzania propozycji" };
 
-  const { error, count } = await supabase
-    .from("segment")
-    .update(
-      {
-        status: "finalized",
-        finalized_by: user.id,
-        finalized_at: new Date().toISOString(),
-      },
-      { count: "exact" }
-    )
-    .in("id", segmentIds)
-    .eq("status", "proposed");
+  // Paczkami, bo filtr `in` jedzie w adresie URL — patrz `paczki`.
+  let zatwierdzonych = 0;
+  for (const paczka of paczki(segmentIds)) {
+    const { error, count } = await supabase
+      .from("segment")
+      .update(
+        {
+          status: "finalized",
+          finalized_by: user.id,
+          finalized_at: new Date().toISOString(),
+        },
+        { count: "exact" }
+      )
+      .in("id", paczka)
+      .eq("status", "proposed");
 
-  if (error) return { error: error.message };
-  if (count === 0) {
+    if (error) return { error: error.message };
+    zatwierdzonych += count ?? 0;
+  }
+
+  if (zatwierdzonych === 0) {
     return { error: "Brak propozycji do zatwierdzenia wśród zaznaczonych." };
   }
+  const count = zatwierdzonych;
 
   revalidatePath(`/sesje/${meetingId}`);
   return { error: null, count };

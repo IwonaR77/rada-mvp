@@ -436,8 +436,16 @@ export function SessionPlayer({
 
   function acceptSelected() {
     setLastAssignment(null);
+    setAssignError(null);
     startTransition(async () => {
-      await acceptProposedSegments(meetingId, selectedProposedIds);
+      // Wynik trzeba obejrzeć: dotąd akcja mogła odmówić (brak uprawnień,
+      // za długie żądanie), a interfejs milczał i wyglądało to jak martwy
+      // przycisk.
+      const wynik = await acceptProposedSegments(meetingId, selectedProposedIds);
+      if (wynik?.error) {
+        setAssignError(wynik.error);
+        return;
+      }
       setSelected(new Set());
     });
   }
@@ -451,11 +459,16 @@ export function SessionPlayer({
       return;
     }
     setLastAssignment(null);
+    setAssignError(null);
     startTransition(async () => {
-      await acceptProposedSegments(
+      const wynik = await acceptProposedSegments(
         meetingId,
         proposedSegments.map((s) => s.id)
       );
+      if (wynik?.error) {
+        setAssignError(wynik.error);
+        return;
+      }
       setSelected(new Set());
     });
   }
