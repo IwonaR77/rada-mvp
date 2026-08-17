@@ -27,6 +27,10 @@ const ETYKIETY_ZBIORCZE = [
   "Mieszkaniec miasta",
   "Nieustalony mówca",
   "Nieustalony urzędnik",
+  // Nie „nie wiadomo kto to powiedział", tylko „nikt tego nie powiedział" —
+  // tekst dopisany przez rozpoznawanie mowy. Do wzorca głosu nie może wejść
+  // tym bardziej niż etykiety zbiorcze: pod spodem jest cisza albo szum.
+  "Halucynacja transkrypcji",
 ];
 
 // Duża paczka celowo: każde wywołanie to osobny proces `npx supabase`, który

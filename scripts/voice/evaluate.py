@@ -36,6 +36,7 @@ ETYKIETY_ZBIORCZE = {
     "Mieszkaniec miasta",
     "Nieustalony mówca",
     "Nieustalony urzędnik",
+    "Halucynacja transkrypcji",
 }
 
 

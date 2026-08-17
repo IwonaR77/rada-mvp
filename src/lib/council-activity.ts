@@ -59,6 +59,15 @@ export type SpeakingActivity = {
  */
 const SPEAKING_BLOCK_MAX_GAP_SECONDS = 60;
 
+/**
+ * Role pozycji technicznych z listy mówców — wpisów, które nie są osobami.
+ *
+ * Trzymane po roli, nie po nazwisku: nazwę etykiety można kiedyś zmienić,
+ * a rola jest tym, co je klasyfikuje (patrz scripts/seed-nieustalony-mowca.sql
+ * i scripts/seed-halucynacja.sql).
+ */
+const ROLE_TECHNICZNE = new Set(["Nie do ustalenia", "Błąd rozpoznawania mowy"]);
+
 const EMPTY_ACTIVITY: SpeakingActivity = {
   councilors: [],
   heatmapMeetings: [],
@@ -181,11 +190,12 @@ export async function getSpeakingActivity(
   const pozostaliIds = new Set(
     officials
       .filter((o) => o.id !== burmistrz?.id && o.id !== zastepcaBurmistrza?.id)
-      // „Nieustalony mówca" to pozycja techniczna: znaczy „sprawdzone, nie da
-      // się ustalić kto mówi". Wpuszczenie jej do wiersza „Pozostali
-      // urzędnicy" dopisywałoby urzędnikom czas wypowiedzi, o których wiadomo
-      // tylko tyle, że nie wiadomo, czyje są.
-      .filter((o) => o.role !== "Nie do ustalenia")
+      // Pozycje techniczne, nie osoby: „Nieustalony mówca" znaczy
+      // „sprawdzone, nie da się ustalić kto mówi", a „Halucynacja
+      // transkrypcji" — że tych słów w ogóle nikt nie wypowiedział.
+      // Wpuszczenie ich do wiersza „Pozostali urzędnicy" dopisywałoby
+      // urzędnikom czas wypowiedzi, które nie są ich (albo niczyje).
+      .filter((o) => !ROLE_TECHNICZNE.has(o.role))
       .map((o) => o.id)
   );
   let pozostaliHasData = false;

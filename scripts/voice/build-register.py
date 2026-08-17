@@ -36,6 +36,9 @@ ETYKIETY_ZBIORCZE = {
     "Mieszkaniec miasta",
     "Nieustalony mówca",
     "Nieustalony urzędnik",
+    # Tekst bez pokrycia w nagraniu (halucynacja rozpoznawania mowy) —
+    # pod spodem jest cisza albo szum, więc wzorzec byłby wzorcem szumu.
+    "Halucynacja transkrypcji",
 }
 
 MIN_CZAS_WZORCA = 4.0
