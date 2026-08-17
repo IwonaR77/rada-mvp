@@ -230,15 +230,30 @@ export function SessionPlayer({
     );
   }
 
-  // Kto prowadzi te obrady — osoba mówiąca najdłużej. Pasek przy wierszu
-  // rozróżnia WYŁĄCZNIE „prowadzący / ktoś inny", a nie poszczególne osoby:
-  // w transkrypcji po każdym może mówić każdy, a nie istnieje paleta, w której
-  // dowolne dwie z dwudziestu kilku barw zostają rozróżnialne (także przy
-  // zaburzeniach widzenia barw). Tożsamość niesie nazwisko w wierszu, kolor
-  // niesie tylko „to zmiana".
-  const prowadzacyId = [...speakingSeconds.entries()].sort(
-    (a, b) => b[1] - a[1]
-  )[0]?.[0];
+  // Kto prowadzi obrady — z funkcji w kadencji (`councilor_term.role`), a NIE
+  // z czasu mówienia. Pierwsza wersja brała najdłużej mówiącego i na sesji,
+  // gdzie burmistrz referował większość punktów, grafit przechodził z
+  // przewodniczącej na niego — kolor prowadzącego ma być ten sam w każdej
+  // sesji kadencji, bo to funkcja, a nie ranking gadania.
+  //
+  // Najdłużej mówiący zostaje wyłącznie jako awaryjne wyjście dla rad, którym
+  // funkcji w bazie nie uzupełniono — wtedy legenda i tak podaje nazwisko,
+  // więc nic nie udaje czegoś, czym nie jest.
+  const przewodniczacyId = councilors.find((c) => {
+    const funkcja = c.role ?? "";
+    // „wiceprzewodniczący" zawiera w sobie „przewodnicząc", więc bez tego
+    // wykluczenia zastępca potrafiłby przejąć kolor prowadzącego.
+    return /przewodnicz/i.test(funkcja) && !/wice|zast/i.test(funkcja);
+  })?.id;
+
+  // Pasek przy wierszu rozróżnia WYŁĄCZNIE „prowadzący / ktoś inny", a nie
+  // poszczególne osoby: w transkrypcji po każdym może mówić każdy, a nie
+  // istnieje paleta, w której dowolne dwie z dwudziestu kilku barw zostają
+  // rozróżnialne (także przy zaburzeniach widzenia barw). Tożsamość niesie
+  // nazwisko w wierszu, kolor niesie tylko „to zmiana".
+  const prowadzacyId =
+    przewodniczacyId ??
+    [...speakingSeconds.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
 
   // Pozycja w PEŁNEJ liście — po niej poznajemy, czy dwa sąsiednie wiersze
   // naprawdę sąsiadują w nagraniu. Przy włączonym filtrze potrafią dzielić
