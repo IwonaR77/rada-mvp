@@ -7,6 +7,8 @@ type HeatmapMeeting = {
   id: string;
   date: string;
   title: string | null;
+  /** Numer sesji w kadencji — ta sama numeracja co w nawigacji między sesjami. */
+  number: number;
 };
 
 type HeatmapCouncilor = {
@@ -40,6 +42,49 @@ const SEQUENTIAL_STEPS = [
 const MIN_STEP_INDEX = 3;
 const ZERO_CELL_CLASS = "bg-zinc-200 dark:bg-zinc-700";
 
+// Kwadracik z sumą kadencji ma ŚWIADOMIE inną skalę niż komórki sesji, bo
+// odpowiada na inne pytanie: nie „ile w tym dniu", tylko „jak głośna to
+// w ogóle osoba". Wspólna niebieska rampa zlewałaby oba znaczenia w jedno.
+//
+// Skala jest zbudowana jak wysokość na mapie: trzy pasma intensywności, każde
+// z własną barwą bazową, a wewnątrz pasma odcień ciemnieje z wartością. Dzięki
+// temu widać naraz przynależność do grupy (barwa) i pozycję w grupie (odcień) —
+// czego jedna ciągła rampa nie pokazuje, bo przy tak skośnym rozkładzie
+// (prowadzący mówi wielokrotnie więcej niż mediana) prawie wszyscy lądują
+// w jej jasnym końcu.
+const PASMA = [
+  { nazwa: "mało", kroki: ["#a7f3d0", "#6ee7b7", "#34d399", "#10b981"] },
+  { nazwa: "średnio", kroki: ["#fde68a", "#fcd34d", "#fbbf24", "#f59e0b"] },
+  { nazwa: "dużo", kroki: ["#fca5a5", "#f87171", "#ef4444", "#dc2626"] },
+];
+
+/**
+ * Granice pasm — tercyle rozkładu, a nie równe trzecie części maksimum.
+ *
+ * Podział po wartości wrzucałby prawie wszystkich do „mało" (jedna osoba
+ * mówiąca najwięcej rozciąga skalę), a pasma mają dzielić ludzi, nie sekundy.
+ * Zera zostają poza rozkładem: cisza to osobny stan, nie najniższy poziom.
+ */
+function granicePasm(sumy: number[]): [number, number] {
+  const niezerowe = sumy.filter((s) => s > 0).sort((a, b) => a - b);
+  if (niezerowe.length === 0) return [0, 0];
+  const kwantyl = (q: number) =>
+    niezerowe[Math.min(niezerowe.length - 1, Math.floor(q * niezerowe.length))];
+  return [kwantyl(1 / 3), kwantyl(2 / 3)];
+}
+
+function kolorSumy(
+  total: number,
+  granice: [number, number],
+  zakresy: [number, number][]
+) {
+  const pasmo = total <= granice[0] ? 0 : total <= granice[1] ? 1 : 2;
+  const { kroki } = PASMA[pasmo];
+  const [min, max] = zakresy[pasmo];
+  const udzial = max > min ? (total - min) / (max - min) : 1;
+  return kroki[Math.round(udzial * (kroki.length - 1))];
+}
+
 function formatDuration(totalSeconds: number) {
   const total = Math.round(totalSeconds);
   const hours = Math.floor(total / 3600);
@@ -67,7 +112,8 @@ function colorFor(value: number, max: number) {
 
 type ActiveCell = {
   councilor: HeatmapCouncilor;
-  meeting: HeatmapMeeting;
+  /** `null` dla kwadracika z sumą całej kadencji. */
+  meeting: HeatmapMeeting | null;
   seconds: number;
 };
 
@@ -77,6 +123,7 @@ function HeatmapRow({
   matrix,
   max,
   total,
+  kolorSumaryczny,
   onActivate,
   onDeactivate,
 }: {
@@ -85,6 +132,8 @@ function HeatmapRow({
   matrix: Record<string, Record<string, number>>;
   max: number;
   total: number;
+  /** Barwa kwadracika z sumą kadencji; `null`, gdy osoba w ogóle nie mówiła. */
+  kolorSumaryczny: string | null;
   onActivate: (cell: ActiveCell) => void;
   onDeactivate: () => void;
 }) {
@@ -106,6 +155,20 @@ function HeatmapRow({
       <span className="w-24 shrink-0 text-right text-xs text-zinc-500 dark:text-zinc-400">
         {formatDuration(total)}
       </span>
+      {/* Suma kadencji jako kwadracik tej samej wielkości co komórki sesji,
+          ale w innej skali — oddzielony przerwą, żeby nie czytał się jak
+          kolejna sesja. */}
+      <div
+        tabIndex={0}
+        role="button"
+        aria-label={`${c.fullName}, cała kadencja: ${formatDuration(total)}`}
+        onMouseEnter={() => onActivate({ councilor: c, meeting: null, seconds: total })}
+        onFocus={() => onActivate({ councilor: c, meeting: null, seconds: total })}
+        onMouseLeave={onDeactivate}
+        onBlur={onDeactivate}
+        className={`mr-2 h-4 w-4 shrink-0 cursor-pointer rounded-[3px] outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:focus-visible:ring-zinc-100 ${kolorSumaryczny ? "" : ZERO_CELL_CLASS}`}
+        style={kolorSumaryczny ? { backgroundColor: kolorSumaryczny } : undefined}
+      />
       <div className="flex gap-[2px]">
         {meetings.map((m) => {
           const seconds = matrix[c.id]?.[m.id] ?? 0;
@@ -140,11 +203,7 @@ export function SpeakingHeatmap({
   meetings: HeatmapMeeting[];
   matrix: Record<string, Record<string, number>>;
 }) {
-  const [active, setActive] = useState<{
-    councilor: HeatmapCouncilor;
-    meeting: HeatmapMeeting;
-    seconds: number;
-  } | null>(null);
+  const [active, setActive] = useState<ActiveCell | null>(null);
   const [showTable, setShowTable] = useState(false);
 
   const max = Math.max(
@@ -168,6 +227,24 @@ export function SpeakingHeatmap({
   const orderedCouncilorRows = councilors.filter((c) => c.href).sort(byTotalDesc);
   const orderedOfficialRows = councilors.filter((c) => !c.href).sort(byTotalDesc);
   const orderedCouncilors = [...orderedCouncilorRows, ...orderedOfficialRows];
+
+  // Pasma liczymy raz, dla WSZYSTKICH wierszy naraz (radni i urzędnicy razem):
+  // gdyby każda grupa miała własne tercyle, ten sam czas mówienia znaczyłby
+  // w dwóch miejscach tabeli co innego.
+  const wszystkieSumy = orderedCouncilors.map(totalFor);
+  const granice = granicePasm(wszystkieSumy);
+  const zakresyPasm: [number, number][] = [0, 1, 2].map((nr) => {
+    const wPasmie = wszystkieSumy.filter(
+      (s) =>
+        s > 0 &&
+        (nr === 0 ? s <= granice[0] : nr === 1 ? s > granice[0] && s <= granice[1] : s > granice[1])
+    );
+    return wPasmie.length > 0
+      ? [Math.min(...wPasmie), Math.max(...wPasmie)]
+      : [0, 0];
+  }) as [number, number][];
+  const kolorSumyDla = (total: number) =>
+    total > 0 ? kolorSumy(total, granice, zakresyPasm) : null;
 
   if (meetings.length === 0 || councilors.length === 0) {
     return (
@@ -194,6 +271,20 @@ export function SpeakingHeatmap({
           />
           <span>więcej ({formatDuration(max)})</span>
         </div>
+        <div className="flex items-center gap-2 text-xs text-zinc-500">
+          <span className="text-zinc-400">suma kadencji:</span>
+          {PASMA.map((pasmo) => (
+            <span key={pasmo.nazwa} className="flex items-center gap-1">
+              <span
+                className="h-3 w-8 rounded-[3px]"
+                style={{
+                  background: `linear-gradient(to right, ${pasmo.kroki[0]}, ${pasmo.kroki[pasmo.kroki.length - 1]})`,
+                }}
+              />
+              {pasmo.nazwa}
+            </span>
+          ))}
+        </div>
         <button
           type="button"
           onClick={() => setShowTable((v) => !v)}
@@ -213,13 +304,20 @@ export function SpeakingHeatmap({
               {formatDuration(active.seconds)}
             </strong>{" "}
             — {active.councilor.fullName},{" "}
-            <Link
-              href={`/sesje/${active.meeting.id}`}
-              className="underline hover:no-underline"
-            >
-              {active.meeting.title ?? formatShortDate(active.meeting.date)}
-            </Link>{" "}
-            ({formatShortDate(active.meeting.date)})
+            {active.meeting ? (
+              <>
+                <Link
+                  href={`/sesje/${active.meeting.id}`}
+                  className="underline hover:no-underline"
+                >
+                  sesja nr {active.meeting.number}
+                  {active.meeting.title ? ` — ${active.meeting.title}` : ""}
+                </Link>{" "}
+                ({formatShortDate(active.meeting.date)})
+              </>
+            ) : (
+              "cała kadencja"
+            )}
           </span>
         ) : (
           <span className="text-zinc-400">
@@ -235,6 +333,23 @@ export function SpeakingHeatmap({
             <span className="w-24 shrink-0 text-right text-[10px] uppercase tracking-wide text-zinc-400">
               Razem
             </span>
+            {/* Pusty slot pod kwadracik sumy — kolumny muszą się zgadzać
+                z wierszami, a `mr-2` w wierszu odpowiada tej samej przerwie. */}
+            <span className="mr-2 w-4 shrink-0" />
+            {/* Numer sesji u góry; data zostaje pod spodem, bo numer jest tym,
+                czym sesje nazywa się w dokumentach, a data tym, po czym się je
+                znajduje w kalendarzu. */}
+            <div className="flex gap-[2px]">
+              {orderedMeetings.map((m) => (
+                <span
+                  key={m.id}
+                  className="w-4 shrink-0 text-center text-[9px] tabular-nums text-zinc-400"
+                  title={`Sesja nr ${m.number}`}
+                >
+                  {m.number}
+                </span>
+              ))}
+            </div>
           </div>
           {orderedCouncilorRows.map((c) => (
             <HeatmapRow
@@ -244,6 +359,7 @@ export function SpeakingHeatmap({
               matrix={matrix}
               max={max}
               total={totalFor(c)}
+              kolorSumaryczny={kolorSumyDla(totalFor(c))}
               onActivate={setActive}
               onDeactivate={() => setActive(null)}
             />
@@ -259,6 +375,7 @@ export function SpeakingHeatmap({
               matrix={matrix}
               max={max}
               total={totalFor(c)}
+              kolorSumaryczny={kolorSumyDla(totalFor(c))}
               onActivate={setActive}
               onDeactivate={() => setActive(null)}
             />
@@ -266,6 +383,7 @@ export function SpeakingHeatmap({
           <div className="flex items-center gap-2 pt-1">
             <span className="w-40 shrink-0" />
             <span className="w-24 shrink-0" />
+            <span className="mr-2 w-4 shrink-0" />
             <div className="flex gap-[2px]">
               {orderedMeetings.map((m) => (
                 <span

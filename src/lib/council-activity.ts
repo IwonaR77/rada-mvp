@@ -25,7 +25,14 @@ export type SpeakingActivity = {
   /** Skład rady w tej kadencji — wiersze heatmapy, także ci z zerem sekund. */
   councilors: { id: string; fullName: string }[];
   /** Kolumny heatmapy: sesje z zaimportowanym transkryptem, od najnowszej. */
-  heatmapMeetings: { id: string; date: string; title: string | null }[];
+  heatmapMeetings: {
+    id: string;
+    date: string;
+    title: string | null;
+    /** Numer sesji w kadencji — ta sama numeracja co w nawigacji i nagłówku
+        transkryptu: pozycja chronologiczna wśród posiedzeń rady (bez komisji). */
+    number: number;
+  }[];
   /**
    * Sekundy mówienia: `[id mówcy][id sesji]`. Brak klucza = brak wypowiedzi.
    *
@@ -233,9 +240,22 @@ export async function getSpeakingActivity(
   // A session shows up as a column as soon as its transcript is imported
   // (transcript_status "rozpisana"), even before anyone's been tagged — it
   // just renders fully gray until tagging starts filling it in.
+  // Numer liczony po WSZYSTKICH posiedzeniach kadencji, nie po samych
+  // rozpisanych: numeracja ma się zgadzać z tą w nawigacji między sesjami,
+  // a nie przeskakiwać za każdym razem, gdy dochodzi nowy transkrypt.
+  const numerSesji = new Map<string, number>();
+  [...(meetingRows ?? [])]
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+    .forEach((m, i) => numerSesji.set(m.id, i + 1));
+
   const heatmapMeetings = (meetingRows ?? [])
     .filter((m) => m.transcript_status === "rozpisana")
-    .map((m) => ({ id: m.id, date: m.date, title: m.title }));
+    .map((m) => ({
+      id: m.id,
+      date: m.date,
+      title: m.title,
+      number: numerSesji.get(m.id) ?? 0,
+    }));
 
   const stats = roster
     .filter((r) => r.councilor)

@@ -5,7 +5,11 @@ import { SpeakingHeatmap } from "@/components/speaking-heatmap";
 import { SessionTimelinePill } from "@/components/session-timeline-pill";
 import { LiveMeetingRefresh } from "@/components/live-meeting-refresh";
 import { CURRENT_SUMMARY_PROMPT_VERSION } from "@/lib/summary-prompt-version";
-import { getSpeakingActivity, type CouncilorStat } from "@/lib/council-activity";
+import {
+  getSpeakingActivity,
+  type CouncilorStat,
+  type SpeakingActivity,
+} from "@/lib/council-activity";
 
 function formatDuration(totalSeconds: number) {
   const total = Math.round(totalSeconds);
@@ -138,8 +142,7 @@ export default async function CouncilSessionsPage({
   let selectedTag: string | null = null;
   let taggingProgress = new Map<string, number>();
   let councilors: { id: string; fullName: string }[] = [];
-  let heatmapMeetings: { id: string; date: string; title: string | null }[] =
-    [];
+  let heatmapMeetings: SpeakingActivity["heatmapMeetings"] = [];
   let heatmapMatrix: Record<string, Record<string, number>> = {};
   let heatmapExtraRows: { id: string; fullName: string }[] = [];
   let meetingNumbers = new Map<string, number>();
