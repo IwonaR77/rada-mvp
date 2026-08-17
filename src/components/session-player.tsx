@@ -245,6 +245,47 @@ export function SessionPlayer({
   // pół godziny obrad, a wtedy „ten sam mówca" nie znaczy „ta sama wypowiedź".
   const pozycjaSegmentu = new Map(segments.map((s, i) => [s.id, i]));
 
+  // Kolor paska: grafit dla prowadzącego, a dla pozostałych trzy barwy
+  // rotujące przy każdej zmianie mówcy. Rotacja, nie przypisanie barwy do
+  // osoby — inaczej dwie osoby mówiące jedna po drugiej dostawały ten sam
+  // kolor i granicę niosła wyłącznie przerwa w pasku.
+  //
+  // Trzy, a nie więcej: zestaw przeszedł walidację rozróżnialności par
+  // (także przy zaburzeniach widzenia barw) w obu motywach — przy większej
+  // liczbie barw pary zaczynają się zlewać, a w transkrypcji sąsiadować może
+  // każdy z każdym, więc liczą się WSZYSTKIE pary, nie tylko sąsiednie.
+  //
+  // Numer rotacji liczony po pełnej liście, nie po przefiltrowanej: kolory
+  // mają zostać te same po włączeniu filtra.
+  const ROTACJA = [
+    "bg-violet-600 dark:bg-violet-500",
+    "bg-teal-600",
+    "bg-orange-600",
+  ];
+  const KOLOR_PROWADZACEGO = "bg-zinc-700 dark:bg-zinc-300";
+  const kolorPaska = new Map<string, string>();
+  {
+    let poprzedniMowca: string | null | undefined;
+    let nrBloku = -1;
+    for (const seg of segments) {
+      const id = getAssignedId(seg) ?? null;
+      // Blok prowadzącego też przesuwa rotację — bez tego dwie wypowiedzi
+      // przedzielone słowem przewodniczącego dostawałyby ten sam kolor.
+      if (id !== poprzedniMowca) {
+        nrBloku++;
+        poprzedniMowca = id;
+      }
+      kolorPaska.set(
+        seg.id,
+        !id
+          ? "bg-transparent"
+          : id === prowadzacyId
+            ? KOLOR_PROWADZACEGO
+            : ROTACJA[nrBloku % ROTACJA.length]
+      );
+    }
+  }
+
   const proposedSegments = segments.filter((s) => s.status === "proposed");
   const selectedProposedIds = Array.from(selected).filter((id) =>
     proposedSegments.some((s) => s.id === id)
@@ -649,14 +690,19 @@ export function SessionPlayer({
         {prowadzacyId && (
           <p className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400">
             <span className="flex items-center gap-1.5">
-              <span className="h-3 w-[3px] rounded-full bg-zinc-400 dark:bg-zinc-500" />
+              <span className={`h-3 w-[3px] rounded-full ${KOLOR_PROWADZACEGO}`} />
               {peopleById.get(prowadzacyId)?.split(" (")[0] ?? "prowadzący"}
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-3 w-[3px] rounded-full bg-violet-500 dark:bg-violet-400" />
-              ktoś inny
+              {ROTACJA.map((kolor) => (
+                <span key={kolor} className={`h-3 w-[3px] rounded-full ${kolor}`} />
+              ))}
+              pozostali mówcy
             </span>
-            <span>przerwa w pasku = zmiana mówcy</span>
+            <span>
+              kolor rotuje przy zmianie mówcy (nie oznacza konkretnej osoby),
+              przerwa w pasku = granica wypowiedzi
+            </span>
           </p>
         )}
         <ul
@@ -694,11 +740,12 @@ export function SessionPlayer({
                 pozycjaSegmentu.get(s.id) ===
                   (pozycjaSegmentu.get(poprzedni.id) ?? -2) + 1
             );
-            const pasek = !assignedId
-              ? "bg-transparent"
-              : assignedId === prowadzacyId
-                ? "bg-zinc-400 dark:bg-zinc-500"
-                : "bg-violet-500 dark:bg-violet-400";
+            // Na podświetlonym wierszu grafit zlewa się z tłem, więc tam
+            // prowadzący dostaje odwrócony odcień.
+            const pasek =
+              isActive && assignedId === prowadzacyId
+                ? "bg-zinc-300 dark:bg-zinc-700"
+                : kolorPaska.get(s.id) ?? "bg-transparent";
             return (
               <li
                 key={s.id}
