@@ -273,7 +273,7 @@ export function SessionPlayer({
   // Numer rotacji liczony po pełnej liście, nie po przefiltrowanej: kolory
   // mają zostać te same po włączeniu filtra.
   const ROTACJA = [
-    "bg-violet-600 dark:bg-violet-500",
+    "bg-indigo-500 dark:bg-indigo-400",
     "bg-emerald-500",
     "bg-orange-600",
   ];
