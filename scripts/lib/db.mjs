@@ -25,7 +25,7 @@ export function supabaseQuery(sql) {
     const out = execFileSync(
       "psql",
       [process.env.SUPABASE_DB_URL, "-t", "-A", "-c", wrapped],
-      { encoding: "utf8" }
+      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }
     );
     return JSON.parse(out.trim() || "[]");
   }
@@ -33,7 +33,20 @@ export function supabaseQuery(sql) {
     const out = execFileSync(
       "npx",
       ["supabase", "db", "query", "--linked", "--output", "json", sql],
-      { encoding: "utf8", cwd: REPO_ROOT, timeout: 30000 }
+      // Dwie minuty, nie trzydzieści sekund: zrzut przypisań mówców liczy
+      // okna (lag/lead) po wszystkich segmentach i przy kilkunastu tysiącach
+      // zatwierdzeń przestał się mieścić w dawnym limicie. Limit ma chronić
+      // przed zawieszeniem, a nie ucinać poprawne, po prostu dłuższe zapytania.
+      // maxBuffer: domyślny 1 MB wystarczał, dopóki zapytania zwracały setki
+      // wierszy. Zrzut przypisań mówców to dziś ponad 16 tys. wierszy i kilka
+      // MB JSON-a — po przekroczeniu bufora Node zabija proces, a błąd wygląda
+      // jak uszkodzona odpowiedź bazy, nie jak limit po naszej stronie.
+      {
+        encoding: "utf8",
+        cwd: REPO_ROOT,
+        timeout: 120000,
+        maxBuffer: 64 * 1024 * 1024,
+      }
     );
     return JSON.parse(out).rows ?? [];
   } catch (e) {
