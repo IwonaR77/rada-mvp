@@ -20,10 +20,9 @@ type HeatmapCouncilor = {
 };
 
 // Sequential blue ramp, lightest → darkest (references/palette.md "Sequential hue").
-// Zero seconds is its own gray "silence" color, kept out of the blue ramp entirely —
-// the ramp only encodes "how much", starting from the lightest step actually used
-// (MIN_STEP_INDEX) so even a small nonzero value still reads as visibly blue, not
-// as a paler shade that could be mistaken for the zero-gray.
+// Rampa idzie od najbledszego kroku: cisza nie jest już „jeszcze jaśniejszym
+// błękitem", tylko pustym kwadratem z obwódką, więc nie ma czego mylić i można
+// wykorzystać cały zakres barw na to, co naprawdę zmierzone.
 const SEQUENTIAL_STEPS = [
   "#cde2fb",
   "#b7d3f6",
@@ -39,8 +38,12 @@ const SEQUENTIAL_STEPS = [
   "#104281",
   "#0d366b",
 ];
-const MIN_STEP_INDEX = 3;
-const ZERO_CELL_CLASS = "bg-zinc-200 dark:bg-zinc-700";
+const MIN_STEP_INDEX = 0;
+// Cisza jako pusty kwadrat z obwódką, a nie wypełnienie: różni się od komórek
+// z pomiarem RODZAJEM, nie odcieniem, więc najbledszy błękit może być naprawdę
+// blady i nikt nie weźmie go za zero.
+const ZERO_CELL_CLASS =
+  "bg-transparent ring-1 ring-inset ring-zinc-300 dark:ring-zinc-700";
 
 // Kwadracik z sumą kadencji ma ŚWIADOMIE inną skalę niż komórki sesji, bo
 // odpowiada na inne pytanie: nie „ile w tym dniu", tylko „jak głośna to
@@ -81,7 +84,10 @@ function kolorSumy(
   const pasmo = total <= granice[0] ? 0 : total <= granice[1] ? 1 : 2;
   const { kroki } = PASMA[pasmo];
   const [min, max] = zakresy[pasmo];
-  const udzial = max > min ? (total - min) / (max - min) : 1;
+  // Wewnątrz pasma też logarytmicznie — z tego samego powodu co w komórkach
+  // sesji, tyle że na węższym zakresie.
+  const udzial =
+    max > min ? Math.log1p(total - min) / Math.log1p(max - min) : 1;
   return kroki[Math.round(udzial * (kroki.length - 1))];
 }
 
@@ -102,9 +108,23 @@ function formatShortDate(dateStr: string) {
   });
 }
 
+/**
+ * Krok rampy dla wartości — skala LOGARYTMICZNA, nie liniowa.
+ *
+ * Czasy mówienia są skrajnie skośne: prowadzący obrady zbiera w jednej sesji
+ * kilkanaście minut, a typowy radny kilkadziesiąt sekund. Przy podziale
+ * liniowym maksimum rozciąga skalę tak, że niemal wszystko poniżej niego
+ * wpada w jeden, najjaśniejszy krok i heatmapa pokazuje wyłącznie „kto
+ * prowadził" — czyli to, co i tak wiadomo. Logarytm rozkłada te małe różnice
+ * na całą rampę, kosztem rozdzielczości u samej góry, gdzie i tak wystarczy
+ * „bardzo dużo".
+ *
+ * `log1p`, a nie `log`, żeby jednosekundowa wypowiedź nie wpadła w minus
+ * nieskończoność.
+ */
 function colorFor(value: number, max: number) {
   if (max <= 0) return SEQUENTIAL_STEPS[MIN_STEP_INDEX];
-  const ratio = Math.min(1, value / max);
+  const ratio = Math.min(1, Math.log1p(value) / Math.log1p(max));
   const span = SEQUENTIAL_STEPS.length - 1 - MIN_STEP_INDEX;
   const index = MIN_STEP_INDEX + Math.round(ratio * span);
   return SEQUENTIAL_STEPS[index];
@@ -270,6 +290,7 @@ export function SpeakingHeatmap({
             }}
           />
           <span>więcej ({formatDuration(max)})</span>
+          <span className="text-zinc-400">skala logarytmiczna</span>
         </div>
         <div className="flex items-center gap-2 text-xs text-zinc-500">
           <span className="text-zinc-400">suma kadencji:</span>
