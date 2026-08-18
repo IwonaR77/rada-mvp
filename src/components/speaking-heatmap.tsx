@@ -362,13 +362,15 @@ export function SpeakingHeatmap({
                 znajduje w kalendarzu. */}
             <div className="flex gap-[2px]">
               {orderedMeetings.map((m) => (
-                <span
+                <Link
                   key={m.id}
-                  className="w-4 shrink-0 text-center text-[9px] tabular-nums text-zinc-400"
-                  title={`Sesja nr ${m.number}`}
+                  href={`/sesje/${m.id}`}
+                  prefetch={false}
+                  className="block w-4 shrink-0 text-center text-[9px] tabular-nums text-zinc-400 hover:text-zinc-700 hover:underline dark:hover:text-zinc-200"
+                  title={`Sesja nr ${m.number} — ${formatShortDate(m.date)}`}
                 >
                   {m.number}
-                </span>
+                </Link>
               ))}
             </div>
           </div>
