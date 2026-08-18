@@ -1280,10 +1280,11 @@ export type Database = {
           start_time: number
         }[]
       }
-      term_speaker_totals: {
-        Args: { p_term_id: string }
+      councilor_speaking_by_meeting: {
+        Args: { p_councilor_id: string; p_term_id: string }
         Returns: {
-          councilor_id: string
+          meeting_id: string
+          meeting_date: string
           seconds: number
         }[]
       }

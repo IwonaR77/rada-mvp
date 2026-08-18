@@ -358,6 +358,17 @@ export async function transcribeChunks(apiKey, chunks, { log = console.log } = {
     log(`  ${segments.length} segmentów (${kept.length} po odfiltrowaniu zakładki${droppedEmpty > 0 ? `, odrzucono ${droppedEmpty} pustych z ciszy` : ""}).`);
     perChunkKept.push(kept);
 
+    // Stan darmowego limitu widać wyłącznie w nagłówkach odpowiedzi z
+    // endpointu wykonującego pracę (lista modeli ich nie zwraca), więc
+    // wypisujemy je przy każdym kawałku — inaczej nie ma jak sprawdzić, ile
+    // audio zostało do wykorzystania w tym oknie.
+    const zostaloAudio = response.headers.get("x-ratelimit-remaining-audio-seconds");
+    const limitAudio = response.headers.get("x-ratelimit-limit-audio-seconds");
+    if (zostaloAudio) {
+      log(`  limit Groq: zostało ${Math.round(Number(zostaloAudio) / 60)} min audio `
+        + `z ${Math.round(Number(limitAudio) / 60)} min w oknie`);
+    }
+
     // Bramka bezpieczeństwa pod rate-limit (Faza 5 planu) — backstop, nie
     // system kolejkowania; realny wolumen produkcyjny go raczej nie dotyka.
     const remaining = Number(response.headers.get("x-ratelimit-remaining-requests"));

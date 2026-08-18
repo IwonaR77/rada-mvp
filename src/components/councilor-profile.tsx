@@ -140,11 +140,25 @@ export async function CouncilorProfile({
   const speakingSegmentsInTerm = currentTermId
     ? speakingSegments.filter((s) => s.meeting?.term_id === currentTermId)
     : speakingSegments;
-  const totalSpeakingSeconds = speakingSegmentsInTerm.reduce(
-    (sum, s) => sum + (Number(s.end_time) - Number(s.start_time)),
+
+  // Czas mówienia liczony PER BLOK, tak samo jak na heatmapie rady — liczy go
+  // baza, bo blok przerywa wtrącenie innej osoby albo segment nieotagowany,
+  // czego nie da się odtworzyć z samych wypowiedzi tej jednej osoby. Do
+  // 18.08.2026 sumowaliśmy tu długości segmentów i profil pokazywał liczbę
+  // o ~17% niższą niż ta sama osoba na stronie rady.
+  const { data: czasyPoSesjach } = currentTermId
+    ? await supabase.rpc("councilor_speaking_by_meeting", {
+        p_councilor_id: councilorId,
+        p_term_id: currentTermId,
+      })
+    : { data: null };
+  const totalSpeakingSeconds = (czasyPoSesjach ?? []).reduce(
+    (sum, r) => sum + Number(r.seconds),
     0
   );
-  const sessionsSpokenIn = new Set(speakingSegmentsInTerm.map((s) => s.meeting_id)).size;
+  const sessionsSpokenIn = (czasyPoSesjach ?? []).filter(
+    (r) => Number(r.seconds) > 0
+  ).length;
 
   const votesInTerm = currentTermId
     ? sortedVotes.filter((v) => v.resolution!.meeting?.term_id === currentTermId)

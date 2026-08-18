@@ -42,10 +42,8 @@ export type SpeakingActivity = {
    * to +17%. Szczegóły i uzasadnienie progu: `term_speaking_blocks`
    * w `scripts/migrate-speaking-blocks.sql`.
    *
-   * Uwaga: `stats` (podium) liczy nadal per segment, więc suma wiersza
-   * heatmapy jest WYŻSZA niż `totalSeconds` tej samej osoby. To świadoma
-   * różnica, nie rozjazd do naprawienia w locie — zmiana `stats` przesunęłaby
-   * wszystkie dotychczasowe liczby na profilach radnych.
+   * `stats` (podium) liczy tak samo — per blok — więc suma wiersza heatmapy
+   * zgadza się z `totalSeconds` tej samej osoby.
    */
   heatmapMatrix: Record<string, Record<string, number>>;
   /**
@@ -117,17 +115,12 @@ export async function getSpeakingActivity(
   termId: string,
   officials: { id: string; full_name: string; role: string }[]
 ): Promise<SpeakingActivity> {
-  const [{ data: roster }, { data: totalRows }, { data: meetingRows }, { data: blockRows }] =
+  const [{ data: roster }, { data: meetingRows }, { data: blockRows }] =
     await Promise.all([
     supabase
       .from("councilor_term")
       .select("party, councilor:councilor_id(id, full_name)")
       .eq("term_id", termId),
-    // Sumy czasu wypowiedzi liczy BAZA, nie aplikacja. Wcześniej strona
-    // ściągała wszystkie zatwierdzone segmenty kadencji (25 tys. i rosnąco),
-    // stronicowane po tysiąc — 26 kolejnych zapytań do chmury tylko po to, by
-    // je zsumować per radny. Funkcja robi to samo w 22 ms i jednym żądaniu.
-    supabase.rpc("term_speaker_totals", { p_term_id: termId }),
     supabase
       .from("meeting")
       .select("id, date, title, transcript_status")
@@ -156,13 +149,18 @@ export async function getSpeakingActivity(
 
   const heatmapMatrix: Record<string, Record<string, number>> = {};
 
-  // Podium liczy nadal per segment — patrz uwaga przy `heatmapMatrix`.
-  const totals = new Map<string, number>(
-    (totalRows ?? []).map((r: { councilor_id: string; seconds: number }) => [
-      r.councilor_id,
-      Number(r.seconds),
-    ])
-  );
+  // Podium liczy tak samo jak heatmapa — PER BLOK wypowiedzi, z tych samych
+  // wierszy. Do 18.08.2026 liczyło per segment, przez co ta sama osoba miała
+  // w dwóch miejscach serwisu liczby różniące się o ~17%: pauza w środku
+  // jednej ciągłej wypowiedzi to nadal czas, w którym mówca trzymał głos.
+  const totals = new Map<string, number>();
+  for (const row of blockRows ?? []) {
+    if (!row.is_councilor_flag) continue;
+    totals.set(
+      row.speaker_id,
+      (totals.get(row.speaker_id) ?? 0) + Number(row.total_seconds)
+    );
+  }
 
   // Burmistrz and his deputy get their own heatmap rows (they're frequent,
   // named participants); every other official (skarbnik, sekretarz,
