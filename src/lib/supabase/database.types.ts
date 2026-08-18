@@ -1329,6 +1329,7 @@ export type Database = {
           meeting_id: string
           meeting_date: string
           seconds: number
+          max_seconds: number
         }[]
       }
       term_tagging_time: {

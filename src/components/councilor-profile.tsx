@@ -397,7 +397,10 @@ export async function CouncilorProfile({
               <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
                 Czas wypowiedzi na kolejnych sesjach
               </h3>
-              <CouncilorSpeakingChart punkty={punktyMowienia} />
+              <CouncilorSpeakingChart
+                punkty={punktyMowienia}
+                maks={Number(czasyPoSesjach?.[0]?.max_seconds ?? 0)}
+              />
             </div>
           )}
         </section>
