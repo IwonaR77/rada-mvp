@@ -19,43 +19,9 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { supabaseQuery, REPO_ROOT } from "../lib/db.mjs";
-
-// Czas przeszły 1. os. to rdzeń zakończony SAMOGŁOSKĄ + „ł" + „em/am"
-// (zrobiłam, wziąłem, czułem). Sama końcówka „łem/łam" nie wystarcza: łapie
-// czas przyszły („ja pana wywołam") i rzeczowniki w narzędniku („protokołem"),
-// gdzie przed „ł" stoi spółgłoska albo „o". Flaga `u` jest konieczna — bez niej
-// `\w` nie obejmuje polskich liter i formy typu „wzięłam" cicho wypadają.
-const ZENSKIE = /[aiyeęąóu]ł(am|abym)\b/iu;
-const MESKIE = /[aiyeęąóu]ł(em|bym)\b/iu;
-
-/**
- * Odsiewa rzeczowniki w narzędniku, zanim zadziała reguła morfologiczna.
- *
- * Dwa sita, bo samo wyliczanie rdzeni okazało się studnią bez dna („działem",
- * „udziałem", „materiałem", „ogółem"…). Ogólna zasada: narzędnik rzeczownika
- * prawie zawsze stoi PO przyimku („z udziałem") albo po przymiotniku
- * w narzędniku („kwalifikowanym materiałem"), a forma czasownika w 1. osobie
- * nie ma przed sobą ani jednego, ani drugiego.
- */
-function bezNarzednika(tekst) {
-  return tekst
-    .replace(RZECZOWNIKI, "")
-    .replace(
-      /\b(z|ze|nad|pod|przed|za|między|pomiędzy|wraz|z\s+\p{L}+)\s+\p{L}+ł(em|am)\b/giu,
-      ""
-    )
-    .replace(/\p{L}+(ym|im|om)\s+\p{L}+ł(em|am)\b/giu, "");
-}
-
-// Rdzenie, których narzędnik ma dokładnie tę samą postać co czasownik
-// („działem", „ciałem", „ogółem"). Reguła morfologiczna ich nie odsieje, bo
-// przed „ł" stoi tam ta sama samogłoska co w „czytałem".
-//
-// `\b` na początku jest konieczne: bez niego rdzeń „dział" trafiał w ŚRODEK
-// czasowników („powiedziałem", „widziałem", „siedziałem") i test po cichu
-// wycinał właśnie te formy, których miał szukać.
-const RZECZOWNIKI =
-  /\b(protokoł|wydział|podział|udział|oddział|przedział|źródł|dział|koł|czoł|ciał|dzieł|tł|stoł|okoł|zespoł|osiedl|ogół|mysł|węzł|hasł|krzesł|artykuł|tytuł|rozdział|paragraf)em\b/giu;
+// Reguły mieszkają w src/lib/rodzaj-mowcy.mjs, żeby interfejs (podświetlanie
+// segmentu) i ten skrypt nie rozjechały się przy kolejnej poprawce.
+import { sprzecznyRodzaj, plecPoImieniu } from "../../src/lib/rodzaj-mowcy.mjs";
 
 function parseArgs(argv) {
   const args = { status: "all" };
@@ -74,16 +40,6 @@ function parseArgs(argv) {
   }
   args.out ??= `groq/work/glos/podglad-${args.esesja}.txt`;
   return args;
-}
-
-/**
- * Płeć po imieniu: polskie imiona żeńskie kończą się na „a”.
- *
- * Wyjątków (Kuba, Barnaba) w składach obu rad nie ma, a gdyby się pojawiły,
- * kosztem jest fałszywy alarm do ręcznego odrzucenia — nie cicha pomyłka.
- */
-function plecPoImieniu(fullName) {
-  return fullName.split(" ")[0].toLowerCase().endsWith("a") ? "k" : "m";
 }
 
 function main() {
@@ -116,20 +72,10 @@ function main() {
     if (!s.mowca) continue;
     if (args.status !== "all" && s.status !== args.status) continue;
 
-    const tekst = bezNarzednika(s.text ?? "");
-    const z = ZENSKIE.test(tekst);
-    const m = MESKIE.test(tekst);
-    if (!z && !m) continue;
-
-    // Segment z OBIEMA formami naraz nic nie rozstrzyga: albo rozpoznawanie
-    // mowy przekręciło końcówkę (tak jest w wypowiedzi burmistrza, gdzie po
-    // „spotkałam" idzie „powiedziałem" i „nie wyraziłbym"), albo w jednym
-    // segmencie siedzą dwie osoby. Zgłaszanie takich to pewny fałszywy alarm.
-    if (z && m) continue;
-
+    if (!/[aiyeęąóu]ł(am|abym|em|bym)\b/iu.test(s.text ?? "")) continue;
     sprawdzone++;
     const plec = plecPoImieniu(s.mowca);
-    if ((z && plec === "m") || (m && plec === "k")) {
+    if (sprzecznyRodzaj(s.text ?? "", s.mowca)) {
       sprzeczne++;
       const t = Number(s.start_time);
       console.log(

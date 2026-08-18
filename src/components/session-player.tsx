@@ -13,6 +13,8 @@ import {
   type Person,
 } from "@/lib/transcript-export";
 import { formatClock as formatTime } from "@/lib/speech-blocks";
+// Te same reguły, których używa skrypt kontrolny scripts/voice/sprawdz-rodzaj.mjs.
+import { sprzecznyRodzaj } from "@/lib/rodzaj-mowcy.mjs";
 import {
   assignSegments,
   acceptProposedSegments,
@@ -766,6 +768,10 @@ export function SessionPlayer({
                       pozycjaSegmentu.get(s.id) ===
                         (pozycjaSegmentu.get(poprzedni.id) ?? -2) + 1
                   );
+                  const podejrzanyRodzaj = Boolean(
+                    assignedId &&
+                      sprzecznyRodzaj(s.text, peopleById.get(assignedId) ?? "")
+                  );
                   // Na podświetlonym wierszu grafit zlewa się z tłem, więc tam
                   // prowadzący dostaje odwrócony odcień.
                   const pasek =
@@ -850,7 +856,25 @@ export function SessionPlayer({
                               >
                                 {formatTime(s.start_time)}
                               </span>
-                              <span>{s.text}</span>
+                              {/* Końcówka w tekście przecząca płci przypisanego
+                            mówcy — sygnał „obejrzyj to", nie wyrok:
+                            rozpoznawanie mowy potrafi przekręcić samą
+                            końcówkę (widziana wypowiedź burmistrza zapisana
+                            jako „Ja powiedziałam"). */}
+                        <span
+                          className={
+                            podejrzanyRodzaj
+                              ? "font-bold text-red-600 dark:text-red-400"
+                              : undefined
+                          }
+                          title={
+                            podejrzanyRodzaj
+                              ? "Końcówka w tekście wskazuje inną płeć niż przypisany mówca — sprawdź"
+                              : undefined
+                          }
+                        >
+                          {s.text}
+                        </span>
                             </div>
                             {/* Linijka mówcy stoi w układzie zawsze, także pusta.
                                 Renderowana warunkowo dopisywała wiersz dopiero po
