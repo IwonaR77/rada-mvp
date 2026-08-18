@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { TaggingProgress } from "@/components/tagging-progress";
 
 // Panel managera: ile zużywamy i ile zostało. Świadomie pokazuje tylko to, co
 // da się sprawdzić, i mówi wprost, czego sprawdzić nie można — panel, który
@@ -65,12 +66,34 @@ export default async function LimityPage() {
   const { data: isManager } = await supabase.rpc("is_manager", { uid: user.id });
   if (!isManager) notFound();
 
-  const [{ data: statsBazy }, { data: limityRows }, { data: segmentyRows }] =
+  const [{ data: statsBazy }, { data: limityRows }, { data: kadencje }] =
     await Promise.all([
       supabase.rpc("db_stats"),
       supabase.from("usage_snapshot").select("source, metric, value, unit, recorded_at"),
-      supabase.rpc("segment_status_counts"),
+      supabase
+        .from("term")
+        .select("id, label, council:council_id(name)")
+        .order("start_date", { ascending: false }),
     ]);
+
+  // Postęp rozpisywania liczony CZASEM NAGRANIA i osobno dla każdej kadencji —
+  // dokładnie tak, jak pokazuje go strona rady. Pierwsza wersja tej strony
+  // liczyła wiersze w całej bazie naraz i podawała 33% tam, gdzie rada
+  // pokazuje 80%: Rada Powiatu ma 44 tys. segmentów i zero zatwierdzeń, więc
+  // wspólny licznik topił postęp Grójca.
+  const postep = await Promise.all(
+    (kadencje ?? []).map(async (k) => {
+      const { data } = await supabase.rpc("term_tagging_time", { p_term_id: k.id });
+      const w = data?.[0];
+      return {
+        id: k.id,
+        nazwa: `${k.council?.name ?? "?"}${k.label ? ` — ${k.label}` : ""}`,
+        total: Number(w?.total_seconds ?? 0),
+        finalized: Number(w?.finalized_seconds ?? 0),
+        proposed: Number(w?.proposed_seconds ?? 0),
+      };
+    })
+  );
 
   const tabele = statsBazy ?? [];
   const bazaBajty = Number(tabele[0]?.baza_bajty ?? 0);
@@ -78,12 +101,7 @@ export default async function LimityPage() {
     (limityRows ?? []).map((r) => [`${r.source}:${r.metric}`, r])
   );
 
-  const licznik = (nazwa: string) =>
-    Number((segmentyRows ?? []).find((r) => r.status === nazwa)?.ile ?? 0);
-  const otwarte = licznik("open");
-  const propozycje = licznik("proposed");
-  const zatwierdzone = licznik("finalized");
-  const wszystkie = otwarte + propozycje + zatwierdzone;
+
 
   return (
     <div className="mx-auto flex w-full max-w-[70rem] flex-1 flex-col gap-6 px-6 py-12">
@@ -176,30 +194,25 @@ export default async function LimityPage() {
 
         <Karta
           tytul="Rozpisywanie sesji"
-          podtytul={`${wszystkie.toLocaleString("pl-PL")} segmentów w bazie`}
+          podtytul="Mierzone czasem nagrania, nie liczbą segmentów — tak samo jak na stronie rady"
         >
-          <Pasek udzial={wszystkie ? zatwierdzone / wszystkie : 0} />
-          <ul className="flex flex-col gap-1 text-sm">
-            <li className="flex justify-between">
-              <span className="text-zinc-700 dark:text-zinc-300">Zatwierdzone</span>
-              <span className="tabular-nums text-zinc-500">
-                {zatwierdzone.toLocaleString("pl-PL")} (
-                {wszystkie ? Math.round((100 * zatwierdzone) / wszystkie) : 0}%)
-              </span>
-            </li>
-            <li className="flex justify-between">
-              <span className="text-zinc-700 dark:text-zinc-300">Propozycje</span>
-              <span className="tabular-nums text-zinc-500">
-                {propozycje.toLocaleString("pl-PL")}
-              </span>
-            </li>
-            <li className="flex justify-between">
-              <span className="text-zinc-700 dark:text-zinc-300">Bez mówcy</span>
-              <span className="tabular-nums text-zinc-500">
-                {otwarte.toLocaleString("pl-PL")}
-              </span>
-            </li>
-          </ul>
+          <div className="flex flex-col gap-4">
+            {postep
+              .filter((p) => p.total > 0)
+              .map((p) => (
+                <div key={p.id} className="flex flex-col gap-1">
+                  <span className="text-sm text-zinc-700 dark:text-zinc-300">
+                    {p.nazwa}
+                  </span>
+                  <TaggingProgress
+                    totalSeconds={p.total}
+                    finalizedSeconds={p.finalized}
+                    proposedSeconds={p.proposed}
+                    label={`${minuty(p.total)} nagrań`}
+                  />
+                </div>
+              ))}
+          </div>
         </Karta>
 
         <Karta

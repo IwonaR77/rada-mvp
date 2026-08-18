@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { LogoutLink } from "@/components/logout-link";
+import { AdminMenu } from "@/components/admin-menu";
 import { isAccountBlocked } from "@/lib/blocked-account";
 
 export async function SiteHeader() {
@@ -107,15 +108,7 @@ export async function SiteHeader() {
                 konto zablokowane
               </span>
             )}
-            {manager && (
-              <Link
-                href="/admin/konta"
-                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              >
-                Konta
-                {pendingRequestCount > 0 && ` (${pendingRequestCount})`}
-              </Link>
-            )}
+            {manager && <AdminMenu pendingRequestCount={pendingRequestCount} />}
             {/* Wnioskowanie o uprawnienia jest dla zablokowanego konta
                 bez sensu — akcja i tak je odrzuci. */}
             {!blocked && (
