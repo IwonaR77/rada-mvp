@@ -97,8 +97,9 @@ export function CouncilorSpeakingChart({ punkty }: { punkty: PunktMowienia[] }) 
         })}
       </div>
 
+      {/* Podpisy zgodne z kolejnością słupków: najnowsza sesja po lewej. */}
       <div className="flex items-center justify-between text-[10px] text-zinc-400">
-        <span>sesja {punkty[0].numer}</span>
+        <span>sesja {punkty[0].numer} (najnowsza)</span>
         <span>najwięcej: {czas(max)}</span>
         <span>sesja {punkty[punkty.length - 1].numer}</span>
       </div>

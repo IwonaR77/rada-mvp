@@ -160,12 +160,17 @@ export async function CouncilorProfile({
   const sessionsSpokenIn = (czasyPoSesjach ?? []).filter(
     (r) => Number(r.seconds) > 0
   ).length;
-  const punktyMowienia = (czasyPoSesjach ?? []).map((r, i) => ({
-    meetingId: r.meeting_id,
-    numer: i + 1,
-    data: r.meeting_date,
-    sekundy: Number(r.seconds),
-  }));
+  // Numer sesji liczony po dacie rosnąco (tak numeruje je cała reszta
+  // serwisu), ale wyświetlane od najnowszej — ta sama reguła co na heatmapie
+  // rady i na pasku sesji: najświeższe po lewej.
+  const punktyMowienia = (czasyPoSesjach ?? [])
+    .map((r, i) => ({
+      meetingId: r.meeting_id,
+      numer: i + 1,
+      data: r.meeting_date,
+      sekundy: Number(r.seconds),
+    }))
+    .reverse();
 
   const votesInTerm = currentTermId
     ? sortedVotes.filter((v) => v.resolution!.meeting?.term_id === currentTermId)
