@@ -81,7 +81,27 @@ rmSync(chunkDir, { recursive: true, force: true });
 const chunks = cutChunks(koncowka, chunkDir, `${esesja}_koncowka`);
 console.log(`Kawałków do wysłania: ${chunks.length} (plan: ${planChunks(dlugosc).length})`);
 
-const segments = await transcribeChunks(resolveGroqApiKey(path.join(REPO_ROOT, "groq/.env.groq")), chunks);
+const segments = await transcribeChunks(
+  resolveGroqApiKey(path.join(REPO_ROOT, "groq/.env.groq")),
+  chunks,
+  {
+    // Ten sam zapis co w pipelinie: stan darmowego limitu widać tylko przy
+    // wykonanym żądaniu, więc każde z nich odświeża panel managera.
+    onLimity: (l) => {
+      const w = [
+        ["audio_pozostalo_s", l.zostaloAudioSekund, "s"],
+        ["audio_limit_s", l.limitAudioSekund, "s"],
+        ["zapytania_pozostalo", l.zostaloZapytan, "szt."],
+        ["zapytania_limit", l.limitZapytan, "szt."],
+      ].filter(([, v]) => Number.isFinite(v));
+      if (w.length === 0) return;
+      supabaseExec(`insert into usage_snapshot (source, metric, value, unit, recorded_at) values
+        ${w.map(([m, v, u]) => `('groq', '${m}', ${v}, '${u}', now())`).join(",")}
+        on conflict (source, metric) do update set value = excluded.value,
+          unit = excluded.unit, recorded_at = excluded.recorded_at;`);
+    },
+  }
+);
 console.log(`Groq zwrócił ${segments.length} segmentów.`);
 
 const tokens = path.join(REPO_ROOT, "groq/tokens.txt");

@@ -137,6 +137,27 @@ async function resolveVideoUrl(esesjaId) {
 // kopii pod Groq (patrz groq-lib.mjs cutChunks). Zasila groq/mp3-stats.json
 // (własny, niezależny od whisper/mp3-stats.json starego pipeline'u), który
 // realnie karmi też przyszły temat identyfikacji mówcy głosem (backlog).
+/** Odkłada ostatni znany stan darmowego limitu Groqa (patrz usage_snapshot). */
+function zapiszLimityGroq(limity) {
+  const wiersze = [
+    ["audio_pozostalo_s", limity.zostaloAudioSekund, "s"],
+    ["audio_limit_s", limity.limitAudioSekund, "s"],
+    ["zapytania_pozostalo", limity.zostaloZapytan, "szt."],
+    ["zapytania_limit", limity.limitZapytan, "szt."],
+  ].filter(([, v]) => Number.isFinite(v));
+  if (wiersze.length === 0) return;
+  try {
+    supabaseExec(`
+      insert into usage_snapshot (source, metric, value, unit, recorded_at) values
+      ${wiersze.map(([m, v, u]) => `('groq', '${m}', ${v}, '${u}', now())`).join(",")}
+      on conflict (source, metric) do update
+        set value = excluded.value, unit = excluded.unit, recorded_at = excluded.recorded_at;`);
+  } catch (e) {
+    // Zapis statystyki nigdy nie może przewrócić opłaconej transkrypcji.
+    log(`Nie udało się zapisać stanu limitu Groqa: ${e.message}`);
+  }
+}
+
 function recordMp3Stats(sessionId, date, sizeBytes, durationSeconds) {
   let statsFile = { bytes_per_second_estimate: null, sessions: [] };
   if (existsSync(MP3_STATS_FILE)) {
@@ -223,7 +244,12 @@ export async function processMeeting(m, importArgs = []) {
   log(`${chunks.length} kawałek(-ów) do wysłania.`);
 
   const apiKey = resolveGroqApiKey(GROQ_ENV_FILE);
-  const segments = await transcribeChunks(apiKey, chunks, { log });
+  const segments = await transcribeChunks(apiKey, chunks, {
+    log,
+    // Ostatni odczyt limitu ląduje w bazie: to jedyny moment, w którym Groq
+    // go pokazuje, a panel managera musi mieć co wyświetlić między biegami.
+    onLimity: (l) => zapiszLimityGroq(l),
+  });
 
   const correctedSegments = segments.map((s) => ({
     ...s,

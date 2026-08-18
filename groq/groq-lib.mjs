@@ -307,7 +307,11 @@ export function retimeSegmentsFromWords(segments, words) {
 
 // Wysyła kawałki (z cutChunks) do Groq i scala wynik w jedną, zdeduplikowaną
 // listę segmentów {start, end, text} (czasy globalne, względem całego audio).
-export async function transcribeChunks(apiKey, chunks, { log = console.log } = {}) {
+export async function transcribeChunks(
+  apiKey,
+  chunks,
+  { log = console.log, onLimity } = {}
+) {
   const groq = new Groq({ apiKey });
   const perChunkKept = [];
   let droppedOverlap = 0;
@@ -367,6 +371,15 @@ export async function transcribeChunks(apiKey, chunks, { log = console.log } = {
     if (zostaloAudio) {
       log(`  limit Groq: zostało ${Math.round(Number(zostaloAudio) / 60)} min audio `
         + `z ${Math.round(Number(limitAudio) / 60)} min w oknie`);
+      // Stan limitu widać TYLKO tutaj, więc kto go potrzebuje, dostaje go
+      // w locie — pipeline odkłada go do `usage_snapshot`, żeby panel
+      // managera miał co pokazać między transkrypcjami.
+      onLimity?.({
+        zostaloAudioSekund: Number(zostaloAudio),
+        limitAudioSekund: Number(limitAudio),
+        zostaloZapytan: Number(response.headers.get("x-ratelimit-remaining-requests")),
+        limitZapytan: Number(response.headers.get("x-ratelimit-limit-requests")),
+      });
     }
 
     // Bramka bezpieczeństwa pod rate-limit (Faza 5 planu) — backstop, nie

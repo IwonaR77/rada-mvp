@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      usage_snapshot: {
+        Row: {
+          source: string
+          metric: string
+          value: number | null
+          unit: string | null
+          note: string | null
+          recorded_at: string
+        }
+        Insert: {
+          source: string
+          metric: string
+          value?: number | null
+          unit?: string | null
+          note?: string | null
+          recorded_at?: string
+        }
+        Update: {
+          source?: string
+          metric?: string
+          value?: number | null
+          unit?: string | null
+          note?: string | null
+          recorded_at?: string
+        }
+        Relationships: []
+      }
       access_audit_log: {
         Row: {
           action: string
@@ -1278,6 +1305,22 @@ export type Database = {
           meeting_id: string
           meeting_title: string
           start_time: number
+        }[]
+      }
+      db_stats: {
+        Args: Record<string, never>
+        Returns: {
+          tabela: string
+          wierszy: number
+          rozmiar_bajty: number
+          baza_bajty: number
+        }[]
+      }
+      segment_status_counts: {
+        Args: Record<string, never>
+        Returns: {
+          status: string
+          ile: number
         }[]
       }
       councilor_speaking_by_meeting: {

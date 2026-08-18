@@ -203,12 +203,20 @@ export default async function AdminKontaPage({
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
           Konta i uprawnienia
         </h1>
-        <Link
-          href="/dostep"
-          className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
-        >
-          twój dostęp →
-        </Link>
+        <div className="flex gap-4">
+          <Link
+            href="/admin/limity"
+            className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
+          >
+            zużycie i limity →
+          </Link>
+          <Link
+            href="/dostep"
+            className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
+          >
+            twój dostęp →
+          </Link>
+        </div>
       </div>
 
       {pending.length > 0 && (
