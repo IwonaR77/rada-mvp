@@ -7,6 +7,7 @@ import { CURRENT_COUNCILOR_EVALUATION_PROMPT_VERSION } from "@/lib/councilor-eva
 import { getSpeakingActivity } from "@/lib/council-activity";
 import { compareToAverage } from "@/lib/compare-to-average";
 import { PercentileMeter } from "@/components/percentile-meter";
+import { CouncilorSpeakingChart } from "@/components/councilor-speaking-chart";
 import { mergeIntoBlocks } from "@/lib/speech-blocks";
 import { CouncilorSpeeches } from "@/components/councilor-speeches";
 import { clusterByAgreement } from "@/lib/hierarchical-clustering";
@@ -159,6 +160,12 @@ export async function CouncilorProfile({
   const sessionsSpokenIn = (czasyPoSesjach ?? []).filter(
     (r) => Number(r.seconds) > 0
   ).length;
+  const punktyMowienia = (czasyPoSesjach ?? []).map((r, i) => ({
+    meetingId: r.meeting_id,
+    numer: i + 1,
+    data: r.meeting_date,
+    sekundy: Number(r.seconds),
+  }));
 
   const votesInTerm = currentTermId
     ? sortedVotes.filter((v) => v.resolution!.meeting?.term_id === currentTermId)
@@ -379,6 +386,15 @@ export async function CouncilorProfile({
               percentile={activityComparison?.percentile ?? null}
             />
           </div>
+
+          {punktyMowienia.length > 0 && (
+            <div className="mt-6 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+              <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Czas wypowiedzi na kolejnych sesjach
+              </h3>
+              <CouncilorSpeakingChart punkty={punktyMowienia} />
+            </div>
+          )}
         </section>
 
         {councilor.interpellation_synthesis && (
