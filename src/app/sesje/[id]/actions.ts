@@ -613,7 +613,13 @@ export async function importTranscript(
  */
 // Bez `export`: w pliku z dyrektywą "use server" wszystkie eksporty muszą być
 // asynchronicznymi funkcjami — wyeksportowana stała wywala build.
-const POWOD_PRZESUNIECIE = "desync";
+//
+// `desync` — segment przesunięty względem nagrania.
+// `rodzaj-ok` — sprawdzone: końcówka w tekście przeczy płci przypisanego
+//   mówcy, ale przypisanie jest poprawne (najczęściej rozpoznawanie mowy
+//   przekręciło samą końcówkę). Gasi czerwone podświetlenie, żeby przy
+//   kolejnym przeglądzie nie zabierało uwagi po raz drugi.
+const POWODY = ["desync", "rodzaj-ok"];
 
 /**
  * Wstawia albo zdejmuje własną flagę przesunięcia na segmencie.
@@ -622,7 +628,12 @@ const POWOD_PRZESUNIECIE = "desync";
  * i tak trzeba sprawdzić po stronie serwera — RLS pozwala usunąć wyłącznie
  * własną flagę, więc cudzej i tak nie ruszymy.
  */
-export async function toggleSegmentFlag(meetingId: string, segmentId: string) {
+export async function toggleSegmentFlag(
+  meetingId: string,
+  segmentId: string,
+  powod: string = "desync"
+) {
+  if (!POWODY.includes(powod)) return { error: `Nieznany powód flagi: ${powod}` };
   const supabase = await createClient();
   const {
     data: { user },
@@ -634,7 +645,7 @@ export async function toggleSegmentFlag(meetingId: string, segmentId: string) {
     .select("id")
     .eq("segment_id", segmentId)
     .eq("app_user_id", user.id)
-    .eq("reason", POWOD_PRZESUNIECIE)
+    .eq("reason", powod)
     .maybeSingle();
 
   if (istniejaca) {
@@ -653,7 +664,7 @@ export async function toggleSegmentFlag(meetingId: string, segmentId: string) {
   const { error } = await supabase.from("flag").insert({
     segment_id: segmentId,
     app_user_id: user.id,
-    reason: POWOD_PRZESUNIECIE,
+    reason: powod,
     status: "open",
   });
   if (error) return { error: error.message };

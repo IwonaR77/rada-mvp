@@ -145,7 +145,7 @@ export default async function SessionPage({
   // dwa różne uprawnienia — patrz komentarz przy `requireSummaryAccess`.
   let canManageSummary = false;
   let canCommentSummary = false;
-  let flaggedSegments: { segmentId: string; mine: boolean }[] = [];
+  let flaggedSegments: { segmentId: string; reason: string; mine: boolean }[] = [];
   if (user) {
     const { data: appUser } = await supabase
       .from("app_user")
@@ -190,11 +190,12 @@ export default async function SessionPage({
     // więc lista półtora tysiąca segmentów sesji by się w nim nie zmieściła.
     const { data: flagi } = await supabase
       .from("flag")
-      .select("segment_id, app_user_id, segment:segment_id!inner(meeting_id)")
+      .select("segment_id, app_user_id, reason, segment:segment_id!inner(meeting_id)")
       .eq("segment.meeting_id", id)
-      .eq("reason", "desync");
+      .in("reason", ["desync", "rodzaj-ok"]);
     flaggedSegments = (flagi ?? []).map((f) => ({
       segmentId: f.segment_id,
+      reason: f.reason,
       mine: f.app_user_id === user.id,
     }));
     canManageSummary = Boolean(isManager);

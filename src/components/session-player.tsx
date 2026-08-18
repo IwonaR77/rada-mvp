@@ -142,8 +142,11 @@ export function SessionPlayer({
   canAssign: boolean;
   canFinalize: boolean;
   canDownloadTranscript: boolean;
-  /** Segmenty oznaczone jako przesunięte względem nagrania; `mine` = moja flaga. */
-  flaggedSegments: { segmentId: string; mine: boolean }[];
+  /**
+   * Flagi segmentów: `desync` — przesunięty względem nagrania,
+   * `rodzaj-ok` — sprawdzone, mimo sprzecznej końcówki przypisanie jest dobre.
+   */
+  flaggedSegments: { segmentId: string; reason: string; mine: boolean }[];
   /**
    * Panel managera pod podsumowaniem (wgranie .md, prompt, uwagi). Wchodzi
    * gotowym węzłem, a nie flagą uprawnień — o tym, czy manager go widzi,
@@ -195,7 +198,10 @@ export function SessionPlayer({
   // kliknięcie ma dać efekt natychmiast, a `revalidatePath` po stronie serwera
   // i tak dojdzie chwilę później.
   const [flagi, setFlagi] = useState<Set<string>>(
-    () => new Set(flaggedSegments.map((f) => f.segmentId))
+    () => new Set(flaggedSegments.filter((f) => f.reason === "desync").map((f) => f.segmentId))
+  );
+  const [rodzajSprawdzony, setRodzajSprawdzony] = useState<Set<string>>(
+    () => new Set(flaggedSegments.filter((f) => f.reason === "rodzaj-ok").map((f) => f.segmentId))
   );
   const router = useRouter();
 
@@ -500,6 +506,28 @@ export function SessionPlayer({
     });
   }
 
+  function potwierdzRodzaj(segmentId: string) {
+    const bylo = rodzajSprawdzony.has(segmentId);
+    setRodzajSprawdzony((poprzednie) => {
+      const nowe = new Set(poprzednie);
+      if (bylo) nowe.delete(segmentId);
+      else nowe.add(segmentId);
+      return nowe;
+    });
+    startTransition(async () => {
+      const wynik = await toggleSegmentFlag(meetingId, segmentId, "rodzaj-ok");
+      if (wynik?.error) {
+        setAssignError(wynik.error);
+        setRodzajSprawdzony((poprzednie) => {
+          const nowe = new Set(poprzednie);
+          if (bylo) nowe.add(segmentId);
+          else nowe.delete(segmentId);
+          return nowe;
+        });
+      }
+    });
+  }
+
   function przelaczFlage(segmentId: string) {
     const bylo = flagi.has(segmentId);
     // Optymistycznie: przestawiamy od razu, a przy błędzie cofamy. Flaga to
@@ -772,6 +800,11 @@ export function SessionPlayer({
                     assignedId &&
                       sprzecznyRodzaj(s.text, peopleById.get(assignedId) ?? "")
                   );
+                  // Potwierdzone „sprawdziłem, jest dobrze" gasi czerwień na
+                  // stałe — inaczej ten sam fałszywy alarm zabierałby uwagę
+                  // przy każdym kolejnym przeglądzie sesji.
+                  const rodzajDoSprawdzenia =
+                    podejrzanyRodzaj && !rodzajSprawdzony.has(s.id);
                   // Na podświetlonym wierszu grafit zlewa się z tłem, więc tam
                   // prowadzący dostaje odwrócony odcień.
                   const pasek =
@@ -863,14 +896,16 @@ export function SessionPlayer({
                             jako „Ja powiedziałam"). */}
                         <span
                           className={
-                            podejrzanyRodzaj
+                            rodzajDoSprawdzenia
                               ? "font-bold text-red-600 dark:text-red-400"
                               : undefined
                           }
                           title={
-                            podejrzanyRodzaj
+                            rodzajDoSprawdzenia
                               ? "Końcówka w tekście wskazuje inną płeć niż przypisany mówca — sprawdź"
-                              : undefined
+                              : podejrzanyRodzaj
+                                ? "Sprzeczna końcówka, sprawdzone — przypisanie potwierdzone"
+                                : undefined
                           }
                         >
                           {s.text}
@@ -915,7 +950,29 @@ export function SessionPlayer({
                               )}
                             </span>
                           </button>
-                          {/* Flaga „przesunięty względem nagrania". Widoczna dla
+                          {/* Widoczny tylko przy podejrzeniu — potwierdzenie „to
+                        przypisanie jest dobre, końcówkę przekręciła
+                        transkrypcja". */}
+                    {podejrzanyRodzaj && (
+                      <button
+                        onClick={() => potwierdzRodzaj(s.id)}
+                        disabled={isPending}
+                        title={
+                          rodzajSprawdzony.has(s.id)
+                            ? "Cofnij potwierdzenie — segment wróci do sprawdzenia"
+                            : "Potwierdź: przypisanie jest dobre mimo sprzecznej końcówki"
+                        }
+                        aria-pressed={rodzajSprawdzony.has(s.id)}
+                        className={`shrink-0 rounded px-1.5 py-0.5 text-xs disabled:opacity-40 ${
+                          rodzajSprawdzony.has(s.id)
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-red-500 hover:bg-red-100 dark:hover:bg-red-950/50"
+                        }`}
+                      >
+                        ✓
+                      </button>
+                    )}
+                    {/* Flaga „przesunięty względem nagrania". Widoczna dla
                               każdego zalogowanego, nie tylko dla tagujących:
                               przesunięcie zauważa ten, kto ogląda. */}
                           <button
