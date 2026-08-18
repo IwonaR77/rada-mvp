@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { fetchAllRows } from "@/lib/supabase/fetch-all";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -118,31 +117,17 @@ export async function getSpeakingActivity(
   termId: string,
   officials: { id: string; full_name: string; role: string }[]
 ): Promise<SpeakingActivity> {
-  const [{ data: roster }, segments, { data: meetingRows }, { data: blockRows }] =
+  const [{ data: roster }, { data: totalRows }, { data: meetingRows }, { data: blockRows }] =
     await Promise.all([
     supabase
       .from("councilor_term")
       .select("party, councilor:councilor_id(id, full_name)")
       .eq("term_id", termId),
-    // See the same note in /sesje/[id]/page.tsx — a single .range() request
-    // can't exceed PostgREST's server-side max-rows cap no matter how wide
-    // a range is asked for; paginate instead.
-    fetchAllRows<{
-      confirmed_councilor_id: string | null;
-      confirmed_official_id: string | null;
-      meeting_id: string;
-      start_time: number;
-      end_time: number;
-    }>((from, to) =>
-      supabase
-        .from("segment")
-        .select(
-          "confirmed_councilor_id, confirmed_official_id, meeting_id, start_time, end_time, meeting:meeting_id!inner(term_id)"
-        )
-        .eq("status", "finalized")
-        .eq("meeting.term_id", termId)
-        .range(from, to)
-    ),
+    // Sumy czasu wypowiedzi liczy BAZA, nie aplikacja. Wcześniej strona
+    // ściągała wszystkie zatwierdzone segmenty kadencji (25 tys. i rosnąco),
+    // stronicowane po tysiąc — 26 kolejnych zapytań do chmury tylko po to, by
+    // je zsumować per radny. Funkcja robi to samo w 22 ms i jednym żądaniu.
+    supabase.rpc("term_speaker_totals", { p_term_id: termId }),
     supabase
       .from("meeting")
       .select("id, date, title, transcript_status")
@@ -172,15 +157,12 @@ export async function getSpeakingActivity(
   const heatmapMatrix: Record<string, Record<string, number>> = {};
 
   // Podium liczy nadal per segment — patrz uwaga przy `heatmapMatrix`.
-  const totals = new Map<string, number>();
-  for (const s of segments) {
-    if (!s.confirmed_councilor_id) continue;
-    const duration = Number(s.end_time) - Number(s.start_time);
-    totals.set(
-      s.confirmed_councilor_id,
-      (totals.get(s.confirmed_councilor_id) ?? 0) + duration
-    );
-  }
+  const totals = new Map<string, number>(
+    (totalRows ?? []).map((r: { councilor_id: string; seconds: number }) => [
+      r.councilor_id,
+      Number(r.seconds),
+    ])
+  );
 
   // Burmistrz and his deputy get their own heatmap rows (they're frequent,
   // named participants); every other official (skarbnik, sekretarz,

@@ -1280,6 +1280,13 @@ export type Database = {
           start_time: number
         }[]
       }
+      term_speaker_totals: {
+        Args: { p_term_id: string }
+        Returns: {
+          councilor_id: string
+          seconds: number
+        }[]
+      }
       term_tagging_time: {
         Args: { p_term_id: string }
         Returns: {
