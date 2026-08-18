@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ReactPlayer from "react-player";
@@ -166,7 +166,13 @@ export function SessionPlayer({
   // change. Resumes once they click a segment to seek — that's an
   // explicit "take me here" action.
   const followPlaybackRef = useRef(true);
-  const [currentTime, setCurrentTime] = useState(0);
+  // Czas odtwarzania NIE jest stanem komponentu. `onTimeUpdate` leci ~4 razy
+  // na sekundę, a każdy zapis do stanu przerenderowywał całą listę wypowiedzi —
+  // w długiej sesji to 1800 wierszy, każdy z wyszukiwaniami w mapach i trzema
+  // wyrażeniami regularnymi kontroli rodzaju. Stąd zauważalne mulenie przy
+  // odtwarzaniu. W stanie trzymamy wyłącznie identyfikator aktywnego segmentu,
+  // który zmienia się co kilka sekund, a nie kilka razy na sekundę.
+  const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [anchorId, setAnchorId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "unassigned" | "proposed">(
@@ -194,6 +200,14 @@ export function SessionPlayer({
   // zaznaczenia i od odtwarzania, bo przeskakiwanie po dziurach to inna
   // czynność niż tagowanie tego, co akurat leci.
   const [jumpCursor, setJumpCursor] = useState<string | null>(null);
+  // Ile wierszy listy renderujemy na raz. Sesja potrafi mieć 1800 segmentów,
+  // a każdy wiersz to checkbox i trzy przyciski — ożywienie wszystkich naraz
+  // przy wejściu na stronę zajmowało kilka sekund. Reszta dochodzi przy
+  // przewijaniu, a skoki (odtwarzanie, „następny nieprzypisany", szukanie)
+  // same rozsuwają okno tak, żeby cel się w nim znalazł.
+  const PORCJA = 200;
+  const [ileWidocznych, setIleWidocznych] = useState(PORCJA);
+  const wartownikRef = useRef<HTMLLIElement>(null);
   // Flagi trzymane w stanie, nie czytane z propsów przy każdym renderze:
   // kliknięcie ma dać efekt natychmiast, a `revalidatePath` po stronie serwera
   // i tak dojdzie chwilę później.
@@ -205,9 +219,26 @@ export function SessionPlayer({
   );
   const router = useRouter();
 
-  const activeSegment = segments.find(
-    (s) => currentTime >= s.start_time && currentTime < s.end_time
-  );
+  const activeSegment = segments.find((s) => s.id === activeSegmentId);
+
+  function handleTimeUpdate(czas: number) {
+    // Wyszukiwanie binarne, nie `find`: przy 1800 segmentach liniowe szukanie
+    // czterysta razy na minutę to niepotrzebna praca w wątku interfejsu.
+    let lo = 0;
+    let hi = segments.length - 1;
+    let znaleziony: string | null = null;
+    while (lo <= hi) {
+      const sr = (lo + hi) >> 1;
+      const s = segments[sr];
+      if (czas < s.start_time) hi = sr - 1;
+      else if (czas >= s.end_time) lo = sr + 1;
+      else {
+        znaleziony = s.id;
+        break;
+      }
+    }
+    if (znaleziony !== activeSegmentId) setActiveSegmentId(znaleziony);
+  }
 
   const isUnassigned = (s: Segment) =>
     !s.confirmed_councilor_id && !s.confirmed_official_id;
@@ -216,6 +247,11 @@ export function SessionPlayer({
   const unassignedCount = segments.filter(isUnassigned).length;
   const proposedCount = segments.filter((s) => s.status === "proposed").length;
   const normalizedQuery = query.trim().toLowerCase();
+  // Zmiana filtra albo zapytania to inna lista — okno wraca do pierwszej porcji.
+  useEffect(() => {
+    setIleWidocznych(PORCJA);
+  }, [filter, normalizedQuery, speakerFilter]);
+
   const visibleSegments = segments
     .filter((s) => {
       if (filter === "unassigned") return isUnassigned(s);
@@ -238,15 +274,15 @@ export function SessionPlayer({
   // Czas mówienia w TEJ sesji — porządkuje listę mówców tak, żeby osoby
   // prowadzące obrady i najczęściej zabierające głos były najwyżej. Liczone
   // z segmentów już wczytanych na stronę, bez dodatkowego zapytania.
-  const speakingSeconds = new Map<string, number>();
-  for (const seg of segments) {
-    const id = getAssignedId(seg);
-    if (!id) continue;
-    speakingSeconds.set(
-      id,
-      (speakingSeconds.get(id) ?? 0) + Number(seg.end_time) - Number(seg.start_time)
-    );
-  }
+  const speakingSeconds = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const seg of segments) {
+      const id = seg.confirmed_councilor_id ?? seg.confirmed_official_id;
+      if (!id) continue;
+      m.set(id, (m.get(id) ?? 0) + Number(seg.end_time) - Number(seg.start_time));
+    }
+    return m;
+  }, [segments]);
 
   // Kto prowadzi obrady — z funkcji w kadencji (`councilor_term.role`), a NIE
   // z czasu mówienia. Pierwsza wersja brała najdłużej mówiącego i na sesji,
@@ -276,7 +312,10 @@ export function SessionPlayer({
   // Pozycja w PEŁNEJ liście — po niej poznajemy, czy dwa sąsiednie wiersze
   // naprawdę sąsiadują w nagraniu. Przy włączonym filtrze potrafią dzielić
   // pół godziny obrad, a wtedy „ten sam mówca" nie znaczy „ta sama wypowiedź".
-  const pozycjaSegmentu = new Map(segments.map((s, i) => [s.id, i]));
+  const pozycjaSegmentu = useMemo(
+    () => new Map(segments.map((s, i) => [s.id, i])),
+    [segments]
+  );
 
   // Kolor paska: grafit dla prowadzącego, a dla pozostałych trzy barwy
   // rotujące przy każdej zmianie mówcy. Rotacja, nie przypisanie barwy do
@@ -290,18 +329,31 @@ export function SessionPlayer({
   //
   // Numer rotacji liczony po pełnej liście, nie po przefiltrowanej: kolory
   // mają zostać te same po włączeniu filtra.
+  const peopleById = useMemo(() => {
+    const m = new Map<string, string>();
+    councilors.forEach((c) => m.set(c.id, c.name));
+    officials.forEach((o) => m.set(o.id, `${o.full_name} (${o.role})`));
+    return m;
+  }, [councilors, officials]);
+
   const ROTACJA = [
     "bg-indigo-500 dark:bg-indigo-400",
     "bg-emerald-500",
     "bg-orange-600",
   ];
   const KOLOR_PROWADZACEGO = "bg-zinc-700 dark:bg-zinc-300";
-  const kolorPaska = new Map<string, string>();
-  {
+  const { kolorPaska, podejrzaneRodzaje } = useMemo(() => {
+    const kolorPaska = new Map<string, string>();
+    // Sprzeczność końcówki z płcią mówcy liczona RAZ na segment, nie przy
+    // każdym renderze wiersza — to trzy wyrażenia regularne na tekst.
+    const podejrzaneRodzaje = new Set<string>();
     let poprzedniMowca: string | null | undefined;
     let nrBloku = -1;
     for (const seg of segments) {
-      const id = getAssignedId(seg) ?? null;
+      const id = (seg.confirmed_councilor_id ?? seg.confirmed_official_id) ?? null;
+      if (id && sprzecznyRodzaj(seg.text, peopleById.get(id) ?? "")) {
+        podejrzaneRodzaje.add(seg.id);
+      }
       // Blok prowadzącego też przesuwa rotację — bez tego dwie wypowiedzi
       // przedzielone słowem przewodniczącego dostawałyby ten sam kolor.
       if (id !== poprzedniMowca) {
@@ -317,7 +369,8 @@ export function SessionPlayer({
             : ROTACJA[nrBloku % ROTACJA.length]
       );
     }
-  }
+    return { kolorPaska, podejrzaneRodzaje };
+  }, [segments, peopleById, prowadzacyId]);
 
   const proposedSegments = segments.filter((s) => s.status === "proposed");
   const selectedProposedIds = Array.from(selected).filter((id) =>
@@ -330,9 +383,33 @@ export function SessionPlayer({
     handleSeek(initialSeek);
   }
 
-  const peopleById = new Map<string, string>();
-  councilors.forEach((c) => peopleById.set(c.id, c.name));
-  officials.forEach((o) => peopleById.set(o.id, `${o.full_name} (${o.role})`));
+
+  // Doładowanie kolejnej porcji, gdy wartownik wjedzie w widok listy.
+  useEffect(() => {
+    const cel = wartownikRef.current;
+    if (!cel) return;
+    const obserwator = new IntersectionObserver(
+      (wpisy) => {
+        if (wpisy.some((w) => w.isIntersecting)) {
+          setIleWidocznych((n) => n + PORCJA);
+        }
+      },
+      { root: listRef.current, rootMargin: "400px" }
+    );
+    obserwator.observe(cel);
+    return () => obserwator.disconnect();
+  }, [ileWidocznych, visibleSegments.length]);
+
+  // Cel skoku albo odtwarzania musi być w oknie, inaczej nie ma do czego
+  // przewinąć — okno rozsuwa się wtedy od razu do jego pozycji.
+  useEffect(() => {
+    const cel = jumpCursor ?? activeSegmentId;
+    if (!cel) return;
+    const pozycja = visibleSegments.findIndex((s) => s.id === cel);
+    if (pozycja >= 0 && pozycja >= ileWidocznych) {
+      setIleWidocznych(pozycja + PORCJA);
+    }
+  }, [jumpCursor, activeSegmentId, visibleSegments, ileWidocznych]);
 
   useEffect(() => {
     if (!followPlaybackRef.current) return;
@@ -600,7 +677,7 @@ export function SessionPlayer({
               ref={videoRef}
               src={videoUrl}
               controls
-              onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+              onTimeUpdate={(e) => handleTimeUpdate(e.currentTarget.currentTime)}
               onLoadedMetadata={handleLoadedMetadata}
               style={{ width: "100%", height: "auto", aspectRatio: "16/9" }}
             />
@@ -784,7 +861,7 @@ export function SessionPlayer({
                             : "Brak segmentów dla tej sesji."}
                   </li>
                 )}
-                {visibleSegments.map((s, i) => {
+                {visibleSegments.slice(0, ileWidocznych).map((s, i) => {
                   const isActive = activeSegment?.id === s.id;
                   const assignedId = s.confirmed_councilor_id ?? s.confirmed_official_id;
                   const isProposed = Boolean(assignedId) && s.status === "proposed";
@@ -796,10 +873,7 @@ export function SessionPlayer({
                       pozycjaSegmentu.get(s.id) ===
                         (pozycjaSegmentu.get(poprzedni.id) ?? -2) + 1
                   );
-                  const podejrzanyRodzaj = Boolean(
-                    assignedId &&
-                      sprzecznyRodzaj(s.text, peopleById.get(assignedId) ?? "")
-                  );
+                  const podejrzanyRodzaj = podejrzaneRodzaje.has(s.id);
                   // Potwierdzone „sprawdziłem, jest dobrze" gasi czerwień na
                   // stałe — inaczej ten sam fałszywy alarm zabierałby uwagę
                   // przy każdym kolejnym przeglądzie sesji.
