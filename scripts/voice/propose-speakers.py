@@ -96,6 +96,8 @@ def main():
     p.add_argument("--prog", type=float, default=0.70)
     p.add_argument("--przewaga", type=float, default=0.05)
     p.add_argument("--zapisz", action="store_true", help="wykonaj SQL na bazie")
+    p.add_argument("--nadpisz-propozycje", action="store_true",
+                   help="rusz także segmenty ze statusem `proposed` (cudze hipotezy)")
     args = p.parse_args()
 
     modele = args.modele.split(",")
@@ -143,15 +145,45 @@ def main():
     if brakujacy:
         raise SystemExit(f"Nie znalazłem w bazie: {brakujacy}")
 
+    # Zatwierdzone przypisania są nietykalne w obu trybach — to jedyna wiedza
+    # potwierdzona przez człowieka. Różnica dotyczy wyłącznie cudzych
+    # PROPOZYCJI (np. z dopasowania protokołów): domyślnie ich nie ruszamy,
+    # z `--nadpisz-propozycje` traktujemy je jak wolne miejsce.
+    dozwolone = "('open', 'proposed')" if args.nadpisz_propozycje else "('open')"
+    warunek = (
+        f"status in {dozwolone}"
+        if args.nadpisz_propozycje
+        else "status = 'open' and confirmed_councilor_id is null "
+             "and confirmed_official_id is null"
+    )
+
     linie = ["-- Propozycje mówców z rozpoznawania głosem "
              f"(sesja {args.esesja}, próg {args.prog}, przewaga {args.przewaga}).",
-             "-- Tylko segmenty `open` i bez mówcy; status ustawiany na `proposed`."]
+             f"-- Ruszane statusy: {dozwolone}; status ustawiany na `proposed`."]
     for sid, (osoba, _) in sorted(przypisane.items()):
         kolumna, oid = osoby_db[osoba]
+        # Druga kolumna czyszczona jawnie: przy nadpisywaniu cudzej propozycji
+        # mówca mógł tam siedzieć jako radny, a my wskazujemy urzędnika (albo
+        # odwrotnie) — zostawiony stary klucz dałby segment z dwoma mówcami.
+        inna = ("confirmed_official_id" if kolumna == "confirmed_councilor_id"
+                else "confirmed_councilor_id")
         linie.append(
-            f"update segment set {kolumna} = '{oid}', status = 'proposed' "
-            f"where id = '{sid}' and status = 'open' "
-            f"and confirmed_councilor_id is null and confirmed_official_id is null;")
+            f"update segment set {kolumna} = '{oid}', {inna} = null, "
+            f"status = 'proposed' where id = '{sid}' and {warunek};")
+
+    if args.nadpisz_propozycje:
+        # Sprzątanie po cudzej hipotezie: propozycje, których głos NIE
+        # potwierdził, znikają razem z zapisem nowych. Zostawianie ich było
+        # gorsze niż bezużyteczne — sesja wyglądała potem na w pełni
+        # rozpisaną, a „zatwierdź wszystkie" przyjmowało jednym kliknięciem
+        # przypisania z dwóch źródeł o zupełnie różnej wiarygodności.
+        linie.append(
+            f"update segment s set confirmed_councilor_id = null, "
+            f"confirmed_official_id = null, status = 'open' "
+            f"from meeting m where m.id = s.meeting_id "
+            f"and m.esesja_id = '{args.esesja}' and s.status = 'proposed' "
+            f"and s.id not in (" +
+            ",".join(f"'{sid}'" for sid in sorted(przypisane)) + ");")
 
     sql = Path(f"/tmp/propozycje-glos-{args.esesja}.sql")
     sql.write_text("\n".join(linie) + "\n", encoding="utf8")

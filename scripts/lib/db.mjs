@@ -33,7 +33,7 @@ export function supabaseQuery(sql) {
     const out = execFileSync(
       "npx",
       ["supabase", "db", "query", "--linked", "--output", "json", sql],
-      // Dwie minuty, nie trzydzieści sekund: zrzut przypisań mówców liczy
+      // Pięć minut, nie trzydzieści sekund: zrzut przypisań mówców liczy
       // okna (lag/lead) po wszystkich segmentach i przy kilkunastu tysiącach
       // zatwierdzeń przestał się mieścić w dawnym limicie. Limit ma chronić
       // przed zawieszeniem, a nie ucinać poprawne, po prostu dłuższe zapytania.
@@ -44,7 +44,7 @@ export function supabaseQuery(sql) {
       {
         encoding: "utf8",
         cwd: REPO_ROOT,
-        timeout: 120000,
+        timeout: 300000,
         maxBuffer: 64 * 1024 * 1024,
       }
     );
