@@ -384,21 +384,17 @@ export function SessionPlayer({
   }
 
 
-  // Doładowanie kolejnej porcji, gdy wartownik wjedzie w widok listy.
-  useEffect(() => {
-    const cel = wartownikRef.current;
-    if (!cel) return;
-    const obserwator = new IntersectionObserver(
-      (wpisy) => {
-        if (wpisy.some((w) => w.isIntersecting)) {
-          setIleWidocznych((n) => n + PORCJA);
-        }
-      },
-      { root: listRef.current, rootMargin: "400px" }
-    );
-    obserwator.observe(cel);
-    return () => obserwator.disconnect();
-  }, [ileWidocznych, visibleSegments.length]);
+  // Doładowanie kolejnej porcji przy dojściu do dołu listy.
+  //
+  // Sterowane zdarzeniem przewijania, a nie `IntersectionObserver`: przy tej
+  // konstrukcji listy (kontener w warstwie absolutnej, wysokość z rodzica)
+  // obserwator nie odpalał i przewijanie zatrzymywało się na pierwszej porcji.
+  // Zwykłe sprawdzenie pozycji jest odporne na takie subtelności.
+  function dosypPrzyKoncu(el: HTMLUListElement) {
+    if (ileWidocznych >= visibleSegments.length) return;
+    const doKonca = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (doKonca < 600) setIleWidocznych((n) => n + PORCJA);
+  }
 
   // Cel skoku albo odtwarzania musi być w oknie, inaczej nie ma do czego
   // przewinąć — okno rozsuwa się wtedy od razu do jego pozycji.
@@ -840,6 +836,7 @@ export function SessionPlayer({
               )}
               <ul
                 ref={listRef}
+                onScroll={(e) => dosypPrzyKoncu(e.currentTarget)}
                 onWheel={() => {
                   followPlaybackRef.current = false;
                 }}
