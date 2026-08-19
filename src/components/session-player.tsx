@@ -166,6 +166,14 @@ export function SessionPlayer({
   // change. Resumes once they click a segment to seek — that's an
   // explicit "take me here" action.
   const followPlaybackRef = useRef(true);
+  // Sekunda nagrania, na której odtwarzanie ma samo stanąć (null = odtwarzaj
+  // dalej, bez końca). Referencja, nie stan — czyta ją `onTimeUpdate`, więc
+  // przerysowywanie listy przy każdej zmianie byłoby czystą stratą.
+  const stopAtRef = useRef<number | null>(null);
+  // Czy najbliższe przewinięcie pochodzi od kliknięcia w wypowiedź. Bez tego
+  // ręczne przeciągnięcie suwaka zostawiałoby zaplanowane zatrzymanie z
+  // poprzedniego kliknięcia i film stawałby w losowym miejscu.
+  const przewijamySamiRef = useRef(false);
   // Czas odtwarzania NIE jest stanem komponentu. `onTimeUpdate` leci ~4 razy
   // na sekundę, a każdy zapis do stanu przerenderowywał całą listę wypowiedzi —
   // w długiej sesji to 1800 wierszy, każdy z wyszukiwaniami w mapach i trzema
@@ -222,6 +230,15 @@ export function SessionPlayer({
   const activeSegment = segments.find((s) => s.id === activeSegmentId);
 
   function handleTimeUpdate(czas: number) {
+    // Odtwarzanie „dwóch wypowiedzi": po dojściu do końca następnej po
+    // klikniętej film staje sam. Sprawdzane tutaj, a nie zegarem, bo
+    // `onTimeUpdate` i tak leci kilka razy na sekundę, a zegar rozjeżdżałby
+    // się przy buforowaniu i zmianie prędkości odtwarzania.
+    const stop = stopAtRef.current;
+    if (stop !== null && czas >= stop) {
+      stopAtRef.current = null;
+      videoRef.current?.pause();
+    }
     // Wyszukiwanie binarne, nie `find`: przy 1800 segmentach liniowe szukanie
     // czterysta razy na minutę to niepotrzebna praca w wątku interfejsu.
     let lo = 0;
@@ -415,12 +432,41 @@ export function SessionPlayer({
     });
   }, [activeSegment?.id]);
 
-  function handleSeek(startTime: number) {
+  /**
+   * Przewija nagranie na `startTime` i puszcza je.
+   *
+   * `stopAt` (sekunda nagrania) zatrzymuje odtwarzanie w tym miejscu;
+   * `null` to odtwarzanie ciągłe, aż do końca sesji.
+   */
+  function handleSeek(startTime: number, stopAt: number | null = null) {
     followPlaybackRef.current = true;
     const video = videoRef.current;
     if (!video) return;
+    stopAtRef.current = stopAt;
+    przewijamySamiRef.current = true;
     video.currentTime = startTime;
     video.play();
+  }
+
+  /**
+   * Kliknięcie w treść wypowiedzi: odtwórz ją i następną po niej, potem stój.
+   * Dwie, a nie jedna, bo o trafności przypisania najczęściej rozstrzyga
+   * dopiero to, co pada zaraz potem (dokończenie zdania, odpowiedź).
+   * Z shiftem — odtwarzanie ciągłe, czyli zachowanie sprzed tej zmiany.
+   *
+   * Sąsiada bierzemy z pełnej listy segmentów, nie z przefiltrowanej: leci
+   * to, co faktycznie słychać na nagraniu, a nie to, co akurat przeszło
+   * przez filtr.
+   */
+  function odtworzOdSegmentu(id: string, ciagle: boolean) {
+    const i = segments.findIndex((s) => s.id === id);
+    if (i === -1) return;
+    if (ciagle) {
+      handleSeek(segments[i].start_time);
+      return;
+    }
+    const nastepny = segments[i + 1];
+    handleSeek(segments[i].start_time, (nastepny ?? segments[i]).end_time);
   }
 
   function toggleSelected(id: string) {
@@ -674,6 +720,12 @@ export function SessionPlayer({
               src={videoUrl}
               controls
               onTimeUpdate={(e) => handleTimeUpdate(e.currentTarget.currentTime)}
+              onSeeked={() => {
+                // Ręczne przewinięcie suwakiem kasuje zaplanowane
+                // zatrzymanie — kto sam szuka miejsca, chce słuchać dalej.
+                if (przewijamySamiRef.current) przewijamySamiRef.current = false;
+                else stopAtRef.current = null;
+              }}
               onLoadedMetadata={handleLoadedMetadata}
               style={{ width: "100%", height: "auto", aspectRatio: "16/9" }}
             />
@@ -949,7 +1001,10 @@ export function SessionPlayer({
                       ) : (
                         <>
                           <button
-                            onClick={() => handleSeek(s.start_time)}
+                            onClick={(e) =>
+                              odtworzOdSegmentu(s.id, e.shiftKey)
+                            }
+                            title="Odtwarza tę wypowiedź i następną. Z shiftem — bez zatrzymania."
                             className="flex flex-1 flex-col gap-0.5 text-left text-sm"
                           >
                             <div className="flex gap-3">
