@@ -21,6 +21,23 @@ export function readMattersPrompt(kind: MattersPromptKind): string {
 }
 
 /**
+ * Wersja z nagłówka „Wersja promptu: N" pliku promptu spraw.
+ *
+ * Czytana z pliku, nie z osobnej stałej — z tego samego powodu, dla którego
+ * robi to `currentSummaryPromptVersion`: jeden podbity plik nie może wymagać
+ * pamiętania o drugim miejscu.
+ */
+export function mattersPromptVersion(kind: MattersPromptKind): number {
+  const m = readMattersPrompt(kind).match(/Wersja promptu:\s*(\d+)/);
+  if (!m) {
+    throw new Error(
+      `Brak nagłówka "Wersja promptu: N" w ${MATTERS_PROMPTS[kind]}.`
+    );
+  }
+  return Number(m[1]);
+}
+
+/**
  * Który prompt obowiązuje dla danej rady.
  *
  * Rozpoznanie po tym, czy rada jest przypisana do miasta: rady powiatów mają

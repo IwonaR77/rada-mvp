@@ -71,7 +71,8 @@ export async function importSummary(meetingId: string, markdown: string) {
     return { error: "Plik jest podejrzanie duży — to na pewno podsumowanie?" };
   }
 
-  const { summary, topics, promptVersion } = parseSummaryFile(markdown);
+  const { summary, topics, promptVersion, promptMinor } =
+    parseSummaryFile(markdown);
   if (summary.length === 0) return { error: "Plik jest pusty." };
 
   const { error } = await supabase
@@ -79,6 +80,9 @@ export async function importSummary(meetingId: string, markdown: string) {
     .update({
       summary,
       summary_prompt_version: promptVersion,
+      // Minor mówi, do której uwagi redakcji sięgał plik, którym powstał ten
+      // opis — dzięki temu widać potem, ile uwag doszło już po nim.
+      summary_prompt_minor: promptMinor,
       // Brak linii TAGI: (starsze prompty) nie może wyczyścić tagów, które
       // ktoś już ustawił — wtedy kolumny po prostu nie ruszamy.
       ...(topics ? { topics } : {}),
@@ -92,6 +96,7 @@ export async function importSummary(meetingId: string, markdown: string) {
     error: null,
     topics,
     promptVersion,
+    promptMinor,
     isStale:
       promptVersion === null || promptVersion < CURRENT_SUMMARY_PROMPT_VERSION,
   };
@@ -130,7 +135,15 @@ export async function addSummaryFeedback(meetingId: string, body: string) {
   return { error: null };
 }
 
-export async function deleteSummaryFeedback(
+/**
+ * Wycofuje uwagę: przestaje trafiać do pobieranych promptów, ale zostaje w
+ * bazie razem ze swoim numerem.
+ *
+ * Skasowana na twardo uwaga #5 czyniłaby wszystkie wcześniejsze pobrania
+ * „do #12" nieodtwarzalnymi — po fakcie nie dałoby się powiedzieć, co w nich
+ * właściwie było. Dziura w numeracji jest tu zamierzona.
+ */
+export async function retireSummaryFeedback(
   meetingId: string,
   feedbackId: string
 ) {
@@ -138,17 +151,18 @@ export async function deleteSummaryFeedback(
   const auth = await requireSummaryAccess(supabase, meetingId, "finalize_vote");
   if (!auth.ok) return { error: auth.error };
 
-  // Polityka RLS przepuszcza kasowanie tylko autorowi — filtr po author_id
-  // jest tu po to, żeby cudza uwaga dawała jawny komunikat zamiast cichego
-  // „usunięto 0 wierszy" (patrz feedback_rls_silent_denial).
+  // Polityka RLS przepuszcza zmianę tylko autorowi — filtr po author_id jest
+  // tu po to, żeby cudza uwaga dawała jawny komunikat zamiast cichego
+  // „zmieniono 0 wierszy" (patrz feedback_rls_silent_denial).
   const { error, count } = await supabase
     .from("summary_feedback")
-    .delete({ count: "exact" })
+    .update({ retired_at: new Date().toISOString() }, { count: "exact" })
     .eq("id", feedbackId)
     .eq("meeting_id", meetingId)
-    .eq("author_id", auth.userId);
+    .eq("author_id", auth.userId)
+    .is("retired_at", null);
   if (error) return { error: error.message };
-  if (count === 0) return { error: "Można usuwać tylko własne uwagi." };
+  if (count === 0) return { error: "Można wycofywać tylko własne uwagi." };
 
   revalidatePath(`/sesje/${meetingId}`);
   return { error: null };

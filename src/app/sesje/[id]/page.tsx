@@ -24,7 +24,7 @@ export default async function SessionPage({
   const { data: meeting } = await supabase
     .from("meeting")
     .select(
-      "id, title, date, esesja_id, source_id, video_url, summary, summary_prompt_version, topics, term_id, term:term_id(council:council_id(id, name))"
+      "id, title, date, esesja_id, source_id, video_url, summary, summary_prompt_version, summary_prompt_minor, topics, term_id, term:term_id(council:council_id(id, name))"
     )
     .eq("id", id)
     .maybeSingle();
@@ -209,13 +209,29 @@ export default async function SessionPage({
         await supabase
           .from("summary_feedback")
           .select(
-            "id, body, created_at, prompt_version, author:author_id(id, display_name)"
+            "id, seq, body, created_at, prompt_version, author:author_id(id, display_name)"
           )
           .eq("meeting_id", id)
+          .is("retired_at", null)
           .order("created_at", { ascending: false })
           .range(0, 199)
       ).data ?? []
     : [];
+
+  // Ile uwag tej rady doszło już PO opisie, który wisi w serwisie — czyli ile
+  // z nich nie miało szansy zostać w nim uwzględnionych. Liczone po numerach
+  // (`seq`), nie po dacie: to numer wraca z czatu w wersji promptu.
+  const feedbackAfterSummary =
+    canCommentSummary && meeting.summary && meeting.summary_prompt_minor !== null
+      ? (
+          await supabase
+            .from("summary_feedback")
+            .select("id", { count: "exact", head: true })
+            .eq("council_id", meeting.term?.council?.id ?? "")
+            .is("retired_at", null)
+            .gt("seq", meeting.summary_prompt_minor)
+        ).count ?? 0
+      : null;
 
   const councilors = (roster ?? [])
     .filter((r) => r.councilor)
@@ -340,10 +356,14 @@ export default async function SessionPage({
               meetingId={meeting.id}
               currentPromptVersion={CURRENT_SUMMARY_PROMPT_VERSION}
               summaryPromptVersion={meeting.summary_prompt_version}
+              summaryPromptMinor={meeting.summary_prompt_minor}
+              feedbackAfterSummary={feedbackAfterSummary}
               hasSummary={Boolean(meeting.summary)}
               canImport={canManageSummary}
               feedback={feedbackRows.map((f) => ({
                 id: f.id,
+                // Zawsze wypełnione — patrz komentarz w feedback-section.ts.
+                seq: f.seq ?? 0,
                 body: f.body,
                 createdAt: f.created_at,
                 promptVersion: f.prompt_version,

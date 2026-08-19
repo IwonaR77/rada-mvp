@@ -2,14 +2,17 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { odmienUwagi } from "@/lib/odmiana";
 import {
   importSummary,
   addSummaryFeedback,
-  deleteSummaryFeedback,
+  retireSummaryFeedback,
 } from "@/app/sesje/[id]/actions";
 
 export type SummaryFeedbackEntry = {
   id: string;
+  /** Numer uwagi w obrębie tej rady — ten sam, który jedzie w wersji promptu. */
+  seq: number;
   body: string;
   createdAt: string;
   promptVersion: number | null;
@@ -32,6 +35,8 @@ export function SummaryManager({
   meetingId,
   currentPromptVersion,
   summaryPromptVersion,
+  summaryPromptMinor,
+  feedbackAfterSummary,
   hasSummary,
   canImport,
   feedback,
@@ -39,6 +44,13 @@ export function SummaryManager({
   meetingId: string;
   currentPromptVersion: number;
   summaryPromptVersion: number | null;
+  /**
+   * Do której uwagi redakcji sięgał plik, którym powstał opis w serwisie.
+   * `null` = opis sprzed numeracji albo bez tej informacji w treści.
+   */
+  summaryPromptMinor: number | null;
+  /** Ile uwag tej rady doszło już po opisie; `null`, gdy nie da się policzyć. */
+  feedbackAfterSummary: number | null;
   hasSummary: boolean;
   /** Manager: pobranie promptu i wgranie .md. Moderator dostaje same uwagi. */
   canImport: boolean;
@@ -72,7 +84,7 @@ export function SummaryManager({
             ? `Tagi: ${result.topics.join(", ")}.`
             : "Bez linii TAGI — tagi zostały bez zmian.",
           result.promptVersion
-            ? `Prompt v${result.promptVersion}${result.isStale ? " (starszy niż aktualny)" : ""}.`
+            ? `Prompt v${result.promptVersion}${result.promptMinor !== null ? `.${result.promptMinor}` : ""}${result.isStale ? " (starszy niż aktualny)" : ""}.`
             : "Plik nie mówi, którą wersją promptu powstał — sesja będzie oznaczona jako nieaktualna.",
         ].join(" ")
       );
@@ -95,10 +107,10 @@ export function SummaryManager({
     });
   }
 
-  function handleDelete(id: string) {
+  function handleRetire(id: string) {
     setError(null);
     startTransition(async () => {
-      const result = await deleteSummaryFeedback(meetingId, id);
+      const result = await retireSummaryFeedback(meetingId, id);
       if (result.error) setError(result.error);
       else router.refresh();
     });
@@ -108,6 +120,12 @@ export function SummaryManager({
     hasSummary &&
     (summaryPromptVersion === null || summaryPromptVersion < currentPromptVersion);
 
+  // Druga, łagodniejsza przyczyna nieaktualności niż podbity prompt: opis
+  // powstał, zanim spłynęły kolejne uwagi. Nie znaczy „zły", znaczy „nie miał
+  // szansy ich uwzględnić" — stąd osobny komunikat, nie to samo „do
+  // odświeżenia".
+  const nowszeUwagi = hasSummary ? (feedbackAfterSummary ?? 0) : 0;
+
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-dashed border-zinc-300 p-4 dark:border-zinc-700">
       <div className="flex flex-wrap items-center gap-2">
@@ -116,9 +134,13 @@ export function SummaryManager({
         </h3>
         <span className="text-xs text-zinc-400">
           {hasSummary
-            ? `w serwisie: prompt v${summaryPromptVersion ?? "?"}`
+            ? `w serwisie: prompt v${summaryPromptVersion ?? "?"}${
+                summaryPromptMinor !== null ? `.${summaryPromptMinor}` : ""
+              }`
             : "brak podsumowania"}
           {isStale && " · do odświeżenia"}
+          {nowszeUwagi > 0 &&
+            ` · ${nowszeUwagi} ${odmienUwagi(nowszeUwagi)} po tym opisie`}
         </span>
       </div>
 
@@ -180,13 +202,22 @@ export function SummaryManager({
                 <span>{f.authorName}</span>
                 <span>{f.createdAt.slice(0, 10)}</span>
                 {f.promptVersion && <span>prompt v{f.promptVersion}</span>}
+                <span title="Numer uwagi w tej radzie — ten sam, który jedzie w wersji promptu">
+                  #{f.seq}
+                </span>
+                {summaryPromptMinor !== null && f.seq > summaryPromptMinor && (
+                  <span className="text-amber-600 dark:text-amber-400">
+                    nowsza niż opis
+                  </span>
+                )}
                 {f.isOwn && (
                   <button
-                    onClick={() => handleDelete(f.id)}
+                    onClick={() => handleRetire(f.id)}
                     disabled={isPending}
+                    title="Uwaga przestanie trafiać do pobieranych promptów, ale jej numer zostaje zajęty — inaczej wcześniejsze pobrania przestałyby być odtwarzalne"
                     className="ml-auto text-zinc-400 hover:text-red-600 disabled:opacity-40"
                   >
-                    Usuń
+                    Wycofaj
                   </button>
                 )}
               </div>

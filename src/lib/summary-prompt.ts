@@ -39,12 +39,44 @@ export function currentSummaryPromptVersion(): number {
 
 /**
  * Wersja promptu wyczytana z treści gotowego podsumowania (linia
- * „**Wygenerowano:** … · prompt v6"), czyli z tego, co realnie ten tekst
+ * „**Wygenerowano:** … · prompt v7.12"), czyli z tego, co realnie ten tekst
  * wyprodukowało. Starsze podsumowania tej linii nie mają — wtedy null.
+ *
+ * Człon po kropce to `minor`: numer ostatniej uwagi redakcji, która była w
+ * pobranym pliku (patrz `stampPromptMinor`). Nie ma go w pobraniach bez uwag
+ * i w opisach sprzed wprowadzenia numeracji — wtedy null, co znaczy „nie
+ * wiadomo", a nie „żadnych uwag".
  */
-export function promptVersionFromSummary(markdown: string): number | null {
-  const m = markdown.match(/prompt\s+v(\d+)/i);
-  return m ? Number(m[1]) : null;
+export function promptVersionFromSummary(markdown: string): {
+  major: number | null;
+  minor: number | null;
+} {
+  const m = markdown.match(/prompt\s+v(\d+)(?:\.(\d+))?/i);
+  if (!m) return { major: null, minor: null };
+  return {
+    major: Number(m[1]),
+    minor: m[2] === undefined ? null : Number(m[2]),
+  };
+}
+
+/**
+ * Wpisuje minor do nagłówka „Wersja promptu: N" pobieranego pliku, czyli do
+ * jedynego miejsca, z którego prompt każe modelowi przepisać wersję.
+ *
+ * Dzięki temu etykieta wraca z czatu razem z tekstem i po fakcie wiadomo, z
+ * jakim zestawem uwag redakcji ten opis powstał. Bez stempla wracało samo
+ * „prompt v7", identyczne dla pobrania sprzed trzech uwag i po nich.
+ *
+ * Minor należy do uwag, nie do promptu — jest liczony w obrębie jednej rady,
+ * więc `7.12` u Grójca i `7.12` u powiatu to dwa różne zbiory uwag. Nigdy
+ * ich nie porównywać między radami.
+ */
+export function stampPromptMinor(prompt: string, minor: number): string {
+  if (minor <= 0) return prompt;
+  return prompt.replace(
+    /^(\s*Wersja promptu:\s*\d+)/m,
+    (_full, head: string) => `${head}.${minor}`
+  );
 }
 
 /**
@@ -56,6 +88,7 @@ export function parseSummaryFile(markdown: string): {
   summary: string;
   topics: string[] | null;
   promptVersion: number | null;
+  promptMinor: number | null;
 } {
   const tagLine = markdown.match(/^\s*TAGI:\s*(.+)$/im);
   const topics = tagLine
@@ -67,5 +100,6 @@ export function parseSummaryFile(markdown: string): {
 
   const summary = (tagLine ? markdown.replace(tagLine[0], "") : markdown).trim();
 
-  return { summary, topics, promptVersion: promptVersionFromSummary(markdown) };
+  const { major, minor } = promptVersionFromSummary(markdown);
+  return { summary, topics, promptVersion: major, promptMinor: minor };
 }

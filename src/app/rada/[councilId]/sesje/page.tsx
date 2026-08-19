@@ -5,6 +5,7 @@ import { SpeakingHeatmap } from "@/components/speaking-heatmap";
 import { SessionTimelinePill } from "@/components/session-timeline-pill";
 import { LiveMeetingRefresh } from "@/components/live-meeting-refresh";
 import { CURRENT_SUMMARY_PROMPT_VERSION } from "@/lib/summary-prompt-version";
+import { odmienUwagi } from "@/lib/odmiana";
 import {
   getSpeakingActivity,
   type CouncilorStat,
@@ -137,6 +138,7 @@ export default async function CouncilSessionsPage({
     topics: string[] | null;
     summary: string | null;
     summary_prompt_version: number | null;
+    summary_prompt_minor: number | null;
   }[] = [];
   let allTags: string[] = [];
   let selectedTag: string | null = null;
@@ -152,6 +154,19 @@ export default async function CouncilSessionsPage({
     .select("id, full_name, role")
     .eq("council_id", councilId);
 
+  // Numer ostatniej uwagi redakcji w tej radzie — punkt odniesienia dla tego,
+  // czy opis sesji zdążył je zobaczyć. Odczyt podlega RLS, więc kto nie ma
+  // uprawnień do uwag, dostaje 0 i po prostu nie zobaczy tej adnotacji.
+  const { data: ostatniaUwaga } = await supabase
+    .from("summary_feedback")
+    .select("seq")
+    .eq("council_id", councilId)
+    .is("retired_at", null)
+    .order("seq", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const najwyzszaUwaga = ostatniaUwaga?.seq ?? 0;
+
   if (selectedTermId) {
     const [
       activity,
@@ -162,7 +177,7 @@ export default async function CouncilSessionsPage({
         supabase
           .from("meeting")
           .select(
-            "id, date, title, video_url, video_downloaded, transcript_status, topics, summary, summary_prompt_version"
+            "id, date, title, video_url, video_downloaded, transcript_status, topics, summary, summary_prompt_version, summary_prompt_minor"
           )
           .eq("term_id", selectedTermId)
           // Komisja meetings share this table (see prompty/Prompt_Sprawy_v3.md)
@@ -347,6 +362,17 @@ export default async function CouncilSessionsPage({
                       hasSummary &&
                       (m.summary_prompt_version ?? 0) <
                         CURRENT_SUMMARY_PROMPT_VERSION;
+                    // Druga, łagodniejsza przyczyna nieaktualności niż podbity
+                    // prompt: opis powstał, zanim spłynęły kolejne uwagi
+                    // redakcji. Liczone po numerach uwag, bo to one wracają
+                    // z czatu w wersji promptu (`v7.12`).
+                    const uwagiPoOpisie =
+                      hasSummary && m.summary_prompt_minor !== null
+                        ? Math.max(
+                            0,
+                            najwyzszaUwaga - m.summary_prompt_minor
+                          )
+                        : 0;
                     const tooltipParts = [m.title ?? undefined];
                     if (progress !== undefined) {
                       tooltipParts.push(
@@ -358,6 +384,11 @@ export default async function CouncilSessionsPage({
                         summaryOutdated
                           ? "ma podsumowanie (nieaktualna wersja promptu)"
                           : "ma podsumowanie"
+                      );
+                    }
+                    if (uwagiPoOpisie > 0) {
+                      tooltipParts.push(
+                        `${uwagiPoOpisie} ${odmienUwagi(uwagiPoOpisie)} redakcji po tym opisie`
                       );
                     }
                     const tooltip = tooltipParts.filter(Boolean).join(" — ");

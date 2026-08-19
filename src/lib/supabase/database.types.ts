@@ -14,33 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      usage_snapshot: {
-        Row: {
-          source: string
-          metric: string
-          value: number | null
-          unit: string | null
-          note: string | null
-          recorded_at: string
-        }
-        Insert: {
-          source: string
-          metric: string
-          value?: number | null
-          unit?: string | null
-          note?: string | null
-          recorded_at?: string
-        }
-        Update: {
-          source?: string
-          metric?: string
-          value?: number | null
-          unit?: string | null
-          note?: string | null
-          recorded_at?: string
-        }
-        Relationships: []
-      }
       access_audit_log: {
         Row: {
           action: string
@@ -262,6 +235,68 @@ export type Database = {
           },
         ]
       }
+      bookmark: {
+        Row: {
+          anchor_seconds: number
+          councilor_id: string | null
+          created_at: string
+          id: string
+          meeting_id: string
+          note: string | null
+          segment_id: string
+          user_id: string
+        }
+        Insert: {
+          anchor_seconds: number
+          councilor_id?: string | null
+          created_at?: string
+          id?: string
+          meeting_id: string
+          note?: string | null
+          segment_id: string
+          user_id: string
+        }
+        Update: {
+          anchor_seconds?: number
+          councilor_id?: string | null
+          created_at?: string
+          id?: string
+          meeting_id?: string
+          note?: string | null
+          segment_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bookmark_councilor_id_fkey"
+            columns: ["councilor_id"]
+            isOneToOne: false
+            referencedRelation: "councilor"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookmark_meeting_id_fkey"
+            columns: ["meeting_id"]
+            isOneToOne: false
+            referencedRelation: "meeting"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookmark_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "segment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookmark_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       city: {
         Row: {
           admin_unit_id: string | null
@@ -296,6 +331,82 @@ export type Database = {
             columns: ["admin_unit_id"]
             isOneToOne: false
             referencedRelation: "admin_unit"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      committee: {
+        Row: {
+          council_id: string
+          created_at: string
+          esesja_group_id: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          council_id: string
+          created_at?: string
+          esesja_group_id?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          council_id?: string
+          created_at?: string
+          esesja_group_id?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "committee_council_id_fkey"
+            columns: ["council_id"]
+            isOneToOne: false
+            referencedRelation: "council"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      committee_meeting: {
+        Row: {
+          committee_id: string
+          created_at: string
+          date: string
+          esesja_url: string | null
+          id: string
+          number: string | null
+          protocol_received_at: string | null
+          protocol_status: string
+          protocol_url: string | null
+        }
+        Insert: {
+          committee_id: string
+          created_at?: string
+          date: string
+          esesja_url?: string | null
+          id?: string
+          number?: string | null
+          protocol_received_at?: string | null
+          protocol_status?: string
+          protocol_url?: string | null
+        }
+        Update: {
+          committee_id?: string
+          created_at?: string
+          date?: string
+          esesja_url?: string | null
+          id?: string
+          number?: string | null
+          protocol_received_at?: string | null
+          protocol_status?: string
+          protocol_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "committee_meeting_committee_id_fkey"
+            columns: ["committee_id"]
+            isOneToOne: false
+            referencedRelation: "committee"
             referencedColumns: ["id"]
           },
         ]
@@ -503,6 +614,86 @@ export type Database = {
             columns: ["segment_id"]
             isOneToOne: false
             referencedRelation: "segment"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      foi_request: {
+        Row: {
+          answered_at: string | null
+          body: string
+          council_id: string
+          created_at: string
+          due_at: string | null
+          gmail_draft_id: string | null
+          gmail_thread_id: string | null
+          id: string
+          note: string | null
+          sent_at: string | null
+          subject: string
+        }
+        Insert: {
+          answered_at?: string | null
+          body: string
+          council_id: string
+          created_at?: string
+          due_at?: string | null
+          gmail_draft_id?: string | null
+          gmail_thread_id?: string | null
+          id?: string
+          note?: string | null
+          sent_at?: string | null
+          subject: string
+        }
+        Update: {
+          answered_at?: string | null
+          body?: string
+          council_id?: string
+          created_at?: string
+          due_at?: string | null
+          gmail_draft_id?: string | null
+          gmail_thread_id?: string | null
+          id?: string
+          note?: string | null
+          sent_at?: string | null
+          subject?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "foi_request_council_id_fkey"
+            columns: ["council_id"]
+            isOneToOne: false
+            referencedRelation: "council"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      foi_request_meeting: {
+        Row: {
+          committee_meeting_id: string
+          request_id: string
+        }
+        Insert: {
+          committee_meeting_id: string
+          request_id: string
+        }
+        Update: {
+          committee_meeting_id?: string
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "foi_request_meeting_committee_meeting_id_fkey"
+            columns: ["committee_meeting_id"]
+            isOneToOne: false
+            referencedRelation: "committee_meeting"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "foi_request_meeting_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "foi_request"
             referencedColumns: ["id"]
           },
         ]
@@ -833,6 +1024,7 @@ export type Database = {
           source_id: string | null
           subtitles_available: boolean | null
           summary: string | null
+          summary_prompt_minor: number | null
           summary_prompt_version: number | null
           term_id: string
           title: string | null
@@ -852,6 +1044,7 @@ export type Database = {
           source_id?: string | null
           subtitles_available?: boolean | null
           summary?: string | null
+          summary_prompt_minor?: number | null
           summary_prompt_version?: number | null
           term_id: string
           title?: string | null
@@ -871,6 +1064,7 @@ export type Database = {
           source_id?: string | null
           subtitles_available?: boolean | null
           summary?: string | null
+          summary_prompt_minor?: number | null
           summary_prompt_version?: number | null
           term_id?: string
           title?: string | null
@@ -918,6 +1112,64 @@ export type Database = {
             columns: ["council_id"]
             isOneToOne: false
             referencedRelation: "council"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prompt_download: {
+        Row: {
+          council_id: string
+          created_at: string
+          downloaded_by: string | null
+          feedback_minor: number
+          feedback_seqs: number[]
+          id: string
+          kind: string
+          meeting_id: string | null
+          prompt_version: number
+        }
+        Insert: {
+          council_id: string
+          created_at?: string
+          downloaded_by?: string | null
+          feedback_minor: number
+          feedback_seqs?: number[]
+          id?: string
+          kind: string
+          meeting_id?: string | null
+          prompt_version: number
+        }
+        Update: {
+          council_id?: string
+          created_at?: string
+          downloaded_by?: string | null
+          feedback_minor?: number
+          feedback_seqs?: number[]
+          id?: string
+          kind?: string
+          meeting_id?: string | null
+          prompt_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prompt_download_council_id_fkey"
+            columns: ["council_id"]
+            isOneToOne: false
+            referencedRelation: "council"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompt_download_downloaded_by_fkey"
+            columns: ["downloaded_by"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompt_download_meeting_id_fkey"
+            columns: ["meeting_id"]
+            isOneToOne: false
+            referencedRelation: "meeting"
             referencedColumns: ["id"]
           },
         ]
@@ -1073,92 +1325,39 @@ export type Database = {
           },
         ]
       }
-      bookmark: {
-        Row: {
-          anchor_seconds: number
-          councilor_id: string | null
-          created_at: string
-          id: string
-          meeting_id: string
-          note: string | null
-          segment_id: string
-          user_id: string
-        }
-        Insert: {
-          anchor_seconds: number
-          councilor_id?: string | null
-          created_at?: string
-          id?: string
-          meeting_id: string
-          note?: string | null
-          segment_id: string
-          user_id: string
-        }
-        Update: {
-          anchor_seconds?: number
-          councilor_id?: string | null
-          created_at?: string
-          id?: string
-          meeting_id?: string
-          note?: string | null
-          segment_id?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "bookmark_councilor_id_fkey"
-            columns: ["councilor_id"]
-            isOneToOne: false
-            referencedRelation: "councilor"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "bookmark_meeting_id_fkey"
-            columns: ["meeting_id"]
-            isOneToOne: false
-            referencedRelation: "meeting"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "bookmark_segment_id_fkey"
-            columns: ["segment_id"]
-            isOneToOne: false
-            referencedRelation: "segment"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "bookmark_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "app_user"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       summary_feedback: {
         Row: {
           author_id: string
           body: string
+          council_id: string | null
           created_at: string
           id: string
           meeting_id: string
           prompt_version: number | null
+          retired_at: string | null
+          seq: number | null
         }
         Insert: {
           author_id: string
           body: string
+          council_id?: string | null
           created_at?: string
           id?: string
           meeting_id: string
           prompt_version?: number | null
+          retired_at?: string | null
+          seq?: number | null
         }
         Update: {
           author_id?: string
           body?: string
+          council_id?: string | null
           created_at?: string
           id?: string
           meeting_id?: string
           prompt_version?: number | null
+          retired_at?: string | null
+          seq?: number | null
         }
         Relationships: [
           {
@@ -1166,6 +1365,13 @@ export type Database = {
             columns: ["author_id"]
             isOneToOne: false
             referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "summary_feedback_council_id_fkey"
+            columns: ["council_id"]
+            isOneToOne: false
+            referencedRelation: "council"
             referencedColumns: ["id"]
           },
           {
@@ -1211,6 +1417,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      usage_snapshot: {
+        Row: {
+          metric: string
+          note: string | null
+          recorded_at: string
+          source: string
+          unit: string | null
+          value: number | null
+        }
+        Insert: {
+          metric: string
+          note?: string | null
+          recorded_at?: string
+          source: string
+          unit?: string | null
+          value?: number | null
+        }
+        Update: {
+          metric?: string
+          note?: string | null
+          recorded_at?: string
+          source?: string
+          unit?: string | null
+          value?: number | null
+        }
+        Relationships: []
       }
       user_role: {
         Row: {
@@ -1332,6 +1565,22 @@ export type Database = {
         Args: { ancestor_id: string; unit_id: string }
         Returns: boolean
       }
+      council_speaker_usage: {
+        Args: { p_council_id: string }
+        Returns: {
+          segments: number
+          speaker_id: string
+        }[]
+      }
+      councilor_speaking_by_meeting: {
+        Args: { p_councilor_id: string; p_term_id: string }
+        Returns: {
+          max_seconds: number
+          meeting_date: string
+          meeting_id: string
+          seconds: number
+        }[]
+      }
       councilor_voting_similarity: {
         Args: { target_id: string }
         Returns: {
@@ -1339,6 +1588,15 @@ export type Database = {
           common_votes: number
           councilor_id: string
           full_name: string
+        }[]
+      }
+      db_stats: {
+        Args: never
+        Returns: {
+          baza_bajty: number
+          rozmiar_bajty: number
+          tabela: string
+          wierszy: number
         }[]
       }
       grant_browse_permission: { Args: { uid: string }; Returns: undefined }
@@ -1352,12 +1610,8 @@ export type Database = {
           total: number
         }[]
       }
-      set_account_blocked: {
-        Args: { target_id: string; blocked: boolean; reason?: string }
-        Returns: undefined
-      }
       search_segments: {
-        Args: { search_query: string; p_council_id?: string }
+        Args: { p_council_id?: string; search_query: string }
         Returns: {
           council_id: string
           council_name: string
@@ -1369,54 +1623,16 @@ export type Database = {
           start_time: number
         }[]
       }
-      db_stats: {
-        Args: Record<string, never>
-        Returns: {
-          tabela: string
-          wierszy: number
-          rozmiar_bajty: number
-          baza_bajty: number
-        }[]
-      }
       segment_status_counts: {
-        Args: Record<string, never>
+        Args: never
         Returns: {
-          status: string
           ile: number
+          status: string
         }[]
       }
-      councilor_speaking_by_meeting: {
-        Args: { p_councilor_id: string; p_term_id: string }
-        Returns: {
-          meeting_id: string
-          meeting_date: string
-          seconds: number
-          max_seconds: number
-        }[]
-      }
-      term_tagging_time: {
-        Args: { p_term_id: string }
-        Returns: {
-          total_seconds: number
-          finalized_seconds: number
-          proposed_seconds: number
-        }[]
-      }
-      council_speaker_usage: {
-        Args: { p_council_id: string }
-        Returns: {
-          speaker_id: string
-          segments: number
-        }[]
-      }
-      term_speaking_blocks: {
-        Args: { p_term_id: string; p_max_gap?: number }
-        Returns: {
-          speaker_id: string
-          mtg_id: string
-          is_councilor_flag: boolean
-          total_seconds: number
-        }[]
+      set_account_blocked: {
+        Args: { blocked: boolean; reason?: string; target_id: string }
+        Returns: undefined
       }
       term_attendance_stats: {
         Args: { p_term_id: string }
@@ -1424,6 +1640,23 @@ export type Database = {
           councilor_id: string
           session_attendance_pct: number
           vote_attendance_pct: number
+        }[]
+      }
+      term_speaking_blocks: {
+        Args: { p_max_gap?: number; p_term_id: string }
+        Returns: {
+          is_councilor_flag: boolean
+          mtg_id: string
+          speaker_id: string
+          total_seconds: number
+        }[]
+      }
+      term_tagging_time: {
+        Args: { p_term_id: string }
+        Returns: {
+          finalized_seconds: number
+          proposed_seconds: number
+          total_seconds: number
         }[]
       }
       term_voting_correlation: {
