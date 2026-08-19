@@ -159,8 +159,10 @@ export function SpeechBlockRow({
       {/* Stała szerokość kolumny: znacznik z godziną jest dłuższy niż sam
           minutowy, a bez tego tekst obok zaczynałby się w innym miejscu w
           każdym bloku. Przyciski siedzą pod znacznikiem w tej samej
-          kolumnie, więc ich pojawienie się niczego nie przesuwa. */}
-      <div className="flex w-14 shrink-0 flex-col items-end">
+          kolumnie, więc ich pojawienie się niczego nie przesuwa — a szerokość
+          (w-20) bierze się właśnie z nich: trzy ikonki 16 px z polem
+          klikalnym potrzebują 76 px, sam znacznik zmieściłby się w połowie. */}
+      <div className="flex w-20 shrink-0 flex-col items-end">
         <Link
           href={href}
           className="font-mono text-xs leading-6 tabular-nums text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
@@ -188,7 +190,7 @@ export function SpeechBlockRow({
                   ? `Zakładka ${slot + 1} przy wypowiedzi o ${formatClock(start)} — zmień opis`
                   : `Dodaj zakładkę przy wypowiedzi o ${formatClock(start)}`
               }
-              className={`rounded p-0.5 disabled:opacity-40 ${
+              className={`rounded p-1 disabled:opacity-40 ${
                 bookmark
                   ? "text-amber-500 hover:text-amber-600"
                   : "text-zinc-300 hover:text-amber-500 dark:text-zinc-600"
@@ -196,8 +198,8 @@ export function SpeechBlockRow({
             >
               <svg
                 viewBox="0 0 24 24"
-                width="13"
-                height="13"
+                width="16"
+                height="16"
                 fill={bookmark ? "currentColor" : "none"}
                 stroke="currentColor"
                 strokeWidth="2"
@@ -216,12 +218,12 @@ export function SpeechBlockRow({
             onClick={handleCopy}
             title="Kopiuj cytat z atrybucją i odnośnikiem"
             aria-label={`Kopiuj wypowiedź o ${formatClock(start)} jako cytat`}
-            className="rounded p-0.5 text-zinc-300 hover:text-zinc-600 dark:text-zinc-600 dark:hover:text-zinc-300"
+            className="rounded p-1 text-zinc-300 hover:text-zinc-600 dark:text-zinc-600 dark:hover:text-zinc-300"
           >
             <svg
               viewBox="0 0 24 24"
-              width="13"
-              height="13"
+              width="16"
+              height="16"
               fill="none"
               stroke="currentColor"
               strokeWidth="2"
@@ -246,12 +248,12 @@ export function SpeechBlockRow({
               }}
               title="Pobierz ten fragment nagrania (mp3)"
               aria-label={`Pobierz mp3 z wypowiedzią o ${formatClock(start)}`}
-              className="rounded p-0.5 text-zinc-300 hover:text-zinc-600 dark:text-zinc-600 dark:hover:text-zinc-300"
+              className="rounded p-1 text-zinc-300 hover:text-zinc-600 dark:text-zinc-600 dark:hover:text-zinc-300"
             >
               <svg
                 viewBox="0 0 24 24"
-                width="13"
-                height="13"
+                width="16"
+                height="16"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"

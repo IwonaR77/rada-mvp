@@ -104,8 +104,8 @@ export function BookmarkBar() {
             >
               <svg
                 viewBox="0 0 24 24"
-                width="13"
-                height="13"
+                width="15"
+                height="15"
                 fill={bookmark ? "currentColor" : "none"}
                 stroke="currentColor"
                 strokeWidth="2"
