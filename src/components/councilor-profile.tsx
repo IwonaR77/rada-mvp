@@ -10,6 +10,7 @@ import { PercentileMeter } from "@/components/percentile-meter";
 import { CouncilorSpeakingChart } from "@/components/councilor-speaking-chart";
 import { mergeIntoBlocks } from "@/lib/speech-blocks";
 import { CouncilorSpeeches } from "@/components/councilor-speeches";
+import { AUDIO_CUT_ENABLED } from "@/lib/audio-cut";
 import { clusterByAgreement } from "@/lib/hierarchical-clustering";
 
 const MATTER_ROLE_LABEL: Record<string, string> = {
@@ -60,6 +61,10 @@ export async function CouncilorProfile({
     { data: interpellations },
     { data: matterRows },
     speakingSegments,
+    { data: bookmarkRows },
+    {
+      data: { user },
+    },
   ] = await Promise.all([
       supabase
         .from("councilor_term")
@@ -99,6 +104,7 @@ export async function CouncilorProfile({
         .select("role, matter:matter_id(id, title, status, council_id)")
         .eq("councilor_id", id),
       fetchAllRows<{
+        id: string;
         meeting_id: string;
         start_time: number;
         end_time: number;
@@ -108,12 +114,19 @@ export async function CouncilorProfile({
         supabase
           .from("segment")
           .select(
-            "meeting_id, start_time, end_time, text, meeting:meeting_id(term_id, date, title)"
+            "id, meeting_id, start_time, end_time, text, meeting:meeting_id(term_id, date, title)"
           )
           .eq("confirmed_councilor_id", id)
           .eq("status", "finalized")
           .range(from, to)
       ),
+      // Zakładki są prywatne — zakresu po użytkowniku nie ma tu w zapytaniu,
+      // bo robi to polityka RLS (niezalogowany dostaje po prostu pustą listę).
+      supabase
+        .from("bookmark")
+        .select("id, segment_id, meeting_id, anchor_seconds, note")
+        .eq("councilor_id", id),
+      supabase.auth.getUser(),
     ]);
 
   const council = termRow?.term?.council;
@@ -301,6 +314,31 @@ export async function CouncilorProfile({
       blocks: mergeIntoBlocks(segments),
     }))
     .sort((a, b) => b.date.localeCompare(a.date));
+
+  // Sloty w pasku zakładek mają iść w tej samej kolejności, co bloki na
+  // ekranie — pasek czyta się wtedy jak oś panelu, a nie jak stos ostatnich
+  // kliknięć. Zakładka bez swojego bloku (segment po cofnięciu przypisania
+  // nie jest już „finalized") ląduje na końcu, zamiast znikać bez śladu.
+  const blockOrder = new Map<string, number>();
+  speechSessions.forEach((session, sessionIndex) =>
+    session.blocks.forEach((block, blockIndex) =>
+      blockOrder.set(block.segmentId, sessionIndex * 100_000 + blockIndex)
+    )
+  );
+  const bookmarks = (bookmarkRows ?? [])
+    .map((b) => ({
+      id: b.id,
+      segmentId: b.segment_id,
+      meetingId: b.meeting_id,
+      anchorSeconds: Number(b.anchor_seconds),
+      note: b.note,
+      orphaned: !blockOrder.has(b.segment_id),
+    }))
+    .sort(
+      (a, b) =>
+        (blockOrder.get(a.segmentId) ?? Number.MAX_SAFE_INTEGER) -
+        (blockOrder.get(b.segmentId) ?? Number.MAX_SAFE_INTEGER)
+    );
 
   const sessionActivityOutdated =
     Boolean(councilor.session_activity_synthesis) &&
@@ -586,7 +624,14 @@ export async function CouncilorProfile({
         </div>
 
         <aside className="w-full min-w-0 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:flex-1 lg:overflow-y-auto">
-          <CouncilorSpeeches sessions={speechSessions} />
+          <CouncilorSpeeches
+            sessions={speechSessions}
+            councilorId={id}
+            councilorName={councilor.full_name}
+            bookmarks={bookmarks}
+            canBookmark={Boolean(user)}
+            canDownloadAudio={AUDIO_CUT_ENABLED}
+          />
         </aside>
       </div>
     </div>

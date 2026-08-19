@@ -35,10 +35,24 @@ export type SpeechBlock = {
   text: string;
   /** Przerwa od końca poprzedniego bloku w tej sesji; null dla pierwszego. */
   gapBefore: number | null;
+  /**
+   * Id pierwszego segmentu bloku — jedyna trwała kotwica, jaką blok ma.
+   *
+   * Bloki nie istnieją w bazie, więc zakładka użytkownika wskazuje właśnie ten
+   * segment: przeżywa zmianę progu sklejania (wskaże wtedy blok, w którym ten
+   * segment wylądował) i podział segmentu (`splitSegment` zostawia stary
+   * wiersz, dopisując tylko drugą połowę).
+   */
+  segmentId: string;
 };
 
 export function mergeIntoBlocks(
-  segments: { start_time: number; end_time: number; text: string }[],
+  segments: {
+    id: string;
+    start_time: number;
+    end_time: number;
+    text: string;
+  }[],
   mergeGapSeconds = BLOCK_MERGE_GAP_SECONDS
 ): SpeechBlock[] {
   const sorted = [...segments].sort(
@@ -63,6 +77,7 @@ export function mergeIntoBlocks(
       end,
       text,
       gapBefore: last ? start - last.end : null,
+      segmentId: s.id,
     });
   }
 

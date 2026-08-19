@@ -1073,6 +1073,68 @@ export type Database = {
           },
         ]
       }
+      bookmark: {
+        Row: {
+          anchor_seconds: number
+          councilor_id: string | null
+          created_at: string
+          id: string
+          meeting_id: string
+          note: string | null
+          segment_id: string
+          user_id: string
+        }
+        Insert: {
+          anchor_seconds: number
+          councilor_id?: string | null
+          created_at?: string
+          id?: string
+          meeting_id: string
+          note?: string | null
+          segment_id: string
+          user_id: string
+        }
+        Update: {
+          anchor_seconds?: number
+          councilor_id?: string | null
+          created_at?: string
+          id?: string
+          meeting_id?: string
+          note?: string | null
+          segment_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bookmark_councilor_id_fkey"
+            columns: ["councilor_id"]
+            isOneToOne: false
+            referencedRelation: "councilor"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookmark_meeting_id_fkey"
+            columns: ["meeting_id"]
+            isOneToOne: false
+            referencedRelation: "meeting"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookmark_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "segment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookmark_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       summary_feedback: {
         Row: {
           author_id: string
