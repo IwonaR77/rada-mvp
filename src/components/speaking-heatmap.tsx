@@ -276,7 +276,12 @@ export function SpeakingHeatmap({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    // Szerokość z zawartości (`w-fit`) i wyśrodkowanie, tak jak kwadrant:
+    // przy 110rem kontenera i ~28 sesjach siatka zajmowała niecałą połowę
+    // szerokości i wisiała przy lewej krawędzi. `max-w-full` zostawia
+    // przewijanie poziome, gdy sesji przybędzie ponad szerokość ekranu —
+    // wtedy siatka po prostu przestaje się mieścić i przewija się od lewej.
+    <div className="mx-auto flex w-fit max-w-full flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs text-zinc-500">
           <span className={`h-3 w-3 shrink-0 rounded-[3px] ${ZERO_CELL_CLASS}`} />
