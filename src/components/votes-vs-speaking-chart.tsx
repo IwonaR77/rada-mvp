@@ -35,33 +35,36 @@ const TIME_TICKS = [
 ];
 
 /**
- * Cztery ćwiartki, nazwane od POŁOŻENIA na dwóch osiach, nie od charakteru
- * radnego.
+ * Cztery ćwiartki oznaczone literami, w kolejności czytania: A i B u góry,
+ * C i D na dole.
  *
- * Układ jest wzorowany na kwadrancie Gartnera, ale etykiety świadomie nie są
- * jego kalką („Liderzy / Pretendenci / Wizjonerzy / Gracze niszowi"): tam
- * opisują firmy, tu opisywałyby konkretnych, żyjących ludzi na publicznej
- * stronie. „Gracz niszowy" to ocena osoby, a „poniżej mediany na obu osiach"
- * to fakt — i tylko taki fakt te dane niosą.
+ * Litera nie niesie żadnej oceny — i o to chodzi. Układ jest wzorowany na
+ * kwadrancie Gartnera, ale jego nazwy („Liderzy", „Gracze niszowi") opisują
+ * firmy, a tu opisywałyby konkretnych, żyjących ludzi na publicznej stronie.
+ * Grupa to etykieta na współrzędne, a opis pod nią mówi wprost, jakie to
+ * współrzędne: po której stronie mediany leży wynik wyborczy i czas mówienia.
  */
 const QUADRANTS = {
-  topRight: {
-    label: "Silny mandat, dużo głosu",
-    hint: "powyżej mediany na obu osiach",
-  },
   topLeft: {
-    label: "Więcej głosu niż mandatu",
-    hint: "mówią dużo mimo wyniku poniżej mediany",
+    name: "Grupa A",
+    hint: "głosy poniżej mediany · czas powyżej mediany",
   },
-  bottomRight: {
-    label: "Mandat bez mikrofonu",
-    hint: "mocny wynik wyborczy, rzadko zabierają głos",
+  topRight: {
+    name: "Grupa B",
+    hint: "głosy powyżej mediany · czas powyżej mediany",
   },
   bottomLeft: {
-    label: "Poniżej mediany na obu osiach",
-    hint: "mniej głosów i mniej czasu niż połowa rady",
+    name: "Grupa C",
+    hint: "głosy poniżej mediany · czas poniżej mediany",
+  },
+  bottomRight: {
+    name: "Grupa D",
+    hint: "głosy powyżej mediany · czas poniżej mediany",
   },
 } as const;
+
+/** Kolejność czytania — używana w legendzie, żeby litery szły A, B, C, D. */
+const QUADRANT_ORDER = ["topLeft", "topRight", "bottomLeft", "bottomRight"] as const;
 
 type QuadrantKey = keyof typeof QUADRANTS;
 
@@ -188,7 +191,7 @@ export function VotesVsSpeakingChart({
             {formatDuration(active.seconds)} mówienia
             {active.role ? `, ${active.role}` : ""}
             <span className="block text-xs text-zinc-500">
-              ćwiartka: {QUADRANTS[quadrantOf(active)].label}
+              {QUADRANTS[quadrantOf(active)].name} — {QUADRANTS[quadrantOf(active)].hint}
             </span>
           </span>
         ) : (
@@ -289,7 +292,7 @@ export function VotesVsSpeakingChart({
               textAnchor={c.anchor}
               className="fill-zinc-400 text-[11px] font-semibold uppercase tracking-wide dark:fill-zinc-500"
             >
-              {QUADRANTS[c.key].label} ({counts[c.key]})
+              {QUADRANTS[c.key].name} ({counts[c.key]})
             </text>
           ))}
 
@@ -360,14 +363,16 @@ export function VotesVsSpeakingChart({
 
       <div className="mx-auto flex w-full max-w-[46rem] flex-col gap-2">
         <div className="grid gap-2 sm:grid-cols-2">
-          {(Object.keys(QUADRANTS) as QuadrantKey[]).map((key) => (
+          {QUADRANT_ORDER.map((key) => (
             <div
               key={key}
               className="rounded-xl border border-zinc-200 px-3 py-2 dark:border-zinc-800"
             >
               <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                {QUADRANTS[key].label}{" "}
-                <span className="font-normal text-zinc-400">— {counts[key]}</span>
+                {QUADRANTS[key].name}{" "}
+                <span className="font-normal text-zinc-400">
+                  — {counts[key]} {counts[key] === 1 ? "radny" : "radnych"}
+                </span>
               </div>
               <div className="text-xs text-zinc-500">{QUADRANTS[key].hint}</div>
             </div>
@@ -375,8 +380,9 @@ export function VotesVsSpeakingChart({
         </div>
 
         <p className="text-xs leading-relaxed text-zinc-500">
-          Podział przebiega po medianach obu wielkości, nie po środku wykresu — po każdej
-          stronie linii leży połowa rady. Kwadratami zaznaczono prezydium (przewodnicząca
+          Grupy A–D to wyłącznie oznaczenie ćwiartki, bez wartościowania: podział przebiega
+          po medianach obu wielkości, nie po środku wykresu, więc po każdej stronie linii
+          leży połowa rady. Kwadratami zaznaczono prezydium (przewodnicząca
           i wiceprzewodniczący): ich czas przy mikrofonie wynika z prowadzenia obrad, więc
           wysoka pozycja w pionie nie mówi o ich własnej aktywności. Korelacja rang
           (Spearman) między liczbą głosów a czasem mówienia wynosi{" "}
