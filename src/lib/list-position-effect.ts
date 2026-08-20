@@ -1,4 +1,3 @@
-import type { ElectionData } from "@/lib/election-data";
 import type { SimCandidate } from "@/lib/electoral-systems";
 
 /** Jedna lista wyborcza: kandydaci JEDNEGO komitetu w JEDNYM okręgu. */
@@ -26,6 +25,8 @@ export type PositionEffect = {
   topWasFirst: number;
   /** Z ilu z nich najlepszy wynik miała osoba z ostatniego miejsca. */
   topWasLast: number;
+  /** Udział „jedynek" we wszystkich kandydatach i we wszystkich głosach. */
+  firstPlaceShare: { candidates: number; votes: number };
 };
 
 /**
@@ -34,10 +35,17 @@ export type PositionEffect = {
  * Kolejność jest tu treścią, nie porządkiem porządkowym: całe pytanie brzmi,
  * czy miejsce na liście przekłada się na wynik, więc posortowanie tego głosami
  * skasowałoby dokładnie tę informację, dla której ten widok istnieje.
+ *
+ * `electedIds` jest parametrem, a nie odczytem z wyniku PKW, żeby ten sam widok
+ * obsłużył wynik rzeczywisty i dowolną symulację ordynacji — dzięki temu widać,
+ * czy przewaga „jedynek" jest cechą metody D'Hondta, czy zachowania wyborców.
  */
-export function buildBallotLists(election: ElectionData): BallotList[] {
+export function buildBallotLists(
+  candidates: SimCandidate[],
+  electedIds: ReadonlySet<string>
+): BallotList[] {
   const lists = new Map<string, BallotList>();
-  for (const c of election.candidates) {
+  for (const c of candidates) {
     const key = `${c.committeeCode}|${c.districtNumber}`;
     let list = lists.get(key);
     if (!list) {
@@ -50,7 +58,7 @@ export function buildBallotLists(election: ElectionData): BallotList[] {
       };
       lists.set(key, list);
     }
-    const wonMandate = election.actualElectedIds.has(c.id);
+    const wonMandate = electedIds.has(c.id);
     list.candidates.push({ ...c, wonMandate });
     list.votes += c.votes;
     if (wonMandate) list.seats++;
@@ -84,6 +92,9 @@ export function measurePositionEffect(lists: BallotList[]): PositionEffect {
   let listsWithSeats = 0;
   let topWasFirst = 0;
   let topWasLast = 0;
+  let allVotes = 0;
+  let firstVotes = 0;
+  let allCandidates = 0;
 
   for (const list of lists) {
     const last = list.candidates.length;
@@ -98,6 +109,9 @@ export function measurePositionEffect(lists: BallotList[]): PositionEffect {
       bucket.candidates++;
       bucket.votes += c.votes;
       if (c.wonMandate) bucket.seats++;
+      allVotes += c.votes;
+      allCandidates++;
+      if (c.listPosition === 1) firstVotes += c.votes;
     }
 
     if (list.seats > 0) {
@@ -118,5 +132,9 @@ export function measurePositionEffect(lists: BallotList[]): PositionEffect {
     listsWithSeats,
     topWasFirst,
     topWasLast,
+    firstPlaceShare: {
+      candidates: allCandidates ? lists.length / allCandidates : 0,
+      votes: allVotes ? firstVotes / allVotes : 0,
+    },
   };
 }

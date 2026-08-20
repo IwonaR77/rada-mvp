@@ -4,7 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 import { loadElection } from "@/lib/election-data";
 import { assignCommitteeSlots } from "@/lib/election-committee";
 import { ElectoralSimulator } from "@/components/electoral-simulator";
-import { BallotLists } from "@/components/ballot-lists";
 
 export default async function CouncilElectionPage({
   params,
@@ -82,18 +81,6 @@ export default async function CouncilElectionPage({
               )
             )}
           />
-
-          <section>
-            <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-zinc-500">
-              Miejsce na liście — czy „jedynki&rdquo; wchodzą?
-            </h2>
-            <BallotLists
-              election={election}
-              slotOf={assignCommitteeSlots(
-                election.committees.map((c) => ({ code: c.code, ballotOrder: c.listNumber }))
-              )}
-            />
-          </section>
 
           <div className="max-w-3xl rounded-2xl border border-zinc-200 p-4 text-sm leading-relaxed text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
             <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">

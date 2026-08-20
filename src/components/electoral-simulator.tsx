@@ -9,6 +9,7 @@ import {
   type SimCandidate,
 } from "@/lib/electoral-systems";
 import { countStv } from "@/lib/stv";
+import { BallotLists } from "@/components/ballot-lists";
 import { committeeColorVar } from "@/lib/election-committee";
 
 const METHODS: Method[] = [
@@ -296,6 +297,23 @@ export function ElectoralSimulator({
         </h4>
         <CandidateList candidates={result.elected} slotOf={slotOf} showVotes />
       </div>
+
+      <section>
+        <h3 className="mb-1 text-sm font-medium uppercase tracking-wide text-zinc-500">
+          Miejsce na liście — czy „jedynki&rdquo; wchodzą?
+        </h3>
+        <p className="mb-4 text-xs text-zinc-500">
+          {isActual
+            ? "Wynik rzeczywisty. Pogrubieni kandydaci zdobyli mandat."
+            : "Listy przeliczone wybraną wyżej metodą — pogrubienie pokazuje, kto miałby mandat w tym wariancie."}
+        </p>
+        <BallotLists
+          candidates={candidates}
+          electedIds={result.elected.map((c) => c.id)}
+          committees={committees}
+          slotOf={slotOf}
+        />
+      </section>
 
       {stvLog && stvLog.length > 0 && (
         <details className="rounded-2xl border border-zinc-200 p-3 dark:border-zinc-800">
