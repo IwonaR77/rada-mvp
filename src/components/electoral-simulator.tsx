@@ -326,6 +326,8 @@ export function ElectoralSimulator({
           electedIds={result.elected.map((c) => c.id)}
           committees={committees}
           slotOf={slotOf}
+          seatsPerDistrict={seatsPerDistrict}
+          config={method === "stv" ? null : { method, perDistrict, threshold }}
         />
       </section>
 

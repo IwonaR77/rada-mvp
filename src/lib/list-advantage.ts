@@ -1,4 +1,8 @@
-import type { SimCandidate } from "@/lib/electoral-systems";
+import {
+  simulate,
+  type SimCandidate,
+  type SimulationConfig,
+} from "@/lib/electoral-systems";
 
 export type MissedCandidate = SimCandidate & {
   /** Najsłabszy wynik, który zdobył mandat w TYM SAMYM okręgu. */
@@ -62,4 +66,66 @@ export function findListAdvantage(
       .sort((a, b) => a.districtNumber - b.districtNumber),
     missedOut,
   };
+}
+
+
+/**
+ * Sprawdza, z których innych list w SWOIM okręgu kandydat zdobyłby mandat.
+ *
+ * Liczone przez faktyczne przeniesienie kandydata na daną listę i przeliczenie
+ * całych wyborów od nowa — nie przez skrót arytmetyczny — bo przeniesienie
+ * zmienia sumy obu list naraz, a przez próg gminny potrafi odbić się także na
+ * pozostałych okręgach. Skrót łatwo by to zgubił.
+ *
+ * Założenie: kandydat zabiera na nową listę swoje głosy. Jest ono znacznie
+ * mocniejsze niż przy przenoszeniu między okręgami — to ci sami wyborcy w tym
+ * samym okręgu i mogli na tę osobę zagłosować niezależnie od szyldu — ale nie
+ * jest darmowe: część głosów padła na komitet, nie na człowieka, i ta część by
+ * za nim nie poszła.
+ *
+ * Kandydat trafia na koniec listy docelowej, bo pozycja rozstrzyga wyłącznie
+ * remisy w liczbie głosów (art. 233 kw) — to najostrożniejsze założenie,
+ * a nie takie, które sztucznie mu pomaga.
+ *
+ * @returns kod komitetu → lista kodów komitetów dających mandat, per kandydat
+ */
+export function findWinningAlternatives(
+  candidates: SimCandidate[],
+  seatsPerDistrict: Map<number, number>,
+  config: SimulationConfig,
+  targets: SimCandidate[]
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+
+  for (const target of targets) {
+    const inDistrict = [
+      ...new Set(
+        candidates
+          .filter((c) => c.districtNumber === target.districtNumber)
+          .map((c) => c.committeeCode)
+      ),
+    ];
+    const winning: string[] = [];
+
+    for (const code of inDistrict) {
+      if (code === target.committeeCode) continue;
+      const lastPosition = Math.max(
+        0,
+        ...candidates
+          .filter((c) => c.committeeCode === code && c.districtNumber === target.districtNumber)
+          .map((c) => c.listPosition)
+      );
+      const moved = candidates.map((c) =>
+        c.id === target.id
+          ? { ...c, committeeCode: code, listPosition: lastPosition + 1 }
+          : c
+      );
+      const result = simulate(moved, seatsPerDistrict, config);
+      if (result.elected.some((c) => c.id === target.id)) winning.push(code);
+    }
+
+    out.set(target.id, winning);
+  }
+
+  return out;
 }

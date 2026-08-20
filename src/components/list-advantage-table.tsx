@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import { findListAdvantage } from "@/lib/list-advantage";
+import { findListAdvantage, findWinningAlternatives } from "@/lib/list-advantage";
 import { committeeColorVar } from "@/lib/election-committee";
-import type { SimCandidate } from "@/lib/electoral-systems";
+import type { SimCandidate, SimulationConfig } from "@/lib/electoral-systems";
 
 const TH = "px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-zinc-500";
 const TD = "border-t border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800";
@@ -14,17 +14,31 @@ export function ListAdvantageTable({
   electedIds,
   committees,
   slotOf,
+  seatsPerDistrict,
+  config,
 }: {
   candidates: SimCandidate[];
   /** Kto ma mandat w AKTUALNIE wybranym wariancie liczenia. */
   electedIds: string[];
   committees: { code: string; shortName: string }[];
   slotOf: Record<string, number>;
+  seatsPerDistrict: Map<number, number>;
+  /**
+   * Wariant liczenia do sprawdzenia „a gdyby z innej listy". `null` wyłącza tę
+   * kolumnę — przy STV trzeba by przeliczyć kilkadziesiąt pełnych liczeń kart,
+   * co w przeglądarce jest zauważalnie wolne, a samo zestawienie działa i bez niej.
+   */
+  config: SimulationConfig | null;
 }) {
   const elected = useMemo(() => new Set(electedIds), [electedIds]);
   const { thresholds, missedOut } = useMemo(
     () => findListAdvantage(candidates, elected),
     [candidates, elected]
+  );
+  const alternatives = useMemo(
+    () =>
+      config ? findWinningAlternatives(candidates, seatsPerDistrict, config, missedOut) : null,
+    [config, candidates, seatsPerDistrict, missedOut]
   );
   const shortOf = new Map(committees.map((c) => [c.code, c.shortName]));
 
@@ -69,6 +83,9 @@ export function ListAdvantageTable({
               <th className={`${TH} text-right`}>Miejsce</th>
               <th className={`${TH} text-right`}>Głosy</th>
               <th className={`${TH} text-right`}>Próg w okręgu</th>
+              {alternatives && (
+                <th className={`${TH} text-right`}>Weszłaby z innej listy</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -96,11 +113,38 @@ export function ListAdvantageTable({
                       +{c.votes - c.districtThreshold}
                     </span>
                   </td>
+                  {alternatives && (
+                    <AlternativesCell
+                      codes={alternatives.get(c.id) ?? []}
+                      total={
+                        new Set(
+                          candidates
+                            .filter((o) => o.districtNumber === c.districtNumber)
+                            .map((o) => o.committeeCode)
+                        ).size - 1
+                      }
+                      shortOf={shortOf}
+                    />
+                  )}
                 </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {alternatives && (
+        <p className="max-w-3xl text-xs leading-relaxed text-zinc-500">
+          Ostatnia kolumna odpowiada na pytanie „a gdyby ta sama osoba kandydowała w tym
+          samym okręgu z innej listy?&rdquo; — liczone przez faktyczne przeniesienie
+          kandydata i przeliczenie całych wyborów od nowa, bez zmiany choćby jednego głosu.
+          Zakładamy przy tym, że kandydat zabiera swoje głosy na nową listę. W samorządzie
+          to założenie jest mocne: szyld waży tu znacznie mniej niż w wyborach krajowych —
+          pięć z ośmiu list w Grójcu wystawiły komitety wyborców, a nie partie, jeden nosi
+          wprost nazwisko swojego lidera i głosuje się przede wszystkim na osoby znane
+          z sąsiedztwa. Przeniesienie nie jest jednak 1:1: część głosów padła na komitet,
+          nie na człowieka, i ta część by za kandydatem nie poszła.
+        </p>
+      )}
 
       <p className="max-w-3xl text-xs leading-relaxed text-zinc-500">
         Wykaz obejmuje wyłącznie osoby, które przebiły próg SWOJEGO okręgu — porównywanie
@@ -110,5 +154,35 @@ export function ListAdvantageTable({
         gdy zestawi się te osoby obok siebie.
       </p>
     </div>
+  );
+}
+
+function AlternativesCell({
+  codes,
+  total,
+  shortOf,
+}: {
+  codes: string[];
+  total: number;
+  shortOf: Map<string, string>;
+}) {
+  return (
+    <td className={`${NUM} align-top`}>
+      {codes.length ? (
+        <>
+          <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+            {codes.length} z {total}
+          </span>
+          <span
+            className="block max-w-[16rem] text-xs font-normal text-zinc-500"
+            title={codes.map((c) => shortOf.get(c) ?? c).join(", ")}
+          >
+            {codes.join(", ")}
+          </span>
+        </>
+      ) : (
+        <span className="text-zinc-400">z żadnej</span>
+      )}
+    </td>
   );
 }
