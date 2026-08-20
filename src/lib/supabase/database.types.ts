@@ -501,6 +501,8 @@ export type Database = {
           councilor_id: string
           created_at: string
           district_seat: string | null
+          election_committee: string | null
+          election_committee_code: string | null
           id: string
           mandate_end_date: string | null
           mandate_start_date: string
@@ -512,6 +514,8 @@ export type Database = {
           councilor_id: string
           created_at?: string
           district_seat?: string | null
+          election_committee?: string | null
+          election_committee_code?: string | null
           id?: string
           mandate_end_date?: string | null
           mandate_start_date: string
@@ -523,6 +527,8 @@ export type Database = {
           councilor_id?: string
           created_at?: string
           district_seat?: string | null
+          election_committee?: string | null
+          election_committee_code?: string | null
           id?: string
           mandate_end_date?: string | null
           mandate_start_date?: string
@@ -572,6 +578,197 @@ export type Database = {
             columns: ["city_id"]
             isOneToOne: false
             referencedRelation: "city"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      election: {
+        Row: {
+          created_at: string
+          held_on: string
+          id: string
+          imported_at: string
+          seats: number
+          source: string
+          source_dataset: string
+          term_id: string
+          teryt: string
+        }
+        Insert: {
+          created_at?: string
+          held_on: string
+          id?: string
+          imported_at?: string
+          seats: number
+          source?: string
+          source_dataset: string
+          term_id: string
+          teryt: string
+        }
+        Update: {
+          created_at?: string
+          held_on?: string
+          id?: string
+          imported_at?: string
+          seats?: number
+          source?: string
+          source_dataset?: string
+          term_id?: string
+          teryt?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "election_term_id_fkey"
+            columns: ["term_id"]
+            isOneToOne: true
+            referencedRelation: "term"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      election_candidate: {
+        Row: {
+          age: number | null
+          committee_id: string
+          councilor_id: string | null
+          created_at: string
+          district_id: string
+          election_id: string
+          full_name: string
+          gender: string | null
+          id: string
+          list_position: number
+          residence: string | null
+          support: string | null
+          votes: number
+          won_mandate: boolean
+        }
+        Insert: {
+          age?: number | null
+          committee_id: string
+          councilor_id?: string | null
+          created_at?: string
+          district_id: string
+          election_id: string
+          full_name: string
+          gender?: string | null
+          id?: string
+          list_position: number
+          residence?: string | null
+          support?: string | null
+          votes: number
+          won_mandate: boolean
+        }
+        Update: {
+          age?: number | null
+          committee_id?: string
+          councilor_id?: string | null
+          created_at?: string
+          district_id?: string
+          election_id?: string
+          full_name?: string
+          gender?: string | null
+          id?: string
+          list_position?: number
+          residence?: string | null
+          support?: string | null
+          votes?: number
+          won_mandate?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "election_candidate_committee_id_fkey"
+            columns: ["committee_id"]
+            isOneToOne: false
+            referencedRelation: "election_committee"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "election_candidate_councilor_id_fkey"
+            columns: ["councilor_id"]
+            isOneToOne: false
+            referencedRelation: "councilor"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "election_candidate_district_id_fkey"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "election_district"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "election_candidate_election_id_fkey"
+            columns: ["election_id"]
+            isOneToOne: false
+            referencedRelation: "election"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      election_committee: {
+        Row: {
+          code: string
+          election_id: string
+          id: string
+          list_number: number
+          name: string
+          short_name: string
+        }
+        Insert: {
+          code: string
+          election_id: string
+          id?: string
+          list_number: number
+          name: string
+          short_name: string
+        }
+        Update: {
+          code?: string
+          election_id?: string
+          id?: string
+          list_number?: number
+          name?: string
+          short_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "election_committee_election_id_fkey"
+            columns: ["election_id"]
+            isOneToOne: false
+            referencedRelation: "election"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      election_district: {
+        Row: {
+          election_id: string
+          id: string
+          number: number
+          seats: number
+          valid_votes: number
+        }
+        Insert: {
+          election_id: string
+          id?: string
+          number: number
+          seats: number
+          valid_votes: number
+        }
+        Update: {
+          election_id?: string
+          id?: string
+          number?: number
+          seats?: number
+          valid_votes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "election_district_election_id_fkey"
+            columns: ["election_id"]
+            isOneToOne: false
+            referencedRelation: "election"
             referencedColumns: ["id"]
           },
         ]

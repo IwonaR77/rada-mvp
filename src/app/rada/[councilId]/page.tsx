@@ -113,6 +113,12 @@ export default async function CouncilHubPage({
           Głosy
         </Link>
         <Link
+          href={`/rada/${council.id}/wybory`}
+          className="rounded-full border border-zinc-300 px-4 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        >
+          Wybory
+        </Link>
+        <Link
           href={`/sprawy?councilId=${council.id}`}
           className="rounded-full border border-zinc-300 px-4 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
         >

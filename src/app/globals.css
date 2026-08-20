@@ -3,6 +3,17 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Kategorialne kolory komitetów wyborczych — zob. src/lib/election-committee.ts */
+  --committee-0: #2a78d6;
+  --committee-1: #eb6834;
+  --committee-2: #1baf7a;
+  --committee-3: #eda100;
+  --committee-4: #e87ba4;
+  --committee-5: #008300;
+  --committee-6: #4a3aa7;
+  --committee-7: #e34948;
+  --committee-none: #a1a1aa;
 }
 
 @theme inline {
@@ -16,6 +27,16 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    --committee-0: #3987e5;
+    --committee-1: #d95926;
+    --committee-2: #199e70;
+    --committee-3: #c98500;
+    --committee-4: #d55181;
+    --committee-5: #008300;
+    --committee-6: #9085e9;
+    --committee-7: #e66767;
+    --committee-none: #71717a;
   }
 }
 
