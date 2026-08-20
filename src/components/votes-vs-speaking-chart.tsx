@@ -2,17 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { committeeColorVar } from "@/lib/election-committee";
-
-export type VotesSpeakingPoint = {
-  councilorId: string;
-  fullName: string;
-  committeeCode: string | null;
-  /** Palette slot for the committee, or null when it has none. */
-  slot: number | null;
-  votes: number;
-  seconds: number;
-  role: string | null;
-};
+import type { VotesSpeakingPoint } from "@/lib/votes-vs-speaking";
 
 const PLOT = 600;
 const PAD = { top: 46, right: 30, bottom: 62, left: 74 };

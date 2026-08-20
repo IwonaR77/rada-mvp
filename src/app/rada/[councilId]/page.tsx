@@ -5,6 +5,8 @@ import { FavoriteCouncilButton } from "@/components/favorite-council-button";
 import { SpeakingHeatmap } from "@/components/speaking-heatmap";
 import { getSpeakingActivity } from "@/lib/council-activity";
 import { TaggingProgress } from "@/components/tagging-progress";
+import { VotesVsSpeakingChart } from "@/components/votes-vs-speaking-chart";
+import { loadVotesVsSpeaking } from "@/lib/votes-vs-speaking";
 
 export default async function CouncilHubPage({
   params,
@@ -50,19 +52,25 @@ export default async function CouncilHubPage({
     finalized_seconds: number;
     proposed_seconds: number;
   } | null = null;
+  // Kwadrant jest tylko dla rad z zaimportowanym wynikiem wyborów, więc bywa
+  // pusty — sekcja znika wtedy w całości.
+  let votesVsSpeaking: Awaited<ReturnType<typeof loadVotesVsSpeaking>> = null;
   if (latestTerm) {
     const { data: officials } = await supabase
       .from("official")
       .select("id, full_name, role")
       .eq("council_id", councilId);
-    activity = await getSpeakingActivity(supabase, latestTerm.id, officials ?? []);
-    // Postęp tagowania liczony czasem wypowiedzi — mówi, ile jeszcze zostało
-    // do przesłuchania, czego heatmapa sama z siebie nie pokazuje: pusta
-    // komórka może znaczyć "nie mówił" albo "nikt tego jeszcze nie tknął".
-    const { data: timeRows } = await supabase.rpc("term_tagging_time", {
-      p_term_id: latestTerm.id,
-    });
+    const [loadedActivity, { data: timeRows }, loadedQuadrant] = await Promise.all([
+      getSpeakingActivity(supabase, latestTerm.id, officials ?? []),
+      // Postęp tagowania liczony czasem wypowiedzi — mówi, ile jeszcze zostało
+      // do przesłuchania, czego heatmapa sama z siebie nie pokazuje: pusta
+      // komórka może znaczyć "nie mówił" albo "nikt tego jeszcze nie tknął".
+      supabase.rpc("term_tagging_time", { p_term_id: latestTerm.id }),
+      loadVotesVsSpeaking(supabase, latestTerm.id),
+    ]);
+    activity = loadedActivity;
     taggingTime = timeRows?.[0] ?? null;
+    votesVsSpeaking = loadedQuadrant;
   }
 
   return (
@@ -125,6 +133,23 @@ export default async function CouncilHubPage({
           Sprawy
         </Link>
       </nav>
+
+      {votesVsSpeaking && votesVsSpeaking.points.length >= 5 && (
+        <section>
+          <h3 className="mb-1 text-sm font-medium uppercase tracking-wide text-zinc-500">
+            Głosy a czas mówienia {latestTerm?.label ? `— ${latestTerm.label}` : ""}
+          </h3>
+          <p className="mb-4 text-xs text-zinc-500">
+            Każdy punkt to jeden radny: w poziomie liczba głosów oddanych na niego
+            w wyborach, w pionie łączny czas, przez jaki mówił na sesjach tej kadencji.
+            Linie przerywane to mediany obu wielkości.
+          </p>
+          <VotesVsSpeakingChart
+            points={votesVsSpeaking.points}
+            correlation={votesVsSpeaking.correlation}
+          />
+        </section>
+      )}
 
       {activity && (
         <section>

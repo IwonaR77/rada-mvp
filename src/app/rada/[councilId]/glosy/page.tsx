@@ -6,13 +6,8 @@ import {
   type MatrixCouncilor,
 } from "@/components/voting-correlation-matrix";
 import { ElectionResultsTables } from "@/components/election-results-tables";
-import {
-  VotesVsSpeakingChart,
-  type VotesSpeakingPoint,
-} from "@/components/votes-vs-speaking-chart";
 import { loadElection } from "@/lib/election-data";
 import { assignCommitteeSlots } from "@/lib/election-committee";
-import { spearman } from "@/lib/correlation";
 
 function formatDate(dateStr: string) {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("pl-PL", {
@@ -83,29 +78,17 @@ export default async function CouncilVotesPage({
   let councilors: MatrixCouncilor[] = [];
   let votingPairs: { a: string; b: string; agreementPct: number }[] = [];
   let election: Awaited<ReturnType<typeof loadElection>> = null;
-  let speakingPoints: VotesSpeakingPoint[] = [];
-  let speakingCorrelation = { all: 0, withoutOfficers: 0 };
-  let roles = new Map<string, string | null>();
 
   if (selectedTermId) {
-    const [{ data: roster }, { data: correlationRows }, loaded, { data: speakingRows }] =
-      await Promise.all([
-        supabase
-          .from("councilor_term")
-          .select(
-            "role, election_committee, election_committee_code, councilor:councilor_id(id, full_name)"
-          )
-          .eq("term_id", selectedTermId),
-        supabase.rpc("term_voting_correlation", { p_term_id: selectedTermId }),
-        loadElection(supabase, selectedTermId),
-        supabase.rpc("term_speaking_blocks", { p_term_id: selectedTermId }),
-      ]);
+    const [{ data: roster }, { data: correlationRows }, loaded] = await Promise.all([
+      supabase
+        .from("councilor_term")
+        .select("election_committee, election_committee_code, councilor:councilor_id(id, full_name)")
+        .eq("term_id", selectedTermId),
+      supabase.rpc("term_voting_correlation", { p_term_id: selectedTermId }),
+      loadElection(supabase, selectedTermId),
+    ]);
     election = loaded;
-    roles = new Map(
-      (roster ?? [])
-        .filter((r) => r.councilor)
-        .map((r) => [r.councilor!.id, r.role ?? null])
-    );
     councilors = (roster ?? [])
       .filter((r) => r.councilor)
       .map((r) => ({
@@ -126,53 +109,6 @@ export default async function CouncilVotesPage({
       agreementPct: r.agreement_pct,
     }));
 
-    // Głosy z wyborów zestawione z czasem mówienia. Głosy bierzemy z kandydatur
-    // (także tych przegranych), bo dwoje radnych weszło na wakaty i w tabeli
-    // zwycięzców ich nie ma, a na sesjach mówią jak wszyscy.
-    if (election) {
-      const votesByCouncilor = new Map<string, { votes: number; code: string }>();
-      for (const c of election.candidates) {
-        if (c.councilorId) {
-          votesByCouncilor.set(c.councilorId, { votes: c.votes, code: c.committeeCode });
-        }
-      }
-      const seconds = new Map<string, number>();
-      for (const r of speakingRows ?? []) {
-        if (!r.is_councilor_flag || !r.speaker_id) continue;
-        seconds.set(r.speaker_id, (seconds.get(r.speaker_id) ?? 0) + Number(r.total_seconds));
-      }
-      const slots = assignCommitteeSlots(
-        election.committees.map((c) => ({ code: c.code, ballotOrder: c.listNumber }))
-      );
-      speakingPoints = councilors.flatMap<VotesSpeakingPoint>((c) => {
-        const v = votesByCouncilor.get(c.id);
-        return v
-          ? [
-              {
-                councilorId: c.id,
-                fullName: c.fullName,
-                committeeCode: v.code,
-                slot: slots.get(v.code) ?? null,
-                votes: v.votes,
-                seconds: seconds.get(c.id) ?? 0,
-                role: roles.get(c.id) ?? null,
-              },
-            ]
-          : [];
-      });
-
-      const withoutOfficers = speakingPoints.filter((p) => !p.role);
-      speakingCorrelation = {
-        all: spearman(
-          speakingPoints.map((p) => p.votes),
-          speakingPoints.map((p) => p.seconds)
-        ),
-        withoutOfficers: spearman(
-          withoutOfficers.map((p) => p.votes),
-          withoutOfficers.map((p) => p.seconds)
-        ),
-      };
-    }
   }
 
   const committeeSlots = election
@@ -266,7 +202,7 @@ export default async function CouncilVotesPage({
                   Wybory {new Date(election.heldOn).getFullYear()} — skąd wziął się ten skład
                 </h3>
                 <ElectionResultsTables election={election} slotOf={committeeSlots!} />
-                <p className="mt-4">
+                <p className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
                   <Link
                     href={`/rada/${council.id}/wybory?kadencja=${selectedTermId}`}
                     prefetch={false}
@@ -274,20 +210,15 @@ export default async function CouncilVotesPage({
                   >
                     Przelicz te głosy inną ordynacją →
                   </Link>
+                  <Link
+                    href={`/rada/${council.id}`}
+                    className="text-sm text-zinc-700 underline underline-offset-4 hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
+                  >
+                    Zestaw te głosy z czasem mówienia →
+                  </Link>
                 </p>
               </section>
 
-              {speakingPoints.length >= 5 && (
-                <section>
-                  <h3 className="mb-4 text-sm font-medium uppercase tracking-wide text-zinc-500">
-                    Głosy a czas mówienia
-                  </h3>
-                  <VotesVsSpeakingChart
-                    points={speakingPoints}
-                    correlation={speakingCorrelation}
-                  />
-                </section>
-              )}
             </>
           )}
         </>
