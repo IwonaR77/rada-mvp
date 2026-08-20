@@ -23,6 +23,11 @@ const H = PAD.top + PLOT + PAD.bottom;
 // od 2 sekund do blisko 13 godzin. Na skali liniowej wszyscy poza
 // przewodniczącą leżeliby na jednej kresce przy zerze.
 //
+// Skala jest ŁAMANA W MEDIANIE: osobny odcinek logarytmiczny poniżej i powyżej,
+// każdy na połowę wysokości. Dzięki temu linia podziału wypada dokładnie
+// w połowie i ćwiartki są równej wielkości — inaczej mediana lądowała gdzieś
+// na 2/3 wysokości i kwadrant przestawał wyglądać jak kwadrant.
+//
 // Wybór skali NIE zmienia przydziału do ćwiartek — granicą jest mediana, więc
 // decyduje wyłącznie kolejność, a nie odległości. Skala wpływa tu na to, jak
 // punkty są rozłożone wewnątrz ćwiartki, nie na to, w której są.
@@ -90,15 +95,22 @@ export function VotesVsSpeakingChart({
     const minSec = Math.min(...points.map((p) => p.seconds));
     const maxSec = Math.max(...points.map((p) => p.seconds));
     const floor = Math.max(1, Math.min(minSec, 10) / 2);
-    const lo = Math.log10(floor);
-    const hi = Math.log10(maxSec * 1.5);
-
-    const x = (v: number) => PAD.left + (v / (maxVotes * 1.08)) * PLOT;
-    const y = (s: number) =>
-      PAD.top + PLOT - ((Math.log10(Math.max(s, floor)) - lo) / (hi - lo)) * PLOT;
-
     const votesMedian = median(points.map((p) => p.votes));
     const secondsMedian = median(points.map((p) => p.seconds));
+
+    const lo = Math.log10(floor);
+    const mid = Math.log10(Math.max(secondsMedian, floor));
+    const hi = Math.log10(maxSec * 1.5);
+    const lowerSpan = Math.max(mid - lo, 1e-9);
+    const upperSpan = Math.max(hi - mid, 1e-9);
+
+    const x = (v: number) => PAD.left + (v / (maxVotes * 1.08)) * PLOT;
+    const y = (s: number) => {
+      const l = Math.log10(Math.max(s, floor));
+      const frac =
+        l <= mid ? 0.5 * ((l - lo) / lowerSpan) : 0.5 + 0.5 * ((l - mid) / upperSpan);
+      return PAD.top + PLOT - Math.min(1, Math.max(0, frac)) * PLOT;
+    };
 
     const quadrantOf = (p: VotesSpeakingPoint): QuadrantKey => {
       const right = p.votes >= votesMedian;
@@ -275,13 +287,15 @@ export function VotesVsSpeakingChart({
           >
             mediana {Math.round(votesMedian)} gł.
           </text>
+          {/* Etykieta mediany idzie WEWNĄTRZ wykresu: po lewej stronie osi
+              nachodziła na obrócony opis osi pionowej. */}
           <text
-            x={PAD.left - 8}
+            x={PAD.left + 6}
             y={midY - 6}
-            textAnchor="end"
+            textAnchor="start"
             className="fill-zinc-400 text-[10px]"
           >
-            mediana
+            mediana {formatDuration(secondsMedian)}
           </text>
 
           {corners.map((c) => (
@@ -380,9 +394,10 @@ export function VotesVsSpeakingChart({
         </div>
 
         <p className="text-xs leading-relaxed text-zinc-500">
-          Grupy A–D to wyłącznie oznaczenie ćwiartki, bez wartościowania: podział przebiega
-          po medianach obu wielkości, nie po środku wykresu, więc po każdej stronie linii
-          leży połowa rady. Kwadratami zaznaczono prezydium (przewodnicząca
+          Grupy A–D to wyłącznie oznaczenie ćwiartki, bez wartościowania. Podział przebiega
+          po medianach obu wielkości, więc po każdej stronie każdej linii leży połowa rady;
+          oś pionowa jest logarytmiczna i załamana w medianie, żeby wypadła ona dokładnie
+          w połowie wysokości i ćwiartki miały równą wielkość. Kwadratami zaznaczono prezydium (przewodnicząca
           i wiceprzewodniczący): ich czas przy mikrofonie wynika z prowadzenia obrad, więc
           wysoka pozycja w pionie nie mówi o ich własnej aktywności. Korelacja rang
           (Spearman) między liczbą głosów a czasem mówienia wynosi{" "}

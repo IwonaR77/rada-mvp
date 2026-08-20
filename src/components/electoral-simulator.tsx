@@ -11,6 +11,7 @@ import {
 import { countStv } from "@/lib/stv";
 import { BallotLists } from "@/components/ballot-lists";
 import { ListAdvantageTable } from "@/components/list-advantage-table";
+import { DistrictConcentrationTable } from "@/components/district-concentration-table";
 import { committeeColorVar } from "@/lib/election-committee";
 
 const METHODS: Method[] = [
@@ -327,6 +328,23 @@ export function ElectoralSimulator({
           slotOf={slotOf}
         />
       </section>
+
+      {perDistrict && method !== "stv" && (
+        <section>
+          <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
+            Ile kosztuje rozproszenie między okręgami
+          </h3>
+          <DistrictConcentrationTable
+            candidates={candidates}
+            seatsPerDistrict={seatsPerDistrict}
+            electedIds={result.elected.map((c) => c.id)}
+            committees={committees}
+            slotOf={slotOf}
+            method={method}
+            threshold={threshold}
+          />
+        </section>
+      )}
 
       {stvLog && stvLog.length > 0 && (
         <details className="rounded-2xl border border-zinc-200 p-3 dark:border-zinc-800">

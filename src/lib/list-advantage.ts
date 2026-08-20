@@ -6,12 +6,10 @@ export type MissedCandidate = SimCandidate & {
 };
 
 export type ListAdvantage = {
-  /** Najsłabszy wynik, który w ogóle zdobył mandat. */
-  weakestWinner: SimCandidate | null;
-  /** Niewybrani z lepszym wynikiem niż {@link weakestWinner}, malejąco. */
+  /** Próg wejścia w każdym okręgu: najsłabszy wynik, który dał tam mandat. */
+  thresholds: { districtNumber: number; votes: number }[];
+  /** Niewybrani, którzy przebili próg SWOJEGO okręgu, malejąco po głosach. */
   missedOut: MissedCandidate[];
-  /** Ilu z nich przegrało mimo wyniku lepszego także od progu w SWOIM okręgu. */
-  aboveOwnDistrict: number;
 };
 
 /**
@@ -25,10 +23,11 @@ export type ListAdvantage = {
  * To nie jest błąd systemu — to jego konstrukcja — ale nie widać jej, dopóki
  * nie zestawi się tych ludzi obok siebie.
  *
- * `districtThreshold` jest tu istotny, bo mandaty dzieli się w OKRĘGU: ktoś
- * z 95 głosami w okręgu, gdzie najsłabszy zwycięzca miał 130, nie „powinien"
- * był wejść nawet lokalnie. Bez tej kolumny zestawienie sugerowałoby
- * niesprawiedliwość mocniejszą, niż wynika z danych.
+ * Porównanie jest wyłącznie WEWNĄTRZOKRĘGOWE, bo mandaty dzieli się w okręgu.
+ * Zestawianie kandydata z najsłabszym zwycięzcą w całej gminie wciągałoby na
+ * listę ludzi, którzy nie weszliby także lokalnie — w Grójcu progi wynosiły
+ * 78, 119 i 130 głosów, więc taki wykaz sugerowałby niesprawiedliwość
+ * mocniejszą, niż wynika z danych.
  *
  * @param electedIds - kto ma mandat w rozpatrywanym wariancie liczenia;
  * parametr, a nie wynik PKW, żeby zestawienie reagowało na symulację
@@ -38,31 +37,29 @@ export function findListAdvantage(
   electedIds: ReadonlySet<string>
 ): ListAdvantage {
   const winners = candidates.filter((c) => electedIds.has(c.id));
-  if (!winners.length) {
-    return { weakestWinner: null, missedOut: [], aboveOwnDistrict: 0 };
-  }
+  if (!winners.length) return { thresholds: [], missedOut: [] };
 
-  const weakestWinner = winners.reduce((a, b) => (b.votes < a.votes ? b : a));
-
-  const districtThresholds = new Map<number, number>();
+  const byDistrict = new Map<number, number>();
   for (const w of winners) {
-    const current = districtThresholds.get(w.districtNumber);
+    const current = byDistrict.get(w.districtNumber);
     if (current === undefined || w.votes < current) {
-      districtThresholds.set(w.districtNumber, w.votes);
+      byDistrict.set(w.districtNumber, w.votes);
     }
   }
 
   const missedOut = candidates
-    .filter((c) => !electedIds.has(c.id) && c.votes > weakestWinner.votes)
-    .map((c) => ({
-      ...c,
-      districtThreshold: districtThresholds.get(c.districtNumber) ?? weakestWinner.votes,
-    }))
+    .flatMap((c) => {
+      if (electedIds.has(c.id)) return [];
+      const districtThreshold = byDistrict.get(c.districtNumber);
+      if (districtThreshold === undefined || c.votes <= districtThreshold) return [];
+      return [{ ...c, districtThreshold }];
+    })
     .sort((a, b) => b.votes - a.votes || a.fullName.localeCompare(b.fullName, "pl"));
 
   return {
-    weakestWinner,
+    thresholds: [...byDistrict]
+      .map(([districtNumber, votes]) => ({ districtNumber, votes }))
+      .sort((a, b) => a.districtNumber - b.districtNumber),
     missedOut,
-    aboveOwnDistrict: missedOut.filter((c) => c.votes > c.districtThreshold).length,
   };
 }

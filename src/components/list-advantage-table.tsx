@@ -22,19 +22,22 @@ export function ListAdvantageTable({
   slotOf: Record<string, number>;
 }) {
   const elected = useMemo(() => new Set(electedIds), [electedIds]);
-  const { weakestWinner, missedOut, aboveOwnDistrict } = useMemo(
+  const { thresholds, missedOut } = useMemo(
     () => findListAdvantage(candidates, elected),
     [candidates, elected]
   );
   const shortOf = new Map(committees.map((c) => [c.code, c.shortName]));
 
-  if (!weakestWinner) return null;
+  if (!thresholds.length) return null;
+
+  const thresholdList = thresholds
+    .map((t) => `okręg ${t.districtNumber} — ${t.votes}`)
+    .join(", ");
 
   if (!missedOut.length) {
     return (
       <p className="text-sm text-zinc-500">
-        W tym wariancie nikt niewybrany nie ma lepszego wyniku niż najsłabszy zwycięzca
-        ({weakestWinner.fullName}, {weakestWinner.votes} gł.).
+        W tym wariancie nikt niewybrany nie przebił progu swojego okręgu ({thresholdList}).
       </p>
     );
   }
@@ -42,18 +45,18 @@ export function ListAdvantageTable({
   return (
     <div className="flex flex-col gap-4">
       <p className="max-w-3xl text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-        Najsłabszy wynik, który wystarczył do mandatu, to{" "}
+        Mandaty dzieli się w okręgu, a najsłabszy wynik, który dał tam mandat, wyniósł:{" "}
         <strong className="font-semibold text-zinc-700 dark:text-zinc-300">
-          {weakestWinner.votes} głosów
+          {thresholdList}
         </strong>{" "}
-        ({weakestWinner.fullName}, {shortOf.get(weakestWinner.committeeCode)}, okręg{" "}
-        {weakestWinner.districtNumber}). Mimo to{" "}
+        {thresholds.length === 1 ? "głosów" : "głosów"}. Mimo to{" "}
         <strong className="font-semibold text-zinc-700 dark:text-zinc-300">
           {missedOut.length}
         </strong>{" "}
-        {missedOut.length === 1 ? "osoba" : "osób"} z lepszym wynikiem osobistym nie weszła
-        do rady. To premia za obecność na właściwej liście: mandat najpierw dostaje LISTA,
-        a dopiero potem dzieli się go między jej kandydatów.
+        {missedOut.length === 1 ? "osoba przebiła ten próg" : "osób przebiło ten próg"} we
+        własnym okręgu i mandatu nie {missedOut.length === 1 ? "dostała" : "dostało"}. To
+        premia za obecność na właściwej liście: mandat najpierw dostaje LISTA, a dopiero
+        potem dzieli się go między jej kandydatów.
       </p>
 
       <div className="overflow-x-auto">
@@ -69,10 +72,8 @@ export function ListAdvantageTable({
             </tr>
           </thead>
           <tbody>
-            {missedOut.map((c) => {
-              const beatOwnDistrict = c.votes > c.districtThreshold;
-              return (
-                <tr key={c.id}>
+            {missedOut.map((c) => (
+              <tr key={c.id}>
                   <td className={`${TD} text-zinc-700 dark:text-zinc-300`}>{c.fullName}</td>
                   <td className={TD}>
                     <span className="flex items-center gap-2">
@@ -89,30 +90,24 @@ export function ListAdvantageTable({
                   <td className={`${NUM} font-semibold text-zinc-900 dark:text-zinc-100`}>
                     {c.votes}
                   </td>
-                  <td
-                    className={`${NUM} ${
-                      beatOwnDistrict
-                        ? "text-rose-700 dark:text-rose-400"
-                        : "text-zinc-400"
-                    }`}
-                  >
+                  <td className={`${NUM} text-zinc-500`}>
                     {c.districtThreshold}
+                    <span className="ml-2 text-rose-700 dark:text-rose-400">
+                      +{c.votes - c.districtThreshold}
+                    </span>
                   </td>
                 </tr>
-              );
-            })}
+            ))}
           </tbody>
         </table>
       </div>
 
       <p className="max-w-3xl text-xs leading-relaxed text-zinc-500">
-        Kolumna „próg w okręgu&rdquo; to najsłabszy wynik, który zdobył mandat w tym samym okręgu —
-        bo mandaty dzieli się w okręgach, nie w całej gminie. Na czerwono{" "}
-        {aboveOwnDistrict === 1 ? "osoba, która przebiła" : `${aboveOwnDistrict} osób, które przebiły`}{" "}
-        także próg swojego okręgu, a mimo to {aboveOwnDistrict === 1 ? "nie weszła" : "nie weszły"};
-        dla pozostałych porównanie z najsłabszym zwycięzcą w całej gminie jest tylko poglądowe,
-        bo w ich okręgu poprzeczka wisiała wyżej. To nie jest błąd systemu, tylko jego
-        konstrukcja — ale widać ją dopiero, gdy zestawi się te osoby obok siebie.
+        Wykaz obejmuje wyłącznie osoby, które przebiły próg SWOJEGO okręgu — porównywanie
+        ich z najsłabszym zwycięzcą w całej gminie byłoby mylące, bo progi w okręgach różnią
+        się nawet o kilkadziesiąt głosów. Na czerwono, o ile głosów każda z nich ten próg
+        przebiła. To nie jest błąd systemu, tylko jego konstrukcja — ale widać ją dopiero,
+        gdy zestawi się te osoby obok siebie.
       </p>
     </div>
   );
