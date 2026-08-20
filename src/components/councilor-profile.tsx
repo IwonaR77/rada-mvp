@@ -48,7 +48,7 @@ export async function CouncilorProfile({
   const { data: councilor } = await supabase
     .from("councilor")
     .select(
-      "id, full_name, photo_url, interpellation_synthesis, interpellation_synthesis_updated_at, session_activity_synthesis, session_activity_synthesis_prompt_version"
+      "id, full_name, photo_url, interpellation_synthesis, interpellation_synthesis_updated_at, session_activity_synthesis, session_activity_synthesis_prompt_version, session_activity_synthesis_updated_at"
     )
     .eq("id", id)
     .maybeSingle();
@@ -465,7 +465,16 @@ export async function CouncilorProfile({
                 {councilor.interpellation_synthesis}
               </ReactMarkdown>
             </div>
-            <p className="mt-2 text-xs text-zinc-400">
+            {/* Bez wersji kryteriów, bo ta synteza nie ma w bazie kolumny
+                z numerem promptu — inaczej niż opis aktywności na sesjach.
+                Zostaje data, żeby czytelnik przynajmniej wiedział, jak świeży
+                jest ten tekst i że powstał maszynowo. */}
+            <p className="mt-2 text-xs text-zinc-500">
+              Opis wygenerowany maszynowo
+              {councilor.interpellation_synthesis_updated_at &&
+                ` · ${formatDate(councilor.interpellation_synthesis_updated_at)}`}
+            </p>
+            <p className="mt-1 text-xs text-zinc-400">
               Synteza tematów interpelacji — porównanie z przebiegiem dyskusji
               na sesji jest dostępne tylko tam, gdzie dana sesja ma już gotowe
               podsumowanie (nie wszystkie sesje kadencji są jeszcze
@@ -491,9 +500,29 @@ export async function CouncilorProfile({
                   {councilor.session_activity_synthesis}
                 </ReactMarkdown>
               </div>
+              {/* Skąd ten opis pochodzi, ma być widoczne zawsze, a nie dopiero
+                  gdy się zestarzeje. To tekst o żywym człowieku wygenerowany
+                  maszynowo — czytelnik ma prawo od razu wiedzieć, wg jakich
+                  kryteriów i kiedy powstał, i móc te kryteria przeczytać.
+                  Dotąd widać było wyłącznie ostrzeżenie o nieaktualności, więc
+                  opis świeży nie mówił o sobie nic. */}
+              <p className="mt-2 text-xs text-zinc-500">
+                Opis wygenerowany maszynowo wg{" "}
+                <Link
+                  href="/prompt-oceny-radnych"
+                  className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900 hover:decoration-zinc-500 dark:decoration-zinc-700 dark:hover:text-zinc-100"
+                >
+                  kryteriów oceny w wersji{" "}
+                  {councilor.session_activity_synthesis_prompt_version ?? "?"}
+                </Link>
+                {councilor.session_activity_synthesis_updated_at &&
+                  ` · ${formatDate(councilor.session_activity_synthesis_updated_at)}`}
+              </p>
               {sessionActivityOutdated && (
-                <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                  Wygenerowane wg starszej wersji kryteriów oceny — do odświeżenia.
+                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  Obowiązują już nowsze kryteria (wersja{" "}
+                  {CURRENT_COUNCILOR_EVALUATION_PROMPT_VERSION}) — opis do
+                  odświeżenia.
                 </p>
               )}
             </>
