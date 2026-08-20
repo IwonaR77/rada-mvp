@@ -45,11 +45,26 @@ MIN_CZAS_WZORCA = 4.0
 MIN_PROBEK = 8
 
 
+def plik_sesji(emb_dir, sesja):
+    """Ścieżka do embeddingów sesji: pełny zrzut ma pierwszeństwo.
+
+    Historycznie jedna sesja mogła dać dwa pliki: `emb-<id>.npz` — kilkanaście
+    próbek wyciętych pod wzorce, gdy prawie nic nie było jeszcze zatwierdzone —
+    i `emb-<id>-sesja.npz` — komplet segmentów, liczony później pod tagowanie.
+    Dziś, gdy przypisania nadrobiono, ten drugi opisuje tę samą sesję pełniej,
+    a przy okazji pochodzi z HLS-a, czyli z tego samego źródła co reszta.
+    Mieszanie źródeł przesuwa całą skalę podobieństw o ~0,1, więc bierzemy
+    jeden plik na sesję, nie sumę obu.
+    """
+    pelny = Path(emb_dir) / f"emb-{sesja}-sesja.npz"
+    return pelny if pelny.exists() else Path(emb_dir) / f"emb-{sesja}.npz"
+
+
 def wczytaj_embeddingi(emb_dir, sesje, model):
     """id segmentu -> embedding, ze wszystkich .npz podanych sesji."""
     out = {}
     for s in sesje:
-        plik = Path(emb_dir) / f"emb-{s}.npz"
+        plik = plik_sesji(emb_dir, s)
         if not plik.exists():
             print(f"  UWAGA: brak {plik}, pomijam sesję {s}")
             continue
