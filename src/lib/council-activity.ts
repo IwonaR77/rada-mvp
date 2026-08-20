@@ -1,4 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+// Próg trzymany razem z klienckim licznikiem bloków: strona sesji liczy tę
+// samą rzecz w przeglądarce, a dwa progi rozjechałyby te dwa widoki.
+import { SPEAKING_BLOCK_MAX_GAP_SECONDS } from "@/lib/speech-blocks";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -54,14 +57,6 @@ export type SpeakingActivity = {
   heatmapExtraRows: { id: string; fullName: string }[];
   stats: CouncilorStat[];
 };
-
-/**
- * Przerwa (w sekundach), po której blok się kończy, mimo że kolejny segment
- * należy do tego samego mówcy. Bez progu pojedynczy błąd tagowania potrafi
- * skleić dwugodzinny „blok" — taki w bazie jest. Wartości 30–120 s dają wyniki
- * w granicach 2% od siebie, więc to nie jest pokrętło do strojenia liczb.
- */
-const SPEAKING_BLOCK_MAX_GAP_SECONDS = 60;
 
 /**
  * Role pozycji technicznych z listy mówców — wpisów, które nie są osobami.

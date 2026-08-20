@@ -12,7 +12,10 @@ import {
   type Segment,
   type Person,
 } from "@/lib/transcript-export";
-import { formatClock as formatTime } from "@/lib/speech-blocks";
+import {
+  formatClock as formatTime,
+  speakingSecondsByBlock,
+} from "@/lib/speech-blocks";
 // Te same reguły, których używa skrypt kontrolny scripts/voice/sprawdz-rodzaj.mjs.
 import { sprzecznyRodzaj } from "@/lib/rodzaj-mowcy.mjs";
 import {
@@ -291,15 +294,26 @@ export function SessionPlayer({
   // Czas mówienia w TEJ sesji — porządkuje listę mówców tak, żeby osoby
   // prowadzące obrady i najczęściej zabierające głos były najwyżej. Liczone
   // z segmentów już wczytanych na stronę, bez dodatkowego zapytania.
-  const speakingSeconds = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const seg of segments) {
-      const id = seg.confirmed_councilor_id ?? seg.confirmed_official_id;
-      if (!id) continue;
-      m.set(id, (m.get(id) ?? 0) + Number(seg.end_time) - Number(seg.start_time));
-    }
-    return m;
-  }, [segments]);
+  //
+  // PER BLOK, tą samą definicją co heatmapa rady i profil radnego (patrz
+  // `speakingSecondsByBlock`) — do 19.08.2026 sumowaliśmy tu długości
+  // pojedynczych segmentów i ta sama osoba miała tu liczbę o kilkanaście
+  // procent niższą niż w kolumnie tej sesji na heatmapie.
+  //
+  // Różnica, która zostaje świadomie: liczymy też przypisania jeszcze
+  // niezatwierdzone, bo ta lista służy do tagowania (patrz komentarz przy
+  // `SpeakerList`), a publiczne statystyki biorą wyłącznie `finalized`.
+  const speakingSeconds = useMemo(
+    () =>
+      speakingSecondsByBlock(
+        segments.map((s) => ({
+          start_time: s.start_time,
+          end_time: s.end_time,
+          speakerId: s.confirmed_councilor_id ?? s.confirmed_official_id,
+        }))
+      ),
+    [segments]
+  );
 
   // Kto prowadzi obrady — z funkcji w kadencji (`councilor_term.role`), a NIE
   // z czasu mówienia. Pierwsza wersja brała najdłużej mówiącego i na sesji,
