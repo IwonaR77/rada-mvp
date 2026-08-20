@@ -10,6 +10,7 @@ import {
 } from "@/lib/electoral-systems";
 import { countStv } from "@/lib/stv";
 import { BallotLists } from "@/components/ballot-lists";
+import { ListAdvantageTable } from "@/components/list-advantage-table";
 import { committeeColorVar } from "@/lib/election-committee";
 
 const METHODS: Method[] = [
@@ -308,6 +309,18 @@ export function ElectoralSimulator({
             : "Listy przeliczone wybraną wyżej metodą — pogrubienie pokazuje, kto miałby mandat w tym wariancie."}
         </p>
         <BallotLists
+          candidates={candidates}
+          electedIds={result.elected.map((c) => c.id)}
+          committees={committees}
+          slotOf={slotOf}
+        />
+      </section>
+
+      <section>
+        <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
+          Przegrali listą, nie liczbą głosów
+        </h3>
+        <ListAdvantageTable
           candidates={candidates}
           electedIds={result.elected.map((c) => c.id)}
           committees={committees}
