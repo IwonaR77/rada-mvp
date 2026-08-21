@@ -1022,8 +1022,18 @@ export function SessionPlayer({
                             className="flex flex-1 flex-col gap-0.5 text-left text-sm"
                           >
                             <div className="flex gap-3">
+                              {/* Stała szerokość kolumny, nie sama czcionka
+                                  monospace: `formatClock` pomija godziny
+                                  poniżej 1:00:00, więc „05:11" ma pięć znaków,
+                                  a „1:02:03" siedem — i od pierwszej godziny
+                                  sesji tekst obok zaczynał się w innym miejscu
+                                  niż wcześniej. Wcześniejsza poprawka wyrównała
+                                  same minuty (wiodące zero), co załatwiało
+                                  „5:11" kontra „12:34", ale nie próg godziny.
+                                  Wyrównanie do prawej i `tabular-nums` tak jak
+                                  przy blokach wypowiedzi w profilu radnego. */}
                               <span
-                                className={`shrink-0 font-mono ${
+                                className={`w-16 shrink-0 text-right font-mono tabular-nums ${
                                   isActive ? "" : "text-zinc-400"
                                 }`}
                               >
