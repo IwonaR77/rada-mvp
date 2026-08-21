@@ -21,7 +21,11 @@ import path from "node:path";
 import { supabaseQuery, REPO_ROOT } from "../lib/db.mjs";
 // Reguły mieszkają w src/lib/rodzaj-mowcy.mjs, żeby interfejs (podświetlanie
 // segmentu) i ten skrypt nie rozjechały się przy kolejnej poprawce.
-import { sprzecznyRodzaj, plecPoImieniu } from "../../src/lib/rodzaj-mowcy.mjs";
+import {
+  sprzecznyRodzaj,
+  plecPoImieniu,
+  ETYKIETY_BEZ_PLCI,
+} from "../../src/lib/rodzaj-mowcy.mjs";
 
 function parseArgs(argv) {
   const args = { status: "all" };
@@ -71,6 +75,12 @@ function main() {
   for (const s of segmenty) {
     if (!s.mowca) continue;
     if (args.status !== "all" && s.status !== args.status) continue;
+
+    // Etykiety zbiorcze odpadają PRZED licznikiem, nie dopiero w regule:
+    // inaczej „sprawdzone" liczyłoby wypowiedzi, których ta kontrola nie jest
+    // w stanie rozstrzygnąć, i sesja z wieloma gośćmi wyglądałaby na
+    // prześwietloną szerzej, niż była.
+    if (ETYKIETY_BEZ_PLCI.has(s.mowca)) continue;
 
     if (!/[aiyeęąóu]ł(am|abym|em|bym)\b/iu.test(s.text ?? "")) continue;
     sprawdzone++;

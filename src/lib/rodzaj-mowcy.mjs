@@ -40,6 +40,24 @@ function bezNarzednika(tekst) {
     .replace(/\p{L}+(ym|im|om)\s+\p{L}+ł(em|am)\b/giu, "");
 }
 
+/**
+ * Etykiety zbiorcze — nie są osobami, więc nie mają płci.
+ *
+ * Pod „Zaproszonym gościem" kryje się za każdym razem ktoś inny, raz kobieta,
+ * raz mężczyzna. Reguła `plecPoImieniu` odczytałaby z takiej etykiety rodzaj
+ * gramatyczny jej pierwszego słowa („Zaproszony" → mężczyzna, „Halucynacja" →
+ * kobieta) i podświetlała na czerwono każdą wypowiedź gościa mówiącego
+ * o sobie w drugą stronę. To fałszywy alarm co do jednego: sprzeczności tam
+ * nie ma i być nie może, bo nie ma z czym.
+ */
+export const ETYKIETY_BEZ_PLCI = new Set([
+  "Zaproszony gość",
+  "Mieszkaniec miasta",
+  "Nieustalony mówca",
+  "Nieustalony urzędnik",
+  "Halucynacja transkrypcji",
+]);
+
 /** Płeć po imieniu: polskie imiona żeńskie kończą się na „a". */
 export function plecPoImieniu(pelneImie) {
   return pelneImie.split(" ")[0].toLowerCase().endsWith("a") ? "k" : "m";
@@ -52,6 +70,7 @@ export function plecPoImieniu(pelneImie) {
  */
 export function sprzecznyRodzaj(tekst, mowca) {
   if (!tekst || !mowca) return false;
+  if (ETYKIETY_BEZ_PLCI.has(mowca)) return false;
   const oczyszczony = bezNarzednika(tekst);
   const zenska = ZENSKIE.test(oczyszczony);
   const meska = MESKIE.test(oczyszczony);
