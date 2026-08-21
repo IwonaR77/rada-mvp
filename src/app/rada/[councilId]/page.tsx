@@ -134,23 +134,11 @@ export default async function CouncilHubPage({
         </Link>
       </nav>
 
-      {votesVsSpeaking && votesVsSpeaking.points.length >= 5 && (
-        <section>
-          <h3 className="mb-1 text-sm font-medium uppercase tracking-wide text-zinc-500">
-            Głosy a czas mówienia {latestTerm?.label ? `— ${latestTerm.label}` : ""}
-          </h3>
-          <p className="mb-4 text-xs text-zinc-500">
-            Każdy punkt to jeden radny: w poziomie liczba głosów oddanych na niego
-            w wyborach, w pionie łączny czas, przez jaki mówił na sesjach tej kadencji.
-            Linie przerywane to mediany obu wielkości.
-          </p>
-          <VotesVsSpeakingChart
-            points={votesVsSpeaking.points}
-            correlation={votesVsSpeaking.correlation}
-          />
-        </section>
-      )}
-
+      {/* Heatmapa przed kwadrantem: pokazuje, kto mówił i na których sesjach,
+          czyli materiał, z którego kwadrant liczy jedną ze swoich osi. Kwadrant
+          czyta się lepiej, gdy się już wie, skąd wziął się czas mówienia — a nie
+          odwrotnie. Pasek rozpisania zostaje przy heatmapie, bo opisuje
+          kompletność właśnie tych danych. */}
       {activity && (
         <section>
           <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
@@ -172,6 +160,23 @@ export default async function CouncilHubPage({
             ]}
             meetings={activity.heatmapMeetings}
             matrix={activity.heatmapMatrix}
+          />
+        </section>
+      )}
+
+      {votesVsSpeaking && votesVsSpeaking.points.length >= 5 && (
+        <section>
+          <h3 className="mb-1 text-sm font-medium uppercase tracking-wide text-zinc-500">
+            Głosy a czas mówienia {latestTerm?.label ? `— ${latestTerm.label}` : ""}
+          </h3>
+          <p className="mb-4 text-xs text-zinc-500">
+            Każdy punkt to jeden radny: w poziomie liczba głosów oddanych na niego
+            w wyborach, w pionie łączny czas, przez jaki mówił na sesjach tej kadencji.
+            Linie przerywane to mediany obu wielkości.
+          </p>
+          <VotesVsSpeakingChart
+            points={votesVsSpeaking.points}
+            correlation={votesVsSpeaking.correlation}
           />
         </section>
       )}
