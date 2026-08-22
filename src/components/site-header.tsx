@@ -46,6 +46,17 @@ export async function SiteHeader() {
         >
           Home
         </Link>
+        {!blocked && (
+          <>
+            <span className="text-zinc-300 dark:text-zinc-700">·</span>
+            <Link
+              href="/szukaj"
+              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            >
+              Szukaj
+            </Link>
+          </>
+        )}
         {favoriteCouncil && !blocked && (
           <>
             {/* Dla kogoś z ulubioną radą "Home" prowadzi już do niej, nie na

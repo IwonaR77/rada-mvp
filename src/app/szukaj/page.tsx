@@ -29,12 +29,17 @@ export default async function SearchPage({
   const { q, councilId } = await searchParams;
   const supabase = await createClient();
 
-  const { data: results } = q
-    ? await supabase.rpc("search_segments", {
-        search_query: q,
-        p_council_id: councilId ?? undefined,
-      })
-    : { data: null };
+  const [{ data: results }, { data: council }] = await Promise.all([
+    q
+      ? supabase.rpc("search_segments", {
+          search_query: q,
+          p_council_id: councilId ?? undefined,
+        })
+      : Promise.resolve({ data: null }),
+    councilId
+      ? supabase.from("council").select("id, name").eq("id", councilId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
 
   // Nazwę rady pokazujemy tylko wtedy, gdy wyniki faktycznie pochodzą z więcej
   // niż jednej — przy jednej radzie byłaby to ta sama etykieta przy każdym
@@ -44,11 +49,37 @@ export default async function SearchPage({
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-16">
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
-        Szukaj w transkrypcjach
-      </h1>
+      <div>
+        {council && (
+          <Link
+            href={`/rada/${council.id}`}
+            className="text-sm text-zinc-500 hover:underline"
+          >
+            ← {council.name}
+          </Link>
+        )}
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+          Szukaj w transkrypcjach
+        </h1>
+        <p className="text-sm text-zinc-500">
+          {council ? (
+            <>
+              Wyniki tylko z rady „{council.name}”.{" "}
+              <Link
+                href={q ? `/szukaj?q=${encodeURIComponent(q)}` : "/szukaj"}
+                className="underline"
+              >
+                Szukaj we wszystkich radach
+              </Link>
+            </>
+          ) : (
+            "Wyniki ze wszystkich rad."
+          )}
+        </p>
+      </div>
 
       <form className="flex gap-2">
+        {councilId && <input type="hidden" name="councilId" value={councilId} />}
         <input
           type="text"
           name="q"
