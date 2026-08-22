@@ -45,51 +45,11 @@ const MIN_STEP_INDEX = 0;
 const ZERO_CELL_CLASS =
   "bg-transparent ring-1 ring-inset ring-zinc-300 dark:ring-zinc-700";
 
-// Kwadracik z sumą kadencji ma ŚWIADOMIE inną skalę niż komórki sesji, bo
-// odpowiada na inne pytanie: nie „ile w tym dniu", tylko „jak głośna to
-// w ogóle osoba". Wspólna niebieska rampa zlewałaby oba znaczenia w jedno.
-//
-// Skala jest zbudowana jak wysokość na mapie: trzy pasma intensywności, każde
-// z własną barwą bazową, a wewnątrz pasma odcień ciemnieje z wartością. Dzięki
-// temu widać naraz przynależność do grupy (barwa) i pozycję w grupie (odcień) —
-// czego jedna ciągła rampa nie pokazuje, bo przy tak skośnym rozkładzie
-// (prowadzący mówi wielokrotnie więcej niż mediana) prawie wszyscy lądują
-// w jej jasnym końcu.
-const PASMA = [
-  { nazwa: "mało", kroki: ["#a7f3d0", "#6ee7b7", "#34d399", "#10b981"] },
-  { nazwa: "średnio", kroki: ["#fde68a", "#fcd34d", "#fbbf24", "#f59e0b"] },
-  { nazwa: "dużo", kroki: ["#fca5a5", "#f87171", "#ef4444", "#dc2626"] },
-];
-
-/**
- * Granice pasm — tercyle rozkładu, a nie równe trzecie części maksimum.
- *
- * Podział po wartości wrzucałby prawie wszystkich do „mało" (jedna osoba
- * mówiąca najwięcej rozciąga skalę), a pasma mają dzielić ludzi, nie sekundy.
- * Zera zostają poza rozkładem: cisza to osobny stan, nie najniższy poziom.
- */
-function granicePasm(sumy: number[]): [number, number] {
-  const niezerowe = sumy.filter((s) => s > 0).sort((a, b) => a - b);
-  if (niezerowe.length === 0) return [0, 0];
-  const kwantyl = (q: number) =>
-    niezerowe[Math.min(niezerowe.length - 1, Math.floor(q * niezerowe.length))];
-  return [kwantyl(1 / 3), kwantyl(2 / 3)];
-}
-
-function kolorSumy(
-  total: number,
-  granice: [number, number],
-  zakresy: [number, number][]
-) {
-  const pasmo = total <= granice[0] ? 0 : total <= granice[1] ? 1 : 2;
-  const { kroki } = PASMA[pasmo];
-  const [min, max] = zakresy[pasmo];
-  // Wewnątrz pasma też logarytmicznie — z tego samego powodu co w komórkach
-  // sesji, tyle że na węższym zakresie.
-  const udzial =
-    max > min ? Math.log1p(total - min) / Math.log1p(max - min) : 1;
-  return kroki[Math.round(udzial * (kroki.length - 1))];
-}
+// Kwadracik z sumą kadencji dzieli rampę i skalę logarytmiczną z komórkami
+// sesji (ta sama funkcja `colorFor`), tylko liczoną względem maksimum sum
+// kadencji zamiast maksimum pojedynczej sesji — bo odpowiada na inne pytanie
+// („jak głośna w ogóle jest ta osoba", nie „ile w tym dniu"), ale nie ma
+// powodu do osobnej palety barw.
 
 function formatDuration(totalSeconds: number) {
   const total = Math.round(totalSeconds);
@@ -248,23 +208,9 @@ export function SpeakingHeatmap({
   const orderedOfficialRows = councilors.filter((c) => !c.href).sort(byTotalDesc);
   const orderedCouncilors = [...orderedCouncilorRows, ...orderedOfficialRows];
 
-  // Pasma liczymy raz, dla WSZYSTKICH wierszy naraz (radni i urzędnicy razem):
-  // gdyby każda grupa miała własne tercyle, ten sam czas mówienia znaczyłby
-  // w dwóch miejscach tabeli co innego.
-  const wszystkieSumy = orderedCouncilors.map(totalFor);
-  const granice = granicePasm(wszystkieSumy);
-  const zakresyPasm: [number, number][] = [0, 1, 2].map((nr) => {
-    const wPasmie = wszystkieSumy.filter(
-      (s) =>
-        s > 0 &&
-        (nr === 0 ? s <= granice[0] : nr === 1 ? s > granice[0] && s <= granice[1] : s > granice[1])
-    );
-    return wPasmie.length > 0
-      ? [Math.min(...wPasmie), Math.max(...wPasmie)]
-      : [0, 0];
-  }) as [number, number][];
+  const maxTotal = Math.max(0, ...orderedCouncilors.map(totalFor));
   const kolorSumyDla = (total: number) =>
-    total > 0 ? kolorSumy(total, granice, zakresyPasm) : null;
+    total > 0 ? colorFor(total, maxTotal) : null;
 
   if (meetings.length === 0 || councilors.length === 0) {
     return (
@@ -296,20 +242,6 @@ export function SpeakingHeatmap({
           />
           <span>więcej ({formatDuration(max)})</span>
           <span className="text-zinc-400">skala logarytmiczna</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-zinc-500">
-          <span className="text-zinc-400">suma kadencji:</span>
-          {PASMA.map((pasmo) => (
-            <span key={pasmo.nazwa} className="flex items-center gap-1">
-              <span
-                className="h-3 w-8 rounded-[3px]"
-                style={{
-                  background: `linear-gradient(to right, ${pasmo.kroki[0]}, ${pasmo.kroki[pasmo.kroki.length - 1]})`,
-                }}
-              />
-              {pasmo.nazwa}
-            </span>
-          ))}
         </div>
         <button
           type="button"
