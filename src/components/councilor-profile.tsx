@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
 import ReactMarkdown from "react-markdown";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
@@ -12,6 +14,57 @@ import { mergeIntoBlocks } from "@/lib/speech-blocks";
 import { CouncilorSpeeches } from "@/components/councilor-speeches";
 import { AUDIO_CUT_ENABLED } from "@/lib/audio-cut";
 import { clusterByAgreement } from "@/lib/hierarchical-clustering";
+import { slugifyRadny } from "@/lib/profil-slug";
+import { renderProfile, type ProfileState } from "@/lib/councilor-profile-state";
+
+// Eksperyment przyrostowego budowania profilu (zob. plan w
+// .claude/plans — "wracamy do idei iteracyjnego..."): pliki leżą w
+// groq/work/profil/<slug>/wyniki/ (gitignored, tylko lokalny dev — nie
+// istnieją w buildzie produkcyjnym/Vercel), więc ta sekcja znika sama, gdy
+// eksperyment się skończy albo katalog nie istnieje na danej maszynie.
+function wczytajPorownanieEksperymentalne(fullName: string) {
+  const wynikiDir = path.join(
+    process.cwd(),
+    "groq",
+    "work",
+    "profil",
+    slugifyRadny(fullName),
+    "wyniki"
+  );
+  const jednorazowyPath = path.join(wynikiDir, "jednorazowy-notatka.md");
+  if (!existsSync(jednorazowyPath)) return null;
+
+  // Dopóki bieg iteracyjny nie dobiegnie końca (33 sesje), nie ma jeszcze
+  // iteracyjny-stan-final.json — bierzemy wtedy najświeższy zapisany krok z
+  // iter/, żeby dało się porównywać na bieżąco, w trakcie strojenia.
+  const finalPath = path.join(wynikiDir, "iteracyjny-stan-final.json");
+  const iterDir = path.join(wynikiDir, "iter");
+  let iteracyjnyPath = finalPath;
+  let dokonczony = existsSync(finalPath);
+  if (!dokonczony) {
+    if (!existsSync(iterDir)) return null;
+    const numery = readdirSync(iterDir)
+      .map((f) => f.match(/^(\d+)-stan\.json$/)?.[1])
+      .filter((n): n is string => Boolean(n))
+      .map(Number)
+      .sort((a, b) => b - a);
+    if (numery.length === 0) return null;
+    iteracyjnyPath = path.join(iterDir, `${String(numery[0]).padStart(2, "0")}-stan.json`);
+  }
+
+  try {
+    const notatkaJednorazowa = readFileSync(jednorazowyPath, "utf8");
+    const stanIteracyjny = JSON.parse(readFileSync(iteracyjnyPath, "utf8")) as ProfileState;
+    return {
+      notatkaJednorazowa,
+      notatkaIteracyjna: renderProfile(stanIteracyjny),
+      sesjePrzetworzone: stanIteracyjny.sesje_przetworzone,
+      dokonczony,
+    };
+  } catch {
+    return null;
+  }
+}
 
 const MATTER_ROLE_LABEL: Record<string, string> = {
   inicjator: "Inicjator",
@@ -345,6 +398,8 @@ export async function CouncilorProfile({
     (councilor.session_activity_synthesis_prompt_version ?? 0) <
       CURRENT_COUNCILOR_EVALUATION_PROMPT_VERSION;
 
+  const porownanieEksperymentalne = wczytajPorownanieEksperymentalne(councilor.full_name);
+
   function formatSpeakingDuration(totalSeconds: number) {
     const total = Math.round(totalSeconds);
     const hours = Math.floor(total / 3600);
@@ -491,6 +546,48 @@ export async function CouncilorProfile({
 
           {councilor.session_activity_synthesis && (
             <>
+              {/* Baner ma stać PRZED opisem, nie po nim — czytelnik ma poznać
+                  zasady, zanim przeczyta treść, którą te zasady ograniczają,
+                  a nie trafić na zastrzeżenie dopiero w drobnym druku pod
+                  spodem. To wprost odpowiedź na pytanie "czy to opinia o
+                  radnym" — serwis celowo nie publikuje charakterystyk
+                  radnych (ryzyko zniesławienia), więc czytelnik ma się o tym
+                  dowiedzieć z samej strony, nie dopiero z treści prompta. */}
+              <div className="mb-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm leading-relaxed text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-400">
+                <p className="mb-2 font-medium text-zinc-700 dark:text-zinc-300">
+                  Jak powstał ten opis
+                </p>
+                <p className="mb-2">
+                  Poniższy opis jest wygenerowany automatycznie na podstawie
+                  transkrypcji wypowiedzi tego radnego na sesjach rady oraz
+                  fragmentów podsumowań sesji, w których jest wymieniony z
+                  imienia i nazwiska — czyli wyłącznie tego, co ten radny
+                  powiedział publicznie na forum rady.
+                </p>
+                <p className="mb-2">
+                  Nie zawiera ocen, opinii, charakterystyk ani żadnej innej
+                  treści oceniającej postawę, styl czy skuteczność radnego —
+                  to celowa zasada redakcyjna tego serwisu, nie przeoczenie.
+                  Opis relacjonuje, jakich tematów dotyczyły wypowiedzi i w
+                  jakich sporach radny brał udział, tak jak dziennikarz
+                  opisujący przebieg sesji, nigdy jak recenzent oceniający
+                  radnego.
+                </p>
+                <p>
+                  Transkrypcja bywa niepełna — brak wzmianki o jakimś temacie
+                  oznacza, że nie ma go w dostarczonym materiale, a nie że
+                  radny się do niego nie odniósł. Pełna treść instrukcji, wg
+                  której ten opis powstaje, jest jawna:{" "}
+                  <Link
+                    href="/prompt-oceny-radnych"
+                    className="underline decoration-zinc-400 underline-offset-2 hover:text-zinc-900 dark:decoration-zinc-600 dark:hover:text-zinc-100"
+                  >
+                    kryteria oceny w wersji{" "}
+                    {councilor.session_activity_synthesis_prompt_version ?? "?"}
+                  </Link>
+                  .
+                </p>
+              </div>
               <div className="rounded-2xl border border-zinc-200 p-4 text-sm leading-relaxed text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
                 <ReactMarkdown
                   components={{
@@ -500,21 +597,8 @@ export async function CouncilorProfile({
                   {councilor.session_activity_synthesis}
                 </ReactMarkdown>
               </div>
-              {/* Skąd ten opis pochodzi, ma być widoczne zawsze, a nie dopiero
-                  gdy się zestarzeje. To tekst o żywym człowieku wygenerowany
-                  maszynowo — czytelnik ma prawo od razu wiedzieć, wg jakich
-                  kryteriów i kiedy powstał, i móc te kryteria przeczytać.
-                  Dotąd widać było wyłącznie ostrzeżenie o nieaktualności, więc
-                  opis świeży nie mówił o sobie nic. */}
               <p className="mt-2 text-xs text-zinc-500">
-                Opis wygenerowany maszynowo wg{" "}
-                <Link
-                  href="/prompt-oceny-radnych"
-                  className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900 hover:decoration-zinc-500 dark:decoration-zinc-700 dark:hover:text-zinc-100"
-                >
-                  kryteriów oceny w wersji{" "}
-                  {councilor.session_activity_synthesis_prompt_version ?? "?"}
-                </Link>
+                Opis wygenerowany maszynowo
                 {councilor.session_activity_synthesis_updated_at &&
                   ` · ${formatDate(councilor.session_activity_synthesis_updated_at)}`}
               </p>
@@ -526,6 +610,52 @@ export async function CouncilorProfile({
                 </p>
               )}
             </>
+          )}
+
+          {porownanieEksperymentalne && (
+            <section className="mb-6 rounded-2xl border-2 border-dashed border-amber-400 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/20">
+              <h3 className="mb-1 text-sm font-semibold text-amber-800 dark:text-amber-300">
+                Eksperyment: jednorazowo vs. przyrostowo
+              </h3>
+              <p className="mb-3 text-xs text-amber-700 dark:text-amber-400">
+                Robocze porównanie dwóch sposobów budowania notatki wyżej.
+                Wersja przyrostowa:{" "}
+                {porownanieEksperymentalne.dokonczony
+                  ? `pełne ${porownanieEksperymentalne.sesjePrzetworzone} sesji`
+                  : `${porownanieEksperymentalne.sesjePrzetworzone} z 33 sesji, bieg jeszcze trwa`}
+                . Nieopublikowane, tylko do wglądu.
+              </p>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                    Jednorazowo (cała kadencja naraz)
+                  </p>
+                  <div className="rounded-xl border border-amber-200 bg-white p-3 text-sm leading-relaxed dark:border-amber-800 dark:bg-zinc-900">
+                    <ReactMarkdown
+                      components={{
+                        p: (props) => <p className="mb-2 last:mb-0" {...props} />,
+                      }}
+                    >
+                      {porownanieEksperymentalne.notatkaJednorazowa}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                    Przyrostowo (sesja po sesji)
+                  </p>
+                  <div className="rounded-xl border border-amber-200 bg-white p-3 text-sm leading-relaxed dark:border-amber-800 dark:bg-zinc-900">
+                    <ReactMarkdown
+                      components={{
+                        p: (props) => <p className="mb-2 last:mb-0" {...props} />,
+                      }}
+                    >
+                      {porownanieEksperymentalne.notatkaIteracyjna}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+            </section>
           )}
 
           {matters.length > 0 && (
