@@ -1,8 +1,13 @@
-// The two self-service-requestable tiers, mapped to the permission strings
-// user_has_permission() actually checks (src/app/sesje/[id]/page.tsx,
-// src/app/sprawy/actions.ts). app_user.role ('admin'/'moderator', which
-// unlocks raw transcript import/split) is intentionally not offered here —
-// too destructive for a self-service request, stays DB-manual like today.
+/**
+ * The two self-service-requestable tiers, mapped to the permission strings
+ * `user_has_permission()` actually checks (`src/app/sesje/[id]/page.tsx`,
+ * `src/app/sprawy/actions.ts`).
+ *
+ * @remarks
+ * `app_user.role` (`'admin'`/`'moderator'`, which unlocks raw transcript
+ * import/split) is intentionally not offered here — too destructive for a
+ * self-service request, stays DB-manual like today.
+ */
 export const ACCESS_LEVELS = {
   editor: {
     label: "Redaktor",
@@ -20,18 +25,24 @@ export const ACCESS_LEVELS = {
 
 export type AccessLevel = keyof typeof ACCESS_LEVELS;
 
-// Shared between the request form (maxLength) and the server action
-// (authoritative check) — access_request.message is an unbounded `text`
-// column with no DB-level constraint.
+/**
+ * Shared between the request form (`maxLength`) and the server action
+ * (authoritative check) — `access_request.message` is an unbounded `text`
+ * column with no DB-level constraint.
+ */
 export const MESSAGE_MAX_LENGTH = 2000;
 
+/** Type guard for {@link AccessLevel}. */
 export function isAccessLevel(value: string): value is AccessLevel {
   return value in ACCESS_LEVELS;
 }
 
-// Superset of ACCESS_LEVELS for the manager-facing edit UI (grant/edit an
-// existing user_role row) — includes "manager" itself, unlike ACCESS_LEVELS
-// which only lists what's safe to offer as a self-service request.
+/**
+ * Superset of {@link ACCESS_LEVELS} for the manager-facing edit UI (grant/edit
+ * an existing `user_role` row) — includes `"manager"` itself, unlike
+ * `ACCESS_LEVELS` which only lists what's safe to offer as a self-service
+ * request.
+ */
 export const ADMIN_LEVELS = {
   ...ACCESS_LEVELS,
   manager: {
@@ -44,19 +55,27 @@ export const ADMIN_LEVELS = {
 
 export type AdminLevel = keyof typeof ADMIN_LEVELS;
 
+/** Type guard for {@link AdminLevel}. */
 export function isAdminLevel(value: string): value is AdminLevel {
   return value in ADMIN_LEVELS;
 }
 
-// The "browse" permission is auto-granted to every account on first login
-// (see grant_browse_permission(), called from /auth/callback) — it's not a
-// self-service-requestable tier like ACCESS_LEVELS, just the baseline that
-// makes describeGrant() return a real label instead of the raw string
-// "browse" for someone who hasn't requested anything yet.
+/**
+ * The "browse" permission is auto-granted to every account on first login
+ * (see `grant_browse_permission()`, called from `/auth/callback`) — it's not
+ * a self-service-requestable tier like {@link ACCESS_LEVELS}, just the
+ * baseline that makes {@link describeGrant} return a real label instead of
+ * the raw string `"browse"` for someone who hasn't requested anything yet.
+ */
 export const BROWSE_LABEL = "Przeglądanie";
 
-// Best-effort label for whatever a user_role row's permissions[] actually
-// contain — used to describe an existing grant, not to request one.
+/**
+ * Best-effort label for whatever a `user_role` row's `permissions[]` actually
+ * contain — used to describe an existing grant, not to request one.
+ *
+ * @param permissions - pooled permissions the user currently holds
+ * @returns the highest-tier matching label, or `null` if none matched
+ */
 export function describeGrant(permissions: string[]): string | null {
   if (permissions.includes("full_access")) return "Manager (pełny dostęp)";
   if (permissions.includes("finalize_vote")) return ACCESS_LEVELS.moderator.label;
@@ -79,22 +98,34 @@ const CHIP_CLASS_BY_TIER: Record<string, string> = {
     "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
 };
 
-// Fixed height (h-5) rather than vertical padding: the level and scope sit in
-// separate table columns on /admin/konta, and two stacked lists only line up
-// row-for-row if every item is exactly the same height.
+/**
+ * Fixed height (`h-5`) rather than vertical padding: the level and scope sit
+ * in separate table columns on `/admin/konta`, and two stacked lists only
+ * line up row-for-row if every item is exactly the same height.
+ */
 export const TIER_CHIP_BASE =
   "inline-flex h-5 items-center whitespace-nowrap rounded-full px-2.5 text-xs font-medium";
 
+/**
+ * Tailwind classes for a tier "chip", keyed by the label
+ * {@link describeGrant} returns. Falls back to the {@link BROWSE_LABEL}
+ * styling for any label not in {@link CHIP_CLASS_BY_TIER}.
+ */
 export function tierChipClass(label: string): string {
   return `${TIER_CHIP_BASE} ${
     CHIP_CLASS_BY_TIER[label] ?? CHIP_CLASS_BY_TIER[BROWSE_LABEL]
   }`;
 }
 
-// Which self-service ACCESS_LEVELS tiers a user already effectively holds
-// (their granted permissions, pooled across all scopes, already cover that
-// tier's requirements) — used to stop e.g. an existing Moderator from
-// requesting Redaktor or Moderator again.
+/**
+ * Which self-service {@link ACCESS_LEVELS} tiers a user already effectively
+ * holds (their granted permissions, pooled across all scopes, already cover
+ * that tier's requirements) — used to stop e.g. an existing Moderator from
+ * requesting Redaktor or Moderator again.
+ *
+ * @param permissions - pooled permissions the user currently holds
+ * @returns the subset of `ACCESS_LEVELS` keys already satisfied
+ */
 export function alreadyHeldLevels(permissions: string[]): AccessLevel[] {
   return (Object.keys(ACCESS_LEVELS) as AccessLevel[]).filter((level) =>
     ACCESS_LEVELS[level].permissions.every(
