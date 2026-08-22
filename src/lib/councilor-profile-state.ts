@@ -19,7 +19,6 @@ export type Temat = {
   kotwica: Kotwica;
   sprawa: string | null;
   rola_w_sprawie: string | null;
-  status_sprawy: string | null;
 };
 
 export type UdzialForma = {
@@ -79,16 +78,14 @@ const ROLA: Record<string, string> = {
   zaangażowany: "zaangażowany",
 };
 
-const STATUS: Record<string, string> = {
-  approved: "zatwierdzona",
-  pending: "oczekująca",
-  merged: "scalona",
-};
-
+// Bez statusu sprawy: sprawa niezatwierdzona jest niewidoczna dla
+// użytkownika, więc każda, którą w ogóle widzi, jest zatwierdzona z definicji
+// — dopisywanie tego słowa nic nie mówi, tylko sugeruje istnienie innego,
+// niewidocznego stanu, którego czytelnik i tak nie ma jak sprawdzić.
 function zdanieOTemacie(t: Temat): string {
   const daty = t.sesje.length > 1 ? t.sesje.join(", ") : t.sesje[0];
   const sprawaCzesc = t.sprawa
-    ? ` — sprawa „${t.sprawa}" (${ROLA[t.rola_w_sprawie ?? ""] ?? t.rola_w_sprawie ?? "brak roli"}, ${STATUS[t.status_sprawy ?? ""] ?? t.status_sprawy ?? "status nieznany"})`
+    ? ` — sprawa „${t.sprawa}" (${ROLA[t.rola_w_sprawie ?? ""] ?? t.rola_w_sprawie ?? "brak roli"})`
     : "";
   return `Mówił o „${t.teza}" (${daty})${sprawaCzesc}.`;
 }

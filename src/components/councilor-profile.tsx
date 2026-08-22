@@ -73,12 +73,6 @@ const MATTER_ROLE_LABEL: Record<string, string> = {
   zaangażowany: "Zaangażowany",
 };
 
-const MATTER_STATUS_LABEL: Record<string, string> = {
-  proposed: "Oczekująca",
-  approved: "Zatwierdzona",
-  merged: "Scalona",
-};
-
 function formatDate(date: string | null) {
   if (!date) return "—";
   return new Date(date).toLocaleDateString("pl-PL", {
@@ -678,9 +672,6 @@ export async function CouncilorProfile({
                     <div className="flex shrink-0 gap-1.5">
                       <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
                         {MATTER_ROLE_LABEL[role] ?? role}
-                      </span>
-                      <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-                        {MATTER_STATUS_LABEL[matter.status] ?? matter.status}
                       </span>
                     </div>
                   </li>

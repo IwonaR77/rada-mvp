@@ -130,7 +130,7 @@ function main() {
   ]);
 
   const matterRows = supabaseQuery(`
-    select m.title, m.status, mp.role, mr.meeting_id
+    select m.title, mp.role, mr.meeting_id
     from matter_participant mp
     join matter m on m.id = mp.matter_id
     left join matter_reference mr on mr.matter_id = m.id
@@ -235,7 +235,7 @@ function main() {
     const czescSpraw =
       sprawyTejSesji.length > 0
         ? `## Sprawy powiązane z tą sesją\n\n${sprawyTejSesji
-            .map((s) => `- ${s.title} — ${s.role} — ${s.status}`)
+            .map((s) => `- ${s.title} — ${s.role}`)
             .join("\n")}`
         : null;
 

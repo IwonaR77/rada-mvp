@@ -24,7 +24,7 @@ DANE WEJŚCIOWE, które wklejam:
 1. **Imię i nazwisko radnego** oraz kadencja, której dotyczy notatka.
 2. **Transkrypcje wypowiedzi tego radnego** — wszystkie jego potwierdzone wypowiedzi (`segment.text`), pogrupowane po sesji (data + tytuł sesji).
 3. **Fragmenty "Spory i dyskusje"** z podsumowań tych sesji, w których ten radny jest wymieniony z imienia i nazwiska — wklejam dokładnie te fragmenty z już istniejących podsumowań sesji (`meeting.summary`), nie surową transkrypcję sporu.
-4. **Lista spraw** (`matter`/`matter_participant`) tego radnego — tytuł sprawy, jego rola w niej (inicjator/poparcie/sprzeciw/zaangażowany) i status sprawy (oczekująca/zatwierdzona/scalona).
+4. **Lista spraw** (`matter`/`matter_participant`) tego radnego — tytuł sprawy, jego rola w niej (inicjator/poparcie/sprzeciw/zaangażowany).
 5. **Interpelacje i zapytania** tego radnego (`interpellation`) — tytuł, data złożenia i, jeśli jest, streszczenie treści. Potrzebne wyłącznie po to, żeby dało się zauważyć, że po dyskusji na sesji radny wrócił do tej samej sprawy pismem do urzędu.
 
 Jeśli (2) jest puste — radny nie ma żadnych potwierdzonych wypowiedzi w tej kadencji.
@@ -43,7 +43,7 @@ FORMAT (Markdown):
 
 [Jeśli DANE (2) i (4) są oba puste: napisz dokładnie: "Nie zanotowano wypowiedzi tego radnego na sesjach tej kadencji." Nic więcej — bez domysłów, bez sugerowania powodu nieobecności.]
 
-[W przeciwnym razie: **co najmniej 2–5 zdań** (nigdy jedno zdanie, nawet gdy materiału jest niewiele) — jakich tematów dotyczyły wypowiedzi tego radnego, z odniesieniem do sesji (data). Tam, gdzie temat wypowiedzi pokrywa się ze sprawą z DANYCH (4) — nazwij tę sprawę z tytułu i wspomnij rolę radnego w niej (np. "jako inicjator sprawy X..."); nie każda wypowiedź musi mieć odpowiadającą sprawę, łącz tylko tam, gdzie to rzeczywiście ta sama sprawa, nie na siłę. Jeśli radny jest powiązany ze sprawami z (4), ale nie ma wypowiedzi z (2), które by je omawiały, i tak wymień te sprawy z rolą i statusem — to wciąż jest informacja o jego zaangażowaniu. Bez oceny jakości czy częstotliwości tych wypowiedzi — to lista tematów i spraw, nie interpretacja postawy radnego.]
+[W przeciwnym razie: **co najmniej 2–5 zdań** (nigdy jedno zdanie, nawet gdy materiału jest niewiele) — jakich tematów dotyczyły wypowiedzi tego radnego, z odniesieniem do sesji (data). Tam, gdzie temat wypowiedzi pokrywa się ze sprawą z DANYCH (4) — nazwij tę sprawę z tytułu i wspomnij rolę radnego w niej (np. "jako inicjator sprawy X..."); nie każda wypowiedź musi mieć odpowiadającą sprawę, łącz tylko tam, gdzie to rzeczywiście ta sama sprawa, nie na siłę. Jeśli radny jest powiązany ze sprawami z (4), ale nie ma wypowiedzi z (2), które by je omawiały, i tak wymień te sprawy z rolą — to wciąż jest informacja o jego zaangażowaniu. Bez oceny jakości czy częstotliwości tych wypowiedzi — to lista tematów i spraw, nie interpretacja postawy radnego.]
 
 **Główne obszary zainteresowania:**
 
@@ -117,7 +117,7 @@ Fragmenty "Spory i dyskusje" z udziałem tego radnego:
 
 [tutaj wklej fragmenty, albo napisz "brak"]
 
-Sprawy tego radnego (tytuł — rola — status):
+Sprawy tego radnego (tytuł — rola):
 
 [tutaj wklej listę, albo napisz "brak"]
 

@@ -24,7 +24,7 @@ Sam fakt wypowiedzenia takiego zdania możesz odnotować jak każdy inny temat w
 3. **Jedna sesja**: data, tytuł, `id` sesji.
 4. **Wypowiedzi radnego na tej sesji** (`segment.text`, z kontekstem przed/po), albo „brak wypowiedzi".
 5. **Fragment „Spory i dyskusje"** z podsumowania tej sesji, w którym radny jest wymieniony z nazwiska, albo „brak".
-6. **Sprawy tego radnego powiązane z tą sesją** (tytuł — rola — status), albo „brak".
+6. **Sprawy tego radnego powiązane z tą sesją** (tytuł — rola), albo „brak".
 7. **Interpelacje/zapytania złożone w okolicy tej sesji** (data — tytuł — streszczenie), albo „brak".
 
 ---
@@ -53,8 +53,7 @@ Sam fakt wypowiedzenia takiego zdania możesz odnotować jak każdy inny temat w
       "ostatnia": "2025-03-27",
       "kotwica": { "sesja": "2025-03-27", "cytat": "…dosłowny fragment ≤120 znaków z segment.text tej sesji…" },
       "sprawa": "Oświetlenie w Kobylinie",
-      "rola_w_sprawie": "inicjator",
-      "status_sprawy": "oczekująca"
+      "rola_w_sprawie": "inicjator"
     }
   ],
 
@@ -98,7 +97,7 @@ Na wejściu masz *dokładnie jedną* nową sesję i cały dotychczasowy stan. Zw
 - Jeśli DANE (4) niepuste → `sesje_z_wypowiedziami` += 1.
 
 **`tematy` (kategoria: co radny poruszał — z wypowiedzi LUB z powiązanych spraw):**
-- Nowy temat, którego nie ma na liście → nowy wpis, `wystapien: 1`, `sesje: [ta data]`, `pierwsza = ostatnia = ta data`, `kotwica` = dosłowny cytat ≤120 znaków **z tej sesji**, `kategoria_obszaru` wg zasady z `kategorie_znane` wyżej. Bez kotwicy nie dodawaj tematu — jeśli sprawa wynika tylko z DANYCH (6) bez wypowiedzi, `kotwica` może wskazywać na treść sprawy zamiast cytatu (zaznacz `"kotwica": null` i uzupełnij `sprawa`/`rola_w_sprawie`/`status_sprawy` — to wystarczający dowód, sprawa istnieje w bazie niezależnie od transkrypcji).
+- Nowy temat, którego nie ma na liście → nowy wpis, `wystapien: 1`, `sesje: [ta data]`, `pierwsza = ostatnia = ta data`, `kotwica` = dosłowny cytat ≤120 znaków **z tej sesji**, `kategoria_obszaru` wg zasady z `kategorie_znane` wyżej. Bez kotwicy nie dodawaj tematu — jeśli sprawa wynika tylko z DANYCH (6) bez wypowiedzi, `kotwica` może wskazywać na treść sprawy zamiast cytatu (zaznacz `"kotwica": null` i uzupełnij `sprawa`/`rola_w_sprawie` — to wystarczający dowód, sprawa istnieje w bazie niezależnie od transkrypcji).
 - Ten sam temat pojawia się ponownie (ten sam przedmiot, nie samo podobieństwo słów — dwie wzmianki o „drodze" to jeden temat tylko gdy chodzi o tę samą drogę) → dopisz datę do `sesje` (jeśli jeszcze jej nie ma), `wystapien` += liczba nowych wystąpień w tej sesji, `ostatnia` = ta data, zaktualizuj `kotwica` na cytat z tej (najnowszej) sesji, `zdanie` widoczne dopiero w renderze — tu go nie zapisujesz.
 - **Nigdy nie kasujesz tematu, bo nowa sesja go nie porusza** — brak wzmianki to nie zaprzeczenie. Kasujesz (przenosisz do `odrzucone`) wyłącznie gdy nowa sesja wprost mu przeczy (np. sprawa okazała się nieaktualna/wycofana) — podaj `powod`.
 - **Zakaz przepisywania profilu pod kątem najnowszej sesji**: nowy temat z jednej sesji ma `wystapien: 1` — tyle samo znaczenia strukturalnego, co temat sprzed dwóch lat z `wystapien: 1`. Kolejność w tablicy jest nieistotna.
@@ -150,7 +149,7 @@ Fragment "Spory i dyskusje" z udziałem tego radnego (ta sesja):
 
 [tutaj wklej, albo napisz "brak"]
 
-Sprawy tego radnego powiązane z tą sesją (tytuł — rola — status):
+Sprawy tego radnego powiązane z tą sesją (tytuł — rola):
 
 [tutaj wklej, albo napisz "brak"]
 
