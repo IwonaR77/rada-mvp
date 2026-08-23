@@ -84,12 +84,24 @@ async function wczytajProfilIteracyjny(
     dogonil,
     rewizje: rewizje
       .slice(0, -1) // najnowsza jest już pokazana wyżej, historia to tylko starsze
-      .reverse() // najnowsza z historycznych na górze listy rozwijanej
-      .map((r) => ({
-        seq: r.seq,
-        createdAt: r.created_at,
-        notatka: renderProfile(r.stan as unknown as ProfileState, { datyDoSesji }),
-      })),
+      .map((r, i) => {
+        // seq w łańcuchu to numer rewizji, nie numer sesji — seed (pierwsza
+        // rewizja) zwykle obejmuje kilka sesji naraz, więc "po sesji {seq}"
+        // było mylące. Zakres liczony z sesje_przetworzone poprzedniej i tej
+        // rewizji, bez potrzeby osobnej kolumny w bazie.
+        const stanRewizji = r.stan as unknown as ProfileState;
+        const poprzednia = i > 0 ? (rewizje[i - 1].stan as unknown as ProfileState) : null;
+        const sesjaOd = (poprzednia?.sesje_przetworzone ?? 0) + 1;
+        const sesjaDo = stanRewizji.sesje_przetworzone;
+        return {
+          seq: r.seq,
+          createdAt: r.created_at,
+          sesjaOd,
+          sesjaDo,
+          notatka: renderProfile(stanRewizji, { datyDoSesji }),
+        };
+      })
+      .reverse(), // najnowsza z historycznych na górze listy rozwijanej
   };
 }
 
@@ -638,7 +650,10 @@ export async function CouncilorProfile({
                         className="rounded-xl border border-zinc-200 p-3 dark:border-zinc-800"
                       >
                         <summary className="cursor-pointer text-xs text-zinc-500">
-                          Wersja po sesji {r.seq} — {formatDate(r.createdAt)}
+                          {r.sesjaOd === r.sesjaDo
+                            ? `Wersja po sesji ${r.sesjaDo}`
+                            : `Wersja po sesjach ${r.sesjaOd}–${r.sesjaDo}`}{" "}
+                          — {formatDate(r.createdAt)}
                         </summary>
                         <div className="mt-2 text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
                           <ReactMarkdown
