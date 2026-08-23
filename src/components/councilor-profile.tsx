@@ -66,6 +66,19 @@ function wczytajPorownanieEksperymentalne(fullName: string) {
   }
 }
 
+// react-markdown emits plain <ul>/<ol>, które pod Tailwind Preflight
+// renderują się bez znaczników i wcięcia (list-style/padding wyzerowane) —
+// bez tego overrride'u każda lista w tekście wygląda jak zbite akapity, nie
+// lista. Ten sam wzorzec co w session-player.tsx i legal-document.tsx.
+const MARKDOWN_LIST_COMPONENTS = {
+  ul: (props: React.ComponentPropsWithoutRef<"ul">) => (
+    <ul className="mb-2 list-disc space-y-1 pl-5 last:mb-0" {...props} />
+  ),
+  ol: (props: React.ComponentPropsWithoutRef<"ol">) => (
+    <ol className="mb-2 list-decimal space-y-1 pl-5 last:mb-0" {...props} />
+  ),
+};
+
 const MATTER_ROLE_LABEL: Record<string, string> = {
   inicjator: "Inicjator",
   poparcie: "Poparcie",
@@ -500,6 +513,7 @@ export async function CouncilorProfile({
             <div className="rounded-2xl border border-zinc-200 p-4 text-sm leading-relaxed text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
               <ReactMarkdown
                 components={{
+                  ...MARKDOWN_LIST_COMPONENTS,
                   p: (props) => <p className="mb-0" {...props} />,
                   a: (props) => (
                     <a
@@ -585,6 +599,7 @@ export async function CouncilorProfile({
               <div className="rounded-2xl border border-zinc-200 p-4 text-sm leading-relaxed text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
                 <ReactMarkdown
                   components={{
+                    ...MARKDOWN_LIST_COMPONENTS,
                     p: (props) => <p className="mb-2 last:mb-0" {...props} />,
                   }}
                 >
@@ -627,6 +642,7 @@ export async function CouncilorProfile({
                   <div className="rounded-xl border border-amber-200 bg-white p-3 text-sm leading-relaxed dark:border-amber-800 dark:bg-zinc-900">
                     <ReactMarkdown
                       components={{
+                        ...MARKDOWN_LIST_COMPONENTS,
                         p: (props) => <p className="mb-2 last:mb-0" {...props} />,
                       }}
                     >
@@ -641,6 +657,7 @@ export async function CouncilorProfile({
                   <div className="rounded-xl border border-amber-200 bg-white p-3 text-sm leading-relaxed dark:border-amber-800 dark:bg-zinc-900">
                     <ReactMarkdown
                       components={{
+                        ...MARKDOWN_LIST_COMPONENTS,
                         p: (props) => <p className="mb-2 last:mb-0" {...props} />,
                       }}
                     >
