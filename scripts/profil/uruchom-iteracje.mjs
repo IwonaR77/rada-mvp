@@ -82,7 +82,7 @@ function main() {
   mkdirSync(scratchCwd, { recursive: true });
 
   if (tryb === "jednorazowy") {
-    const bazowy = bazowyPrompt("Prompt_Profil_Radnego_Jednorazowy_v6.md");
+    const bazowy = bazowyPrompt("Prompt_Profil_Radnego_Jednorazowy_v7.md");
     // --do-sesji N: baseline liczony tylko z pierwszych N sesji (checkpoint
     // do porównania z krokiem iteracyjnym po tej samej sesji) — bez flagi,
     // pełny wsad z calosc.md jak dotychczas.
@@ -113,7 +113,7 @@ function main() {
   }
 
   if (tryb === "iteracyjny") {
-    const bazowy = bazowyPrompt("Prompt_Profil_Radnego_Iteracyjny_v6.md");
+    const bazowy = bazowyPrompt("Prompt_Profil_Radnego_Iteracyjny_v7.md");
     const iterDir = path.join(wynikiDir, "iter");
     mkdirSync(iterDir, { recursive: true });
 

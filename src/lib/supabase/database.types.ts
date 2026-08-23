@@ -496,6 +496,64 @@ export type Database = {
         }
         Relationships: []
       }
+      councilor_profile_revision: {
+        Row: {
+          councilor_id: string
+          created_at: string
+          id: string
+          meeting_id: string | null
+          method: string
+          prompt_version: number
+          seq: number
+          stan: Json
+          term_id: string
+        }
+        Insert: {
+          councilor_id: string
+          created_at?: string
+          id?: string
+          meeting_id?: string | null
+          method: string
+          prompt_version: number
+          seq: number
+          stan: Json
+          term_id: string
+        }
+        Update: {
+          councilor_id?: string
+          created_at?: string
+          id?: string
+          meeting_id?: string | null
+          method?: string
+          prompt_version?: number
+          seq?: number
+          stan?: Json
+          term_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "councilor_profile_revision_councilor_id_fkey"
+            columns: ["councilor_id"]
+            isOneToOne: false
+            referencedRelation: "councilor"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "councilor_profile_revision_meeting_id_fkey"
+            columns: ["meeting_id"]
+            isOneToOne: false
+            referencedRelation: "meeting"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "councilor_profile_revision_term_id_fkey"
+            columns: ["term_id"]
+            isOneToOne: false
+            referencedRelation: "term"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       councilor_term: {
         Row: {
           councilor_id: string

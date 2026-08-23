@@ -1,7 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import path from "node:path";
 import ReactMarkdown from "react-markdown";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
@@ -14,56 +12,85 @@ import { mergeIntoBlocks } from "@/lib/speech-blocks";
 import { CouncilorSpeeches } from "@/components/councilor-speeches";
 import { AUDIO_CUT_ENABLED } from "@/lib/audio-cut";
 import { clusterByAgreement } from "@/lib/hierarchical-clustering";
-import { slugifyRadny } from "@/lib/profil-slug";
-import { renderProfile, type ProfileState } from "@/lib/councilor-profile-state";
+import {
+  renderProfile,
+  idTematowWWarstwiePelnej,
+  type ProfileState,
+} from "@/lib/councilor-profile-state";
 
-// Eksperyment przyrostowego budowania profilu (zob. plan w
-// .claude/plans — "wracamy do idei iteracyjnego..."): pliki leżą w
-// groq/work/profil/<slug>/wyniki/ (gitignored, tylko lokalny dev — nie
-// istnieją w buildzie produkcyjnym/Vercel), więc ta sekcja znika sama, gdy
-// eksperyment się skończy albo katalog nie istnieje na danej maszynie.
-function wczytajPorownanieEksperymentalne(fullName: string) {
-  const wynikiDir = path.join(
-    process.cwd(),
-    "groq",
-    "work",
-    "profil",
-    slugifyRadny(fullName),
-    "wyniki"
-  );
-  const jednorazowyPath = path.join(wynikiDir, "jednorazowy-notatka.md");
-  if (!existsSync(jednorazowyPath)) return null;
+/**
+ * Wczytuje przyrostowy profil radnego z historii rewizji
+ * (`councilor_profile_revision`, zob. scripts/migrate-councilor-profile-
+ * revision.sql i scripts/profil/wdroz-produkcyjnie.mjs). `null`, gdy łańcuch
+ * tego radnego jeszcze się nie zaczął — wtedy profil pokazuje wyłącznie
+ * dotychczasowy `session_activity_synthesis`, jak dziś.
+ */
+async function wczytajProfilIteracyjny(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  councilorId: string,
+  termId: string | null
+) {
+  if (!termId) return null;
 
-  // Dopóki bieg iteracyjny nie dobiegnie końca (33 sesje), nie ma jeszcze
-  // iteracyjny-stan-final.json — bierzemy wtedy najświeższy zapisany krok z
-  // iter/, żeby dało się porównywać na bieżąco, w trakcie strojenia.
-  const finalPath = path.join(wynikiDir, "iteracyjny-stan-final.json");
-  const iterDir = path.join(wynikiDir, "iter");
-  let iteracyjnyPath = finalPath;
-  let dokonczony = existsSync(finalPath);
-  if (!dokonczony) {
-    if (!existsSync(iterDir)) return null;
-    const numery = readdirSync(iterDir)
-      .map((f) => f.match(/^(\d+)-stan\.json$/)?.[1])
-      .filter((n): n is string => Boolean(n))
-      .map(Number)
-      .sort((a, b) => b - a);
-    if (numery.length === 0) return null;
-    iteracyjnyPath = path.join(iterDir, `${String(numery[0]).padStart(2, "0")}-stan.json`);
+  const { data: rewizje } = await supabase
+    .from("councilor_profile_revision")
+    .select("seq, meeting_id, stan, created_at")
+    .eq("councilor_id", councilorId)
+    .eq("term_id", termId)
+    .order("seq", { ascending: true });
+  if (!rewizje || rewizje.length === 0) return null;
+
+  const najnowsza = rewizje[rewizje.length - 1];
+  const stanNajnowszy = najnowsza.stan as unknown as ProfileState;
+
+  const [{ count: liczbaSesji }, { data: sesjeTerminu }] = await Promise.all([
+    supabase
+      .from("meeting")
+      .select("id", { count: "exact", head: true })
+      .eq("term_id", termId)
+      .in("meeting_type", ["zwyczajna", "nadzwyczajna"]),
+    supabase.from("meeting").select("id, date").eq("term_id", termId),
+  ]);
+  const totalSesji = liczbaSesji ?? stanNajnowszy.sesje_przetworzone;
+  // Pasek nie ma pokazywać >100%, gdyby licznik sesji w bazie akurat spadł
+  // poniżej tego, co radny już przetworzył (np. sesja usunięta po fakcie).
+  const postepProcent =
+    totalSesji > 0 ? Math.min(100, Math.round((100 * stanNajnowszy.sesje_przetworzone) / totalSesji)) : 100;
+  const dogonil = stanNajnowszy.sesje_przetworzone >= totalSesji;
+
+  const datyDoSesji: Record<string, string> = {};
+  for (const s of sesjeTerminu ?? []) {
+    if (s.date) datyDoSesji[s.date] = s.id;
   }
 
-  try {
-    const notatkaJednorazowa = readFileSync(jednorazowyPath, "utf8");
-    const stanIteracyjny = JSON.parse(readFileSync(iteracyjnyPath, "utf8")) as ProfileState;
-    return {
-      notatkaJednorazowa,
-      notatkaIteracyjna: renderProfile(stanIteracyjny),
-      sesjePrzetworzone: stanIteracyjny.sesje_przetworzone,
-      dokonczony,
-    };
-  } catch {
-    return null;
+  // Historia "gdzie ten temat był ostatnio w pełni opisany" — budowana z
+  // KAŻDEJ rewizji po kolei (rosnąco wg seq), żeby najnowszy zapis w mapie
+  // dla danego tematu naturalnie odpowiadał najnowszej rewizji, w której był
+  // jeszcze w warstwie pełnej. Nie wymaga osobnego przechowywania w bazie —
+  // liczone przy odczycie z tego, co już mamy w `stan` każdej rewizji.
+  const historiaPelnychTematow = new Map<string, number>();
+  for (const rev of rewizje) {
+    const stanRewizji = rev.stan as unknown as ProfileState;
+    for (const tematId of idTematowWWarstwiePelnej(stanRewizji)) {
+      historiaPelnychTematow.set(tematId, rev.seq);
+    }
   }
+
+  return {
+    notatka: renderProfile(stanNajnowszy, { datyDoSesji, historiaPelnychTematow }),
+    postepProcent,
+    sesjePrzetworzone: stanNajnowszy.sesje_przetworzone,
+    totalSesji,
+    dogonil,
+    rewizje: rewizje
+      .slice(0, -1) // najnowsza jest już pokazana wyżej, historia to tylko starsze
+      .reverse() // najnowsza z historycznych na górze listy rozwijanej
+      .map((r) => ({
+        seq: r.seq,
+        createdAt: r.created_at,
+        notatka: renderProfile(r.stan as unknown as ProfileState, { datyDoSesji }),
+      })),
+  };
 }
 
 // react-markdown emits plain <ul>/<ol>, które pod Tailwind Preflight
@@ -76,6 +103,19 @@ const MARKDOWN_LIST_COMPONENTS = {
   ),
   ol: (props: React.ComponentPropsWithoutRef<"ol">) => (
     <ol className="mb-2 list-decimal space-y-1 pl-5 last:mb-0" {...props} />
+  ),
+};
+
+// Linki do sesji wewnątrz tekstu iteracyjnego profilu (renderProfile wstawia
+// `[data](/sesje/[id])` za daty, gdy ma mapę dat na meeting.id) — nawigacja
+// wewnętrzna, bez target="_blank" (inaczej niż interpelacyjny `a` niżej,
+// który linkuje do zewnętrznych PDF-ów).
+const MARKDOWN_LINK_COMPONENT = {
+  a: (props: React.ComponentPropsWithoutRef<"a">) => (
+    <a
+      {...props}
+      className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900 hover:decoration-zinc-500 dark:decoration-zinc-700 dark:hover:text-zinc-100"
+    />
   ),
 };
 
@@ -405,7 +445,7 @@ export async function CouncilorProfile({
     (councilor.session_activity_synthesis_prompt_version ?? 0) <
       CURRENT_COUNCILOR_EVALUATION_PROMPT_VERSION;
 
-  const porownanieEksperymentalne = wczytajPorownanieEksperymentalne(councilor.full_name);
+  const profilIteracyjny = await wczytajProfilIteracyjny(supabase, id, currentTermId);
 
   function formatSpeakingDuration(totalSeconds: number) {
     const total = Math.round(totalSeconds);
@@ -552,6 +592,73 @@ export async function CouncilorProfile({
             {termRow?.term?.label ? ` — ${termRow.term.label}` : ""}
           </h2>
 
+          {profilIteracyjny && (
+            <div className="mb-6">
+              <div className="mb-3 flex items-center justify-between gap-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  Profil budowany sesja po sesji
+                </p>
+                <p className="shrink-0 text-xs text-zinc-500">
+                  Sesja {profilIteracyjny.sesjePrzetworzone} z {profilIteracyjny.totalSesji}
+                </p>
+              </div>
+              <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                <div
+                  className="h-full rounded-full bg-emerald-500"
+                  style={{ width: `${profilIteracyjny.postepProcent}%` }}
+                />
+              </div>
+              {!profilIteracyjny.dogonil && (
+                <p className="mb-3 text-xs text-zinc-500">
+                  Aktualizacja w toku — kolejne sesje dochodzą stopniowo, nie
+                  jednorazowo.
+                </p>
+              )}
+              <div className="rounded-2xl border border-zinc-200 p-4 text-sm leading-relaxed text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
+                <ReactMarkdown
+                  components={{
+                    ...MARKDOWN_LIST_COMPONENTS,
+                    ...MARKDOWN_LINK_COMPONENT,
+                    p: (props) => <p className="mb-2 last:mb-0" {...props} />,
+                  }}
+                >
+                  {profilIteracyjny.notatka}
+                </ReactMarkdown>
+              </div>
+              {profilIteracyjny.rewizje.length > 0 && (
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
+                    Wcześniejsze wersje ({profilIteracyjny.rewizje.length})
+                  </summary>
+                  <div className="mt-2 flex flex-col gap-2">
+                    {profilIteracyjny.rewizje.map((r) => (
+                      <details
+                        key={r.seq}
+                        id={`rewizja-${r.seq}`}
+                        className="rounded-xl border border-zinc-200 p-3 dark:border-zinc-800"
+                      >
+                        <summary className="cursor-pointer text-xs text-zinc-500">
+                          Wersja po sesji {r.seq} — {formatDate(r.createdAt)}
+                        </summary>
+                        <div className="mt-2 text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
+                          <ReactMarkdown
+                            components={{
+                              ...MARKDOWN_LIST_COMPONENTS,
+                              ...MARKDOWN_LINK_COMPONENT,
+                              p: (props) => <p className="mb-2 last:mb-0" {...props} />,
+                            }}
+                          >
+                            {r.notatka}
+                          </ReactMarkdown>
+                        </div>
+                      </details>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
+
           {councilor.session_activity_synthesis && (
             <>
               {/* Baner ma stać PRZED opisem, nie po nim — czytelnik ma poznać
@@ -563,8 +670,15 @@ export async function CouncilorProfile({
                   dowiedzieć z samej strony, nie dopiero z treści prompta. */}
               <div className="mb-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm leading-relaxed text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-400">
                 <p className="mb-2 font-medium text-zinc-700 dark:text-zinc-300">
-                  Jak powstał ten opis
+                  {profilIteracyjny ? "Jak powstał opis niżej" : "Jak powstał ten opis"}
                 </p>
+                {profilIteracyjny && (
+                  <p className="mb-2">
+                    To opis sprzed wdrożenia budowania profilu sesja po sesji —
+                    zamrożony, nieaktualizowany. Nowszy opis, rosnący wraz z
+                    kolejnymi sesjami, jest wyżej.
+                  </p>
+                )}
                 <p className="mb-2">
                   Poniższy opis jest wygenerowany automatycznie na podstawie
                   transkrypcji wypowiedzi tego radnego na sesjach rady oraz
@@ -611,7 +725,7 @@ export async function CouncilorProfile({
                 {councilor.session_activity_synthesis_updated_at &&
                   ` · ${formatDate(councilor.session_activity_synthesis_updated_at)}`}
               </p>
-              {sessionActivityOutdated && (
+              {sessionActivityOutdated && !profilIteracyjny && (
                 <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
                   Obowiązują już nowsze kryteria (wersja{" "}
                   {CURRENT_COUNCILOR_EVALUATION_PROMPT_VERSION}) — opis do
@@ -621,52 +735,11 @@ export async function CouncilorProfile({
             </>
           )}
 
-          {porownanieEksperymentalne && (
-            <section className="mb-6 rounded-2xl border-2 border-dashed border-amber-400 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/20">
-              <h3 className="mb-1 text-sm font-semibold text-amber-800 dark:text-amber-300">
-                Eksperyment: jednorazowo vs. przyrostowo
-              </h3>
-              <p className="mb-3 text-xs text-amber-700 dark:text-amber-400">
-                Robocze porównanie dwóch sposobów budowania notatki wyżej.
-                Wersja przyrostowa:{" "}
-                {porownanieEksperymentalne.dokonczony
-                  ? `pełne ${porownanieEksperymentalne.sesjePrzetworzone} sesji`
-                  : `${porownanieEksperymentalne.sesjePrzetworzone} z 33 sesji, bieg jeszcze trwa`}
-                . Nieopublikowane, tylko do wglądu.
-              </p>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
-                    Jednorazowo (cała kadencja naraz)
-                  </p>
-                  <div className="rounded-xl border border-amber-200 bg-white p-3 text-sm leading-relaxed dark:border-amber-800 dark:bg-zinc-900">
-                    <ReactMarkdown
-                      components={{
-                        ...MARKDOWN_LIST_COMPONENTS,
-                        p: (props) => <p className="mb-2 last:mb-0" {...props} />,
-                      }}
-                    >
-                      {porownanieEksperymentalne.notatkaJednorazowa}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-                <div>
-                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
-                    Przyrostowo (sesja po sesji)
-                  </p>
-                  <div className="rounded-xl border border-amber-200 bg-white p-3 text-sm leading-relaxed dark:border-amber-800 dark:bg-zinc-900">
-                    <ReactMarkdown
-                      components={{
-                        ...MARKDOWN_LIST_COMPONENTS,
-                        p: (props) => <p className="mb-2 last:mb-0" {...props} />,
-                      }}
-                    >
-                      {porownanieEksperymentalne.notatkaIteracyjna}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              </div>
-            </section>
+          {!profilIteracyjny && !councilor.session_activity_synthesis && (
+            <p className="text-sm text-zinc-500">
+              Profil tego radnego jeszcze nie ma opisu aktywności na sesjach —
+              w kolejce do wdrożenia budowania sesja po sesji.
+            </p>
           )}
 
           {matters.length > 0 && (

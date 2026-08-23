@@ -19,6 +19,34 @@
 
 export type Kotwica = { sesja: string; cytat: string | null } | null;
 
+/**
+ * Opcje renderu, wszystkie opcjonalne (dane zewnętrzne wobec `ProfileState`,
+ * dostarczane przez wywołującego — z bazy w produkcji, z `00-meta.json`
+ * w skryptach eksperymentu).
+ */
+export type RenderOpts = {
+  /** Daty ostatnich ~3 przetworzonych sesji — do warstwy świeżości w priorytecie tematów. */
+  ostatnieSesje?: string[];
+  /** Data sesji (ISO) → `meeting.id`, do zamiany gołych dat w tekście na linki `/sesje/[id]`. */
+  datyDoSesji?: Record<string, string>;
+  /**
+   * `teza.id` → `seq` ostatniej rewizji w historii tego radnego, w której ten
+   * temat był jeszcze w warstwie pełnej (top 10). Gdy temat spada do warstwy
+   * skróconej, dopisujemy link do tamtej rewizji zamiast po prostu tracić
+   * dostęp do jego pełnego opisu.
+   */
+  historiaPelnychTematow?: Map<string, number>;
+};
+
+function linkujDate(data: string, mapa?: Record<string, string>): string {
+  const id = mapa?.[data];
+  return id ? `[${data}](/sesje/${id})` : data;
+}
+
+function linkujListeDat(daty: string[], mapa?: Record<string, string>): string {
+  return daty.map((d) => linkujDate(d, mapa)).join(", ");
+}
+
 export type Zasieg = "wzmianka" | "wypowiedz" | "dyskusja";
 
 export type Temat = {
@@ -47,10 +75,12 @@ export type UdzialForma = {
 // Model nie zawsze trzyma się dokładnie schematu (obserwowane: zwykły string
 // zamiast obiektu, brakujące klucze) — zamiast liczyć na "undefined" w
 // interpolacji, wycinamy wpisy, których nie da się bezpiecznie odczytać.
-function bezpiecznyOpisPrzykladu(p: unknown): string | null {
+function bezpiecznyOpisPrzykladu(p: unknown, datyDoSesji?: Record<string, string>): string | null {
   if (p && typeof p === "object" && "opis" in p && "sesja" in p) {
     const { opis, sesja } = p as { opis: unknown; sesja: unknown };
-    if (typeof opis === "string" && typeof sesja === "string") return `${opis} (${sesja})`;
+    if (typeof opis === "string" && typeof sesja === "string") {
+      return `${opis} (${linkujDate(sesja, datyDoSesji)})`;
+    }
   }
   if (typeof p === "string") return p;
   return null;
@@ -93,6 +123,7 @@ export type ProfileState = {
   udzial_forma: {
     odczytanie: UdzialForma;
     formalna: UdzialForma;
+    prowadzenie: UdzialForma;
     dyskusja: UdzialForma;
   };
   mieszkancy: Mieszkaniec[];
@@ -116,8 +147,8 @@ const ROLA: Record<string, string> = {
 // Bez `zdanie` (starszy stan albo model je pominął) cofamy się do etykiety
 // w mianowniku, żeby nigdy nie wymusić błędnego przypadka — czytelniej
 // "Temat: X" niż gramatycznie zepsute "Mówił o X" (X w mianowniku po "o").
-function zdanieOTemacie(t: Temat): string {
-  const daty = t.sesje.length > 1 ? t.sesje.join(", ") : t.sesje[0];
+function zdanieOTemacie(t: Temat, opts: RenderOpts): string {
+  const daty = linkujListeDat(t.sesje, opts.datyDoSesji);
   const sprawaCzesc = t.sprawa
     ? ` — sprawa „${t.sprawa}" (${ROLA[t.rola_w_sprawie ?? ""] ?? t.rola_w_sprawie ?? "brak roli"})`
     : "";
@@ -184,24 +215,46 @@ function przyblizoneOstatnieSesje(state: ProfileState, ile = 3): string[] {
 const LIMIT_PELNYCH = 10;
 const LIMIT_SKROCONYCH = 10;
 
-// Krótsza forma dla warstwy "skrócone" — bez czasownika/przypadka (nie
-// wymaga `zdanie`) i bez klauzuli sprawy, tylko etykieta + daty. Ten sam
-// bezczasownikowy wzorzec, co "Powroty do tematów" niżej.
-function zwiezleOTemacie(t: Temat): string {
-  const daty = t.sesje.length > 1 ? t.sesje.join(", ") : t.sesje[0];
-  return `- „${t.teza}" (${daty}).`;
-}
-
-function sekcjaTematy(state: ProfileState, ostatnieSesje?: string[]): string {
-  if (state.tematy.length === 0) {
-    return "Nie zanotowano wypowiedzi tego radnego na sesjach tej kadencji.";
-  }
+function posortujTematyWgPriorytetu(state: ProfileState, ostatnieSesje?: string[]): Temat[] {
   const sesjeDlaSwiezosci = ostatnieSesje ?? przyblizoneOstatnieSesje(state);
-
-  const posortowane = [...state.tematy].sort((a, b) => {
+  return [...state.tematy].sort((a, b) => {
     const roznica = priorytetTematu(b, state, sesjeDlaSwiezosci) - priorytetTematu(a, state, sesjeDlaSwiezosci);
     return roznica !== 0 ? roznica : a.pierwsza.localeCompare(b.pierwsza);
   });
+}
+
+/**
+ * Id tematów, które w tym stanie wylądowałyby w warstwie pełnej (top 10 wg
+ * priorytetu) — do budowania historii "gdzie ten temat był ostatnio opisany
+ * w pełni" na podstawie kolejnych rewizji (zob. `RenderOpts.
+ * historiaPelnychTematow`). Eksportowana osobno od `sekcjaTematy`, bo
+ * wywołujący (UI, przy odczycie historii rewizji) potrzebuje tego samego
+ * podziału na warstwy bez renderowania całej notatki.
+ */
+export function idTematowWWarstwiePelnej(state: ProfileState, ostatnieSesje?: string[]): Set<string> {
+  return new Set(posortujTematyWgPriorytetu(state, ostatnieSesje).slice(0, LIMIT_PELNYCH).map((t) => t.id));
+}
+
+// Krótsza forma dla warstwy "skrócone" — bez czasownika/przypadka (nie
+// wymaga `zdanie`) i bez klauzuli sprawy, tylko etykieta + daty. Ten sam
+// bezczasownikowy wzorzec, co "Powroty do tematów" niżej.
+//
+// Gdy temat SPADŁ tutaj z warstwy pełnej we wcześniejszej rewizji (nie
+// urodził się od razu jako drugorzędny), dopisujemy link do tamtej rewizji —
+// inaczej jego pełny opis staje się bezpowrotnie niedostępny, mimo że kiedyś
+// był na profilu w całości.
+function zwiezleOTemacie(t: Temat, opts: RenderOpts): string {
+  const daty = linkujListeDat(t.sesje, opts.datyDoSesji);
+  const seq = opts.historiaPelnychTematow?.get(t.id);
+  const link = seq != null ? ` (pełny opis: [wcześniejsza rewizja](#rewizja-${seq}))` : "";
+  return `- „${t.teza}" (${daty})${link}.`;
+}
+
+function sekcjaTematy(state: ProfileState, opts: RenderOpts): string {
+  if (state.tematy.length === 0) {
+    return "Nie zanotowano wypowiedzi tego radnego na sesjach tej kadencji.";
+  }
+  const posortowane = posortujTematyWgPriorytetu(state, opts.ostatnieSesje);
 
   const pelne = posortowane.slice(0, LIMIT_PELNYCH);
   const skrocone = posortowane.slice(LIMIT_PELNYCH, LIMIT_PELNYCH + LIMIT_SKROCONYCH);
@@ -218,12 +271,20 @@ function sekcjaTematy(state: ProfileState, ostatnieSesje?: string[]): string {
   const bloki: string[] = [];
   if (pelne.length > 0) {
     bloki.push(
-      ["Tematy najszerzej poruszane w dotychczasowym materiale:", "", pelne.map(zdanieOTemacie).join("\n")].join("\n")
+      [
+        "Tematy najszerzej poruszane w dotychczasowym materiale:",
+        "",
+        pelne.map((t) => zdanieOTemacie(t, opts)).join("\n"),
+      ].join("\n")
     );
   }
   if (skrocone.length > 0) {
     bloki.push(
-      ["Tematy poruszone krócej lub rzadziej:", "", skrocone.map(zwiezleOTemacie).join("\n")].join("\n")
+      [
+        "Tematy poruszone krócej lub rzadziej:",
+        "",
+        skrocone.map((t) => zwiezleOTemacie(t, opts)).join("\n"),
+      ].join("\n")
     );
   }
 
@@ -329,11 +390,12 @@ function sekcjaObszary(state: ProfileState): string {
 
 const FORMA_LABEL: Record<keyof ProfileState["udzial_forma"], string> = {
   odczytanie: "odczytanie dokumentu",
-  formalna: "czynność formalna / prowadzenie obrad",
+  formalna: "czynność formalna",
+  prowadzenie: "prowadzenie obrad",
   dyskusja: "głos w dyskusji",
 };
 
-function sekcjaUdzialForma(state: ProfileState): string {
+function sekcjaUdzialForma(state: ProfileState, opts: RenderOpts): string {
   const formy = Object.entries(state.udzial_forma) as [
     keyof ProfileState["udzial_forma"],
     UdzialForma,
@@ -351,7 +413,7 @@ function sekcjaUdzialForma(state: ProfileState): string {
     .sort((a, b) => (b[1].wystapien ?? 0) - (a[1].wystapien ?? 0))
     .map(([klucz, f]) => {
       const przyklady = f.przyklady
-        .map(bezpiecznyOpisPrzykladu)
+        .map((p) => bezpiecznyOpisPrzykladu(p, opts.datyDoSesji))
         .filter((x): x is string => x !== null)
         .join("; ");
       const procent =
@@ -361,12 +423,12 @@ function sekcjaUdzialForma(state: ProfileState): string {
     .join("\n");
 }
 
-function sekcjaMieszkancy(state: ProfileState): string {
+function sekcjaMieszkancy(state: ProfileState, opts: RenderOpts): string {
   if (state.mieszkancy.length === 0) {
     return "Brak w materiale wypowiedzi, w której radny powołuje się na zgłoszenie mieszkańców.";
   }
   return state.mieszkancy
-    .map((m) => `- ${m.sesja}: ${m.temat} (zgłaszający: ${m.zrodlo})`)
+    .map((m) => `- ${linkujDate(m.sesja, opts.datyDoSesji)}: ${m.temat} (zgłaszający: ${m.zrodlo})`)
     .join("\n");
 }
 
@@ -375,29 +437,31 @@ const KOLEJNOSC_LABEL: Record<string, string> = {
   "interpelacja-potem-dyskusja": "interpelacja, potem powrót na sesji",
 };
 
-function sekcjaPowroty(state: ProfileState): string {
+function sekcjaPowroty(state: ProfileState, opts: RenderOpts): string {
   const wracajace = state.tematy.filter((t) => t.sesje.length >= 2);
   if (wracajace.length === 0 && state.interpelacje_powiazane.length === 0) {
     return "Brak w materiale powrotu do wcześniej poruszonego tematu ani interpelacji nawiązującej do dyskusji na sesji.";
   }
   const linie: string[] = [];
   for (const t of wracajace) {
-    linie.push(`- temat wracający: „${t.teza}" (${t.sesje.join(", ")})`);
+    linie.push(`- temat wracający: „${t.teza}" (${linkujListeDat(t.sesje, opts.datyDoSesji)})`);
   }
   for (const i of state.interpelacje_powiazane) {
+    // Data interpelacji celowo NIE jest linkiem do sesji — interpelacja to
+    // osobny rekord (`interpellation`), nie posiedzenie, nie ma meeting.id.
     linie.push(
-      `- interpelacja po dyskusji: ${i.temat} — sesja ${i.sesja}, interpelacja ${i.interpelacja} (${KOLEJNOSC_LABEL[i.kolejnosc] ?? i.kolejnosc})`
+      `- interpelacja po dyskusji: ${i.temat} — sesja ${linkujDate(i.sesja, opts.datyDoSesji)}, interpelacja ${i.interpelacja} (${KOLEJNOSC_LABEL[i.kolejnosc] ?? i.kolejnosc})`
     );
   }
   return linie.join("\n");
 }
 
-function sekcjaSpory(state: ProfileState): string {
+function sekcjaSpory(state: ProfileState, opts: RenderOpts): string {
   if (state.spory.length === 0) {
     return "Nie zanotowano sporów z udziałem tego radnego w tej kadencji.";
   }
   return state.spory
-    .map((s) => `- ${s.sesja}: ${s.temat} — ${s.stanowiska}`)
+    .map((s) => `- ${linkujDate(s.sesja, opts.datyDoSesji)}: ${s.temat} — ${s.stanowiska}`)
     .join("\n");
 }
 
@@ -405,17 +469,17 @@ function sekcjaSpory(state: ProfileState): string {
  * Renderuje pełną notatkę Markdown ze stanu — jedyne miejsce, gdzie stan
  * staje się prozą.
  *
- * `ostatnieSesje` (opcjonalne) — daty ostatnich ~3 przetworzonych sesji tego
- * radnego, do warstwy świeżości w priorytecie tematów. Gdy wywołujący ma
- * pełną listę sesji (np. z `00-meta.json` w skryptach eksperymentu, docelowo
- * z zapytania do bazy) — powinien ją podać, to dokładniejsze niż wewnętrzne
- * przybliżenie z samych dat w `tematy`.
+ * `opts` (wszystkie pola opcjonalne, zob. `RenderOpts`) — dane zewnętrzne
+ * wobec `state`, których wywołujący nie musi mieć: świeżość sesji, mapa
+ * dat na `meeting.id` (do linków `/sesje/[id]`) i historia rewizji (do
+ * linków "pełny opis" przy tematach, które spadły do warstwy skróconej).
+ * Bez nich renderProfile nadal działa poprawnie — po prostu bez linków.
  */
-export function renderProfile(state: ProfileState, ostatnieSesje?: string[]): string {
+export function renderProfile(state: ProfileState, opts: RenderOpts = {}): string {
   return [
     "**Tematy wypowiedzi na sesjach:**",
     "",
-    sekcjaTematy(state, ostatnieSesje),
+    sekcjaTematy(state, opts),
     "",
     "**Główne obszary zainteresowania:**",
     "",
@@ -423,19 +487,19 @@ export function renderProfile(state: ProfileState, ostatnieSesje?: string[]): st
     "",
     "**Rodzaj udziału w obradach:**",
     "",
-    sekcjaUdzialForma(state),
+    sekcjaUdzialForma(state, opts),
     "",
     "**Powołania na sprawy mieszkańców:**",
     "",
-    sekcjaMieszkancy(state),
+    sekcjaMieszkancy(state, opts),
     "",
     "**Powroty do tematów i ciąg dalszy poza sesją:**",
     "",
-    sekcjaPowroty(state),
+    sekcjaPowroty(state, opts),
     "",
     "**Spory z udziałem radnego:**",
     "",
-    sekcjaSpory(state),
+    sekcjaSpory(state, opts),
   ].join("\n");
 }
 
