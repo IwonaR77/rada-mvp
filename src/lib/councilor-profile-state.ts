@@ -10,9 +10,12 @@
 // punkt), nie jako pojedynczy akapit — wersja bez punktorów (do 2026-08-23)
 // sklejała 20+ tez jedną spacją w nieczytelny blok tekstu. `teza` (mianownik,
 // etykieta) nigdy nie trafia bezpośrednio po czasowniku wymagającym innego
-// przypadka — stąd osobne pole `po_mowil_o` (miejscownik, pisane przez model
-// specjalnie pod zdanie "Mówił o ___"), żeby kod nie musiał syntetyzować
-// polskiej gramatyki samodzielnie.
+// przypadka — stąd osobne pole `zdanie`: model pisze cały fragment zdania
+// (czasownik dobrany do tego, co radny faktycznie zrobił — pytał/sprzeciwił
+// się/poparł, nie tylko "mówił o" — razem z poprawnie odmienionym
+// dopełnieniem), więc kod nigdy nie syntetyzuje polskiej gramatyki ani nie
+// wymusza jednego czasownika na wszystko (to drugie było usterką
+// wcześniejszego pola `po_mowil_o`, zawężonego wyłącznie pod "Mówił o ___").
 
 export type Kotwica = { sesja: string; cytat: string | null } | null;
 
@@ -21,7 +24,7 @@ export type Zasieg = "wzmianka" | "wypowiedz" | "dyskusja";
 export type Temat = {
   id: string;
   teza: string;
-  po_mowil_o: string | null;
+  zdanie: string | null;
   kategoria_obszaru: string;
   zasieg: Zasieg | null;
   sesje: string[];
@@ -37,6 +40,7 @@ export type PrzykladUdzialu = { opis: string; sesja: string; kotwica: string | n
 
 export type UdzialForma = {
   wystapil: boolean;
+  wystapien: number | null;
   przyklady: PrzykladUdzialu[];
 };
 
@@ -109,15 +113,15 @@ const ROLA: Record<string, string> = {
 // użytkownika, więc każda, którą w ogóle widzi, jest zatwierdzona z definicji
 // — dopisywanie tego słowa nic nie mówi, tylko sugeruje istnienie innego,
 // niewidocznego stanu, którego czytelnik i tak nie ma jak sprawdzić.
-// Bez `po_mowil_o` (starszy stan albo model go pominął) cofamy się do
-// etykiety w mianowniku, żeby nigdy nie wymusić błędnego przypadka po "o" —
-// czytelniej "Temat: X" niż gramatycznie zepsute "Mówił o X".
+// Bez `zdanie` (starszy stan albo model je pominął) cofamy się do etykiety
+// w mianowniku, żeby nigdy nie wymusić błędnego przypadka — czytelniej
+// "Temat: X" niż gramatycznie zepsute "Mówił o X" (X w mianowniku po "o").
 function zdanieOTemacie(t: Temat): string {
   const daty = t.sesje.length > 1 ? t.sesje.join(", ") : t.sesje[0];
   const sprawaCzesc = t.sprawa
     ? ` — sprawa „${t.sprawa}" (${ROLA[t.rola_w_sprawie ?? ""] ?? t.rola_w_sprawie ?? "brak roli"})`
     : "";
-  const rdzen = t.po_mowil_o ? `Mówił o ${t.po_mowil_o}` : `Temat: „${t.teza}"`;
+  const rdzen = t.zdanie ? t.zdanie.charAt(0).toUpperCase() + t.zdanie.slice(1) : `Temat: „${t.teza}"`;
   return `- ${rdzen} (${daty})${sprawaCzesc}.`;
 }
 
@@ -181,8 +185,8 @@ const LIMIT_PELNYCH = 10;
 const LIMIT_SKROCONYCH = 10;
 
 // Krótsza forma dla warstwy "skrócone" — bez czasownika/przypadka (nie
-// wymaga `po_mowil_o`) i bez klauzuli sprawy, tylko etykieta + daty. Ten sam
-// bezcasownikowy wzorzec, co "Powroty do tematów" niżej.
+// wymaga `zdanie`) i bez klauzuli sprawy, tylko etykieta + daty. Ten sam
+// bezczasownikowy wzorzec, co "Powroty do tematów" niżej.
 function zwiezleOTemacie(t: Temat): string {
   const daty = t.sesje.length > 1 ? t.sesje.join(", ") : t.sesje[0];
   return `- „${t.teza}" (${daty}).`;
@@ -203,11 +207,27 @@ function sekcjaTematy(state: ProfileState, ostatnieSesje?: string[]): string {
   const skrocone = posortowane.slice(LIMIT_PELNYCH, LIMIT_PELNYCH + LIMIT_SKROCONYCH);
   const reszta = posortowane.slice(LIMIT_PELNYCH + LIMIT_SKROCONYCH);
 
-  const linie = [
-    ...[...pelne].sort((a, b) => a.pierwsza.localeCompare(b.pierwsza)).map(zdanieOTemacie),
-    ...[...skrocone].sort((a, b) => a.pierwsza.localeCompare(b.pierwsza)).map(zwiezleOTemacie),
-  ];
-  let tekst = linie.join("\n");
+  // Kolejność wyświetlania = kolejność priorytetu (bez ponownego sortowania
+  // chronologicznego w środku warstwy) — temat, który trafi do konsolidacji
+  // najpóźniej, ma stać na górze listy, nie temat najwcześniejszy w czasie.
+  //
+  // Dwa bloki z osobną rozbiegówką, nie jedna zlepiona lista — bez tego
+  // przejście z pełnych zdań ("Mówił o...") na gołe etykiety w drugiej
+  // dziesiątce czytało się jak przypadkowy zgrzyt stylu, nie jak celowy
+  // podział wg priorytetu.
+  const bloki: string[] = [];
+  if (pelne.length > 0) {
+    bloki.push(
+      ["Tematy najszerzej poruszane w dotychczasowym materiale:", "", pelne.map(zdanieOTemacie).join("\n")].join("\n")
+    );
+  }
+  if (skrocone.length > 0) {
+    bloki.push(
+      ["Tematy poruszone krócej lub rzadziej:", "", skrocone.map(zwiezleOTemacie).join("\n")].join("\n")
+    );
+  }
+
+  let tekst = bloki.join("\n\n");
   if (reszta.length > 0) {
     tekst += `\n\noraz ${reszta.length} innych, drugorzędnych tematów.`;
   }
@@ -322,13 +342,21 @@ function sekcjaUdzialForma(state: ProfileState): string {
   if (obecne.length === 0) {
     return "Brak potwierdzonych wypowiedzi tego radnego w dostarczonym materiale.";
   }
-  return obecne
+  // `wystapien` to licznik NIEZALEŻNY od `przyklady` (który jest ucięty na 3)
+  // — jedyne źródło do policzenia proporcji. Starsze stany (sprzed tego pola)
+  // po prostu nie mają go wypełnionego — wtedy cicho pomijamy procent zamiast
+  // pokazywać fałszywe wyliczenie z niepełnych danych.
+  const total = formy.reduce((s, [, f]) => s + (f.wystapien ?? 0), 0);
+  return [...obecne]
+    .sort((a, b) => (b[1].wystapien ?? 0) - (a[1].wystapien ?? 0))
     .map(([klucz, f]) => {
       const przyklady = f.przyklady
         .map(bezpiecznyOpisPrzykladu)
         .filter((x): x is string => x !== null)
         .join("; ");
-      return `- ${FORMA_LABEL[klucz]}${przyklady ? ` — np. ${przyklady}` : ""}.`;
+      const procent =
+        total > 0 && f.wystapien != null ? ` (ok. ${Math.round((f.wystapien / total) * 10) * 10}%)` : "";
+      return `- ${FORMA_LABEL[klucz]}${procent}${przyklady ? ` — np. ${przyklady}` : ""}.`;
     })
     .join("\n");
 }
