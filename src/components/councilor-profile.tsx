@@ -754,7 +754,7 @@ export async function CouncilorProfile({
                     className="flex flex-col gap-1.5 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                   >
                     <Link
-                      href={`/rada/${matter.council_id}`}
+                      href={`/sprawy/${matter.id}`}
                       className="text-sm text-zinc-800 hover:underline dark:text-zinc-200"
                     >
                       {matter.title}

@@ -134,7 +134,7 @@ export function ThreadGroup({
   );
 }
 
-function MatterCard({
+export function MatterCard({
   matter,
   canApprove,
 }: {
