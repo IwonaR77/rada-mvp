@@ -16,7 +16,7 @@ export default async function CouncilorPage({
 
   const { data: termRow } = await supabase
     .from("councilor_term")
-    .select("term:term_id(council_id)")
+    .select("term:term_id(start_date, council_id)")
     .eq("councilor_id", id)
     .order("term(start_date)", { ascending: false })
     .limit(1)
