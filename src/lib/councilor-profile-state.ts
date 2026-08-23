@@ -1,16 +1,25 @@
 // Renderowanie notatki o radnym z jego strukturalnego stanu (Etap 2/3 planu
-// przyrostowego budowania profilu — zob. prompty/Prompt_Profil_Radnego_*_v1.md).
+// przyrostowego budowania profilu — zob. prompty/Prompt_Profil_Radnego_*_v2.md).
 //
 // Model (przez `claude -p`) utrzymuje wyłącznie listę tez i faktów w JSON;
 // prozę składa ten plik, deterministycznie, sekcja po sekcji — dzięki temu
 // proporcje (która sesja waży ile) i "temat wracający"/"główne obszary" nie
 // zależą od tego, którą sesję model widział jako ostatnią podczas iteracji.
+//
+// Sekcje renderują się jako listy punktowane (jedna teza/forma = jeden
+// punkt), nie jako pojedynczy akapit — wersja bez punktorów (do 2026-08-23)
+// sklejała 20+ tez jedną spacją w nieczytelny blok tekstu. `teza` (mianownik,
+// etykieta) nigdy nie trafia bezpośrednio po czasowniku wymagającym innego
+// przypadka — stąd osobne pole `po_mowil_o` (miejscownik, pisane przez model
+// specjalnie pod zdanie "Mówił o ___"), żeby kod nie musiał syntetyzować
+// polskiej gramatyki samodzielnie.
 
 export type Kotwica = { sesja: string; cytat: string | null } | null;
 
 export type Temat = {
   id: string;
   teza: string;
+  po_mowil_o: string | null;
   kategoria_obszaru: string;
   sesje: string[];
   wystapien: number;
@@ -21,10 +30,24 @@ export type Temat = {
   rola_w_sprawie: string | null;
 };
 
+export type PrzykladUdzialu = { opis: string; sesja: string; kotwica: string | null };
+
 export type UdzialForma = {
   wystapil: boolean;
-  przyklady: { sesja: string; punkt: string; kotwica: string }[];
+  przyklady: PrzykladUdzialu[];
 };
+
+// Model nie zawsze trzyma się dokładnie schematu (obserwowane: zwykły string
+// zamiast obiektu, brakujące klucze) — zamiast liczyć na "undefined" w
+// interpolacji, wycinamy wpisy, których nie da się bezpiecznie odczytać.
+function bezpiecznyOpisPrzykladu(p: unknown): string | null {
+  if (p && typeof p === "object" && "opis" in p && "sesja" in p) {
+    const { opis, sesja } = p as { opis: unknown; sesja: unknown };
+    if (typeof opis === "string" && typeof sesja === "string") return `${opis} (${sesja})`;
+  }
+  if (typeof p === "string") return p;
+  return null;
+}
 
 export type Mieszkaniec = {
   id: string;
@@ -82,12 +105,16 @@ const ROLA: Record<string, string> = {
 // użytkownika, więc każda, którą w ogóle widzi, jest zatwierdzona z definicji
 // — dopisywanie tego słowa nic nie mówi, tylko sugeruje istnienie innego,
 // niewidocznego stanu, którego czytelnik i tak nie ma jak sprawdzić.
+// Bez `po_mowil_o` (starszy stan albo model go pominął) cofamy się do
+// etykiety w mianowniku, żeby nigdy nie wymusić błędnego przypadka po "o" —
+// czytelniej "Temat: X" niż gramatycznie zepsute "Mówił o X".
 function zdanieOTemacie(t: Temat): string {
   const daty = t.sesje.length > 1 ? t.sesje.join(", ") : t.sesje[0];
   const sprawaCzesc = t.sprawa
     ? ` — sprawa „${t.sprawa}" (${ROLA[t.rola_w_sprawie ?? ""] ?? t.rola_w_sprawie ?? "brak roli"})`
     : "";
-  return `Mówił o „${t.teza}" (${daty})${sprawaCzesc}.`;
+  const rdzen = t.po_mowil_o ? `Mówił o ${t.po_mowil_o}` : `Temat: „${t.teza}"`;
+  return `- ${rdzen} (${daty})${sprawaCzesc}.`;
 }
 
 function sekcjaTematy(state: ProfileState): string {
@@ -97,7 +124,7 @@ function sekcjaTematy(state: ProfileState): string {
   return [...state.tematy]
     .sort((a, b) => a.pierwsza.localeCompare(b.pierwsza))
     .map(zdanieOTemacie)
-    .join(" ");
+    .join("\n");
 }
 
 function sekcjaObszary(state: ProfileState): string {
@@ -147,11 +174,12 @@ function sekcjaUdzialForma(state: ProfileState): string {
   return obecne
     .map(([klucz, f]) => {
       const przyklady = f.przyklady
-        .map((p) => `${p.punkt} (${p.sesja})`)
+        .map(bezpiecznyOpisPrzykladu)
+        .filter((x): x is string => x !== null)
         .join("; ");
-      return `${FORMA_LABEL[klucz]}${przyklady ? ` — np. ${przyklady}` : ""}.`;
+      return `- ${FORMA_LABEL[klucz]}${przyklady ? ` — np. ${przyklady}` : ""}.`;
     })
-    .join(" ");
+    .join("\n");
 }
 
 function sekcjaMieszkancy(state: ProfileState): string {
