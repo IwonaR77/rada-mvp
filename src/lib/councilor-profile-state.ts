@@ -16,11 +16,14 @@
 
 export type Kotwica = { sesja: string; cytat: string | null } | null;
 
+export type Zasieg = "wzmianka" | "wypowiedz" | "dyskusja";
+
 export type Temat = {
   id: string;
   teza: string;
   po_mowil_o: string | null;
   kategoria_obszaru: string;
+  zasieg: Zasieg | null;
   sesje: string[];
   wystapien: number;
   pierwsza: string;
@@ -81,6 +84,7 @@ export type ProfileState = {
   sesje_z_wypowiedziami: number;
   ostatnia_sesja: { data: string; id: string } | null;
   kategorie_znane: string[];
+  grupy_kategorii: Record<string, string[]>;
   tematy: Temat[];
   udzial_forma: {
     odczytanie: UdzialForma;
@@ -117,14 +121,140 @@ function zdanieOTemacie(t: Temat): string {
   return `- ${rdzen} (${daty})${sprawaCzesc}.`;
 }
 
-function sekcjaTematy(state: ProfileState): string {
+// Bigramowe podobieństwo (Dice) — lokalna kopia tej samej miary, co w
+// scripts/profil/porownaj-stan.mjs. Tu służy do (miękkiego) dopasowania
+// zgłoszenia mieszkańców do tematu bez nowego pola łączącego oba wpisy —
+// ten sam kompromis, którym świadomie pominęliśmy analogiczne pole dla
+// sporów (koszt osobnej infrastruktury nieuzasadniony przy garstce trafień).
+function bigramy(tekst: string): Set<string> {
+  const znorm = tekst.toLocaleLowerCase("pl-PL").replace(/\s+/g, " ").trim();
+  const zestaw = new Set<string>();
+  for (let i = 0; i < znorm.length - 1; i++) zestaw.add(znorm.slice(i, i + 2));
+  return zestaw;
+}
+
+function dice(a: string, b: string): number {
+  const ba = bigramy(a);
+  const bb = bigramy(b);
+  if (ba.size === 0 || bb.size === 0) return 0;
+  let wspolne = 0;
+  for (const x of ba) if (bb.has(x)) wspolne++;
+  return (2 * wspolne) / (ba.size + bb.size);
+}
+
+const ZASIEG_WAGA: Record<Zasieg, number> = { wzmianka: 0, wypowiedz: 1, dyskusja: 2 };
+
+// Priorytet renderu — NIE ocena wagi tematu w jakimkolwiek moralnym/
+// politycznym sensie, wyłącznie sygnał "ile miejsca dostanie w notatce",
+// budowany z sygnałów, które już są w stanie (albo tanie do policzenia z
+// niego), żeby model nigdy nie musiał samodzielnie oceniać "co jest ważne
+// dla mieszkańców" — dokładnie tego typu osądu ten projekt konsekwentnie
+// unika (zob. zakaz przymiotników oceniających w ZASADACH obu promptów).
+function priorytetTematu(t: Temat, state: ProfileState, ostatnieSesje: string[]): number {
+  let wynik = 0;
+  if (t.sprawa) wynik += 2;
+  wynik += Math.max(0, t.sesje.length - 1);
+  wynik += ZASIEG_WAGA[t.zasieg ?? "wzmianka"] ?? 0;
+  const zgloszonyPrzezMieszkancow = state.mieszkancy.some((m) => dice(m.temat, t.teza) >= 0.4);
+  if (zgloszonyPrzezMieszkancow) wynik += 2;
+  if (ostatnieSesje.length > 0) {
+    const najnowsza = ostatnieSesje[ostatnieSesje.length - 1];
+    if (t.ostatnia === najnowsza) wynik += 2;
+    else if (ostatnieSesje.includes(t.ostatnia)) wynik += 1;
+  }
+  return wynik;
+}
+
+// Ostatnie kilka przetworzonych sesji, do warstwy świeżości w priorytecie.
+// Bez jawnej listy (np. z 00-meta.json) przybliżamy ją unią dat obecnych w
+// `sesje` wszystkich tematów — działa dobrze przy 20+ tematach (typowy
+// przypadek), zawodzi tylko gdyby ostatnie sesje nie miały ŻADNEGO tematu
+// (radny w ogóle nie mówił) — wtedy po prostu nie ma czym premiować świeżości,
+// co jest neutralnym, bezpiecznym skutkiem, nie błędem.
+function przyblizoneOstatnieSesje(state: ProfileState, ile = 3): string[] {
+  const wszystkie = new Set<string>();
+  for (const t of state.tematy) for (const d of t.sesje) wszystkie.add(d);
+  return [...wszystkie].sort().slice(-ile);
+}
+
+const LIMIT_PELNYCH = 10;
+const LIMIT_SKROCONYCH = 10;
+
+// Krótsza forma dla warstwy "skrócone" — bez czasownika/przypadka (nie
+// wymaga `po_mowil_o`) i bez klauzuli sprawy, tylko etykieta + daty. Ten sam
+// bezcasownikowy wzorzec, co "Powroty do tematów" niżej.
+function zwiezleOTemacie(t: Temat): string {
+  const daty = t.sesje.length > 1 ? t.sesje.join(", ") : t.sesje[0];
+  return `- „${t.teza}" (${daty}).`;
+}
+
+function sekcjaTematy(state: ProfileState, ostatnieSesje?: string[]): string {
   if (state.tematy.length === 0) {
     return "Nie zanotowano wypowiedzi tego radnego na sesjach tej kadencji.";
   }
-  return [...state.tematy]
-    .sort((a, b) => a.pierwsza.localeCompare(b.pierwsza))
-    .map(zdanieOTemacie)
-    .join("\n");
+  const sesjeDlaSwiezosci = ostatnieSesje ?? przyblizoneOstatnieSesje(state);
+
+  const posortowane = [...state.tematy].sort((a, b) => {
+    const roznica = priorytetTematu(b, state, sesjeDlaSwiezosci) - priorytetTematu(a, state, sesjeDlaSwiezosci);
+    return roznica !== 0 ? roznica : a.pierwsza.localeCompare(b.pierwsza);
+  });
+
+  const pelne = posortowane.slice(0, LIMIT_PELNYCH);
+  const skrocone = posortowane.slice(LIMIT_PELNYCH, LIMIT_PELNYCH + LIMIT_SKROCONYCH);
+  const reszta = posortowane.slice(LIMIT_PELNYCH + LIMIT_SKROCONYCH);
+
+  const linie = [
+    ...[...pelne].sort((a, b) => a.pierwsza.localeCompare(b.pierwsza)).map(zdanieOTemacie),
+    ...[...skrocone].sort((a, b) => a.pierwsza.localeCompare(b.pierwsza)).map(zwiezleOTemacie),
+  ];
+  let tekst = linie.join("\n");
+  if (reszta.length > 0) {
+    tekst += `\n\noraz ${reszta.length} innych, drugorzędnych tematów.`;
+  }
+  return tekst;
+}
+
+// `kategoria_obszaru` jest surowa i drobnoziarnista (jeden temat = jedna
+// wąska nazwa, nigdy nie nadpisywana po utworzeniu — jak `teza`). Przy 20+
+// tematach mnoży się w kilkanaście bliskich znaczeniowo nazw, więc żadna nie
+// przekracza progu dominacji, mimo że materiał ma wyraźne skupienia — po
+// prostu rozbite na kilka etykiet. `grupy_kategorii` to osobna, aktywnie
+// utrzymywana mapa (nazwa szerokiej grupy → lista surowych nazw), którą
+// rolujemy tutaj PRZED liczeniem progów. Kategoria nieujęta w żadnej grupie
+// (model zapomniał/stan sprzed tej zmiany) staje się swoją własną grupą —
+// bezpieczny fallback, nic nie ginie z podsumowania.
+function zrolujKategorie(state: ProfileState): Map<string, number> {
+  const rawDoGrupy = new Map<string, string>();
+  for (const [grupa, rawList] of Object.entries(state.grupy_kategorii ?? {})) {
+    for (const raw of rawList) rawDoGrupy.set(raw, grupa);
+  }
+  const perGrupa = new Map<string, number>();
+  for (const t of state.tematy) {
+    const grupa = rawDoGrupy.get(t.kategoria_obszaru) ?? t.kategoria_obszaru;
+    perGrupa.set(grupa, (perGrupa.get(grupa) ?? 0) + t.wystapien);
+  }
+  return perGrupa;
+}
+
+function topKategoria(perGrupa: Map<string, number>): [string, number] | null {
+  if (perGrupa.size === 0) return null;
+  return [...perGrupa.entries()].sort((a, b) => b[1] - a[1])[0];
+}
+
+// Środek osi czasu dotychczasowego materiału (najwcześniejsza `pierwsza` do
+// najpóźniejszej `ostatnia` wśród wszystkich tez) — do rozróżnienia obszarów
+// wciąż aktualnych od tych porzuconych we wcześniejszej części kadencji.
+// `null`, gdy materiału za mało, żeby cokolwiek o osi czasu powiedzieć.
+function polowaOkresu(state: ProfileState): string | null {
+  const daty = state.tematy.flatMap((t) => [t.pierwsza, t.ostatnia]).filter(Boolean);
+  if (daty.length < 2) return null;
+  const min = daty.reduce((a, b) => (a < b ? a : b));
+  const max = daty.reduce((a, b) => (a > b ? a : b));
+  if (min === max) return null;
+  const minMs = new Date(min).getTime();
+  const maxMs = new Date(max).getTime();
+  if (Number.isNaN(minMs) || Number.isNaN(maxMs)) return null;
+  return new Date((minMs + maxMs) / 2).toISOString().slice(0, 10);
 }
 
 function sekcjaObszary(state: ProfileState): string {
@@ -135,25 +265,46 @@ function sekcjaObszary(state: ProfileState): string {
   if (total < 3) {
     return "Materiał nie dostarcza wystarczających danych, by wskazać główne obszary zainteresowania tego radnego.";
   }
-  const perKategoria = new Map<string, number>();
-  for (const t of state.tematy) {
-    perKategoria.set(t.kategoria_obszaru, (perKategoria.get(t.kategoria_obszaru) ?? 0) + t.wystapien);
-  }
-  const posortowane = [...perKategoria.entries()].sort((a, b) => b[1] - a[1]);
+  const perGrupa = zrolujKategorie(state);
+  const posortowane = [...perGrupa.entries()].sort((a, b) => b[1] - a[1]);
   const najwiekszyUdzial = posortowane[0][1] / total;
+
+  let glowny: string;
   if (najwiekszyUdzial < 0.2) {
-    return "Aktywność radnego obejmuje szerokie spektrum tematów bez wyraźnie dominujących obszarów.";
+    glowny = "Aktywność radnego obejmuje szerokie spektrum tematów bez wyraźnie dominujących obszarów.";
+  } else {
+    const top3 = posortowane.slice(0, 3);
+    const top3Suma = top3.reduce((s, [, n]) => s + n, 0);
+    const linie = top3.map(
+      ([kategoria, n]) => `- ${kategoria}: ok. ${Math.round((n / total) * 10) * 10}%`
+    );
+    if (posortowane.length > 3 && top3Suma < total) {
+      const reszta = total - top3Suma;
+      linie.push(`- pozostałe tematy: ok. ${Math.round((reszta / total) * 10) * 10}%`);
+    }
+    glowny = linie.join("\n");
   }
-  const top3 = posortowane.slice(0, 3);
-  const top3Suma = top3.reduce((s, [, n]) => s + n, 0);
-  const linie = top3.map(
-    ([kategoria, n]) => `- ${kategoria}: ok. ${Math.round((n / total) * 10) * 10}%`
-  );
-  if (posortowane.length > 3 && top3Suma < total) {
-    const reszta = total - top3Suma;
-    linie.push(`- pozostałe tematy: ok. ${Math.round((reszta / total) * 10) * 10}%`);
+
+  // Dopisek o przesunięciu w czasie — tylko gdy druga połowa okresu ma
+  // wystarczająco materiału (≥3 wystąpień, ten sam próg co wyżej) i wskazuje
+  // na INNY główny obszar niż cała historia. Cichy brak dopisku w pozostałych
+  // przypadkach — brak przesunięcia to informacja tak samo neutralna jak jego
+  // obecność, nie trzeba tego osobno stwierdzać.
+  const polowa = polowaOkresu(state);
+  if (polowa) {
+    const niedawne = state.tematy.filter((t) => t.ostatnia >= polowa);
+    const totalNiedawne = niedawne.reduce((s, t) => s + t.wystapien, 0);
+    if (totalNiedawne >= 3) {
+      const perGrupaNiedawne = zrolujKategorie({ ...state, tematy: niedawne });
+      const topNiedawny = topKategoria(perGrupaNiedawne);
+      const topCaly = topKategoria(perGrupa);
+      if (topNiedawny && topCaly && topNiedawny[0] !== topCaly[0]) {
+        glowny += `\n\nW nowszej części dotychczas przetworzonego materiału (od ${polowa}) najwięcej wystąpień ma obszar „${topNiedawny[0]}" — w całości dotychczasowego materiału dominuje „${topCaly[0]}".`;
+      }
+    }
   }
-  return linie.join("\n");
+
+  return glowny;
 }
 
 const FORMA_LABEL: Record<keyof ProfileState["udzial_forma"], string> = {
@@ -222,12 +373,21 @@ function sekcjaSpory(state: ProfileState): string {
     .join("\n");
 }
 
-/** Renderuje pełną notatkę Markdown ze stanu — jedyne miejsce, gdzie stan staje się prozą. */
-export function renderProfile(state: ProfileState): string {
+/**
+ * Renderuje pełną notatkę Markdown ze stanu — jedyne miejsce, gdzie stan
+ * staje się prozą.
+ *
+ * `ostatnieSesje` (opcjonalne) — daty ostatnich ~3 przetworzonych sesji tego
+ * radnego, do warstwy świeżości w priorytecie tematów. Gdy wywołujący ma
+ * pełną listę sesji (np. z `00-meta.json` w skryptach eksperymentu, docelowo
+ * z zapytania do bazy) — powinien ją podać, to dokładniejsze niż wewnętrzne
+ * przybliżenie z samych dat w `tematy`.
+ */
+export function renderProfile(state: ProfileState, ostatnieSesje?: string[]): string {
   return [
     "**Tematy wypowiedzi na sesjach:**",
     "",
-    sekcjaTematy(state),
+    sekcjaTematy(state, ostatnieSesje),
     "",
     "**Główne obszary zainteresowania:**",
     "",
