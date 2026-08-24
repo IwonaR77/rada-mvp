@@ -1,7 +1,7 @@
 "use server";
 
 import { refresh } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { MAX_BOOKMARKS, NOTE_MAX_LENGTH } from "@/lib/bookmarks";
 
 /**
@@ -32,9 +32,7 @@ export async function saveBookmark({
   replaceBookmarkId?: string;
 }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   if (!user) return { error: "Musisz być zalogowana" };
 
@@ -112,9 +110,7 @@ export async function saveBookmark({
 
 export async function deleteBookmark(bookmarkId: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   if (!user) return { error: "Musisz być zalogowana" };
 

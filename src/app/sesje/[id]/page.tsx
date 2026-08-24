@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { SessionPlayer } from "@/components/session-player";
 import { SessionNeighborNav } from "@/components/session-neighbor-nav";
 import { LiveMeetingRefresh } from "@/components/live-meeting-refresh";
@@ -35,9 +35,7 @@ export default async function SessionPage({
   // sharing one client can each try to refresh an expired access token with
   // the same (single-use) refresh token, and all but the first fail with
   // "Invalid Refresh Token: Already Used".
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   const councilId = meeting.term?.council?.id;
 

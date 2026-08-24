@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import {
   alreadyHeldLevels,
   isAccessLevel,
@@ -22,9 +22,7 @@ export async function submitAccessRequest(
   }
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) return { error: "Musisz być zalogowany" };
 
   // Zablokowane konto nie może wnioskować o uprawnienia. Proxy odcina samą

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import {
   ThreadGroup,
   groupByThread,
@@ -14,9 +14,7 @@ export default async function SprawyPage({
 }) {
   const { councilId } = await searchParams;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   let query = supabase
     .from("matter")

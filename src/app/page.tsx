@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { DEFAULT_COUNCIL_ID } from "@/lib/launch-config";
 
@@ -15,9 +15,7 @@ import { DEFAULT_COUNCIL_ID } from "@/lib/launch-config";
 // aktywną sesją lądowało na mapie.
 export default async function Home() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   if (user) {
     const { data: appUser } = await supabase
@@ -36,7 +34,7 @@ export default async function Home() {
     <div className="flex flex-1 flex-col items-center justify-center gap-12 bg-zinc-50 px-6 py-16 dark:bg-black lg:flex-row lg:gap-16">
       <div className="w-full max-w-sm overflow-hidden rounded-2xl shadow-lg">
         <Image
-          src="/homepage-hero.png"
+          src="/homepage-hero.webp"
           alt="Pusta sala obrad rady"
           width={1024}
           height={1400}

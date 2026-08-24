@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
   title: "Konto zablokowane — Rada",
@@ -15,9 +15,7 @@ export const metadata: Metadata = {
  */
 export default async function BrakDostepuPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) redirect("/");
 
   // Własny wiersz app_user każdy czyta bez przeszkód (polityka

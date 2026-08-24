@@ -66,6 +66,9 @@ export function checkRateLimit(
  * @param supabase - klient z aktywną sesją żądania (np. z `updateSession`),
  *   bo funkcja RPC jest wywoływana kluczem anon.
  */
+export type RateLimitConfig = { limit: number; windowSeconds: number };
+export type RateLimitResult = { allowed: boolean; retryAfterSeconds: number };
+
 export async function checkRateLimitDurable(
   supabase: {
     rpc: (
@@ -77,8 +80,8 @@ export async function checkRateLimitDurable(
     }>;
   },
   key: string,
-  { limit, windowSeconds }: { limit: number; windowSeconds: number }
-): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
+  { limit, windowSeconds }: RateLimitConfig
+): Promise<RateLimitResult> {
   const { data, error } = await supabase.rpc("check_rate_limit", {
     p_key: key,
     p_limit: limit,

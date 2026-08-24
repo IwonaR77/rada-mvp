@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { LogoutLink } from "@/components/logout-link";
 import { AdminMenu } from "@/components/admin-menu";
 import { isAccountBlocked } from "@/lib/blocked-account";
@@ -7,9 +7,7 @@ import { DEFAULT_COUNCIL_ID } from "@/lib/launch-config";
 
 export async function SiteHeader() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   let favoriteCouncil: { id: string; name: string } | null = null;
   let manager = false;

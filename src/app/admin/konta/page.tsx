@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { AccountActions } from "@/components/account-actions";
 import {
   ADMIN_LEVELS,
@@ -62,9 +62,7 @@ export default async function AdminKontaPage({
   }>;
 }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) notFound();
 
   const { data: isManager } = await supabase.rpc("is_manager", {

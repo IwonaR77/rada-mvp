@@ -64,7 +64,7 @@
  */
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ADMIN_LEVELS, type AdminLevel } from "@/lib/access-levels";
 import type { Database } from "@/lib/supabase/database.types";
@@ -81,9 +81,7 @@ import type { Database } from "@/lib/supabase/database.types";
  */
 async function requireManager() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) {
     return { error: "Musisz być zalogowany" as const, supabase, userId: null };
   }

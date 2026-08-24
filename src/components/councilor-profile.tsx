@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { CURRENT_COUNCILOR_EVALUATION_PROMPT_VERSION } from "@/lib/councilor-evaluation-prompt-version";
 import { getSpeakingActivity } from "@/lib/council-activity";
@@ -219,9 +219,7 @@ export async function CouncilorProfile({
     { data: matterRows },
     speakingSegments,
     { data: bookmarkRows },
-    {
-      data: { user },
-    },
+    user,
   ] = await Promise.all([
       supabase
         .from("councilor_term")
@@ -283,7 +281,7 @@ export async function CouncilorProfile({
         .from("bookmark")
         .select("id, segment_id, meeting_id, anchor_seconds, note")
         .eq("councilor_id", id),
-      supabase.auth.getUser(),
+      getUser(),
     ]);
 
   const council = termRow?.term?.council;

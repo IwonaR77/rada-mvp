@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { TaggingProgress } from "@/components/tagging-progress";
 
 // Panel managera: ile zużywamy i ile zostało. Świadomie pokazuje tylko to, co
@@ -58,9 +58,7 @@ function Karta({
 
 export default async function LimityPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) notFound();
 
   const { data: isManager } = await supabase.rpc("is_manager", { uid: user.id });

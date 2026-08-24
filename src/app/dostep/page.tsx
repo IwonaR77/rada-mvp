@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { AccessRequestForm } from "@/components/access-request-form";
 import {
@@ -48,9 +48,7 @@ function formatDate(date: string) {
 
 export default async function DostepPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   if (!user) {
     return (

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import {
   VotingCorrelationMatrix,
   type MatrixCouncilor,
@@ -44,9 +44,7 @@ export default async function CouncilVotesPage({
 
   const validTermIds = new Set((terms ?? []).map((t) => t.id));
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   // Same last_viewed_term_id preference /sesje uses, so the term switcher
   // stays in sync across both pages instead of drifting independently.

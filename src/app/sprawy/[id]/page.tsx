@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { MatterCard, type Matter } from "@/components/matter-list";
 
 export default async function SprawaPage({
@@ -10,9 +10,7 @@ export default async function SprawaPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   const { data: matter } = await supabase
     .from("matter")

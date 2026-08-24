@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { FavoriteCouncilButton } from "@/components/favorite-council-button";
 import { SpeakingHeatmap } from "@/components/speaking-heatmap";
 import { getSpeakingActivity } from "@/lib/council-activity";
@@ -24,9 +24,7 @@ export default async function CouncilHubPage({
 
   if (!council) notFound();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   let isFavoriteCouncil = false;
   if (user) {

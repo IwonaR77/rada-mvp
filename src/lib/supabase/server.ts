@@ -1,8 +1,15 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import type { Database } from "./database.types";
 
-export async function createClient() {
+// cache() memoizuje na czas jednego requestu RSC: layout (SiteHeader) i strona
+// dostają ten sam klient i to samo `getUser()` bez ponownego zapytania.
+// `getUser()` zawsze robi round-trip do serwera Auth (w odróżnieniu od
+// `getSession()`, który tylko dekoduje ciasteczko) — bez tej pamięci każda
+// strona płaciła ten koszt osobno, po kolei, mimo że w ramach requestu wynik
+// się nie zmienia.
+export const createClient = cache(async function createClient() {
   const cookieStore = await cookies();
 
   return createServerClient<Database>(
@@ -26,4 +33,12 @@ export async function createClient() {
       },
     }
   );
-}
+});
+
+export const getUser = cache(async () => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user;
+});

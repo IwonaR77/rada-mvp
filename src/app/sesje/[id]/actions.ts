@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { parseVtt } from "@/lib/vtt";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { parseSummaryFile } from "@/lib/summary-prompt";
@@ -29,9 +29,7 @@ async function requireSummaryAccess(
   meetingId: string,
   perm: "full_access" | "finalize_vote"
 ): Promise<{ ok: false; error: string } | { ok: true; userId: string }> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) return { ok: false, error: "Musisz być zalogowana" };
 
   const { data: meeting } = await supabase
@@ -205,9 +203,7 @@ export async function assignSegments(
   if (segmentIds.length === 0) return { error: "Brak zaznaczonych segmentów" };
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   if (!user) return { error: "Musisz być zalogowana" };
 
@@ -314,9 +310,7 @@ export async function undoAssignment(
   }
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   if (!user) return { error: "Musisz być zalogowana" };
 
@@ -386,9 +380,7 @@ export async function undoAssignment(
  */
 export async function deleteOfficial(meetingId: string, officialId: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   if (!user) return { error: "Musisz być zalogowana" };
 
@@ -428,9 +420,7 @@ export async function acceptProposedSegments(
   if (segmentIds.length === 0) return { error: "Brak zaznaczonych segmentów" };
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   if (!user) return { error: "Musisz być zalogowana" };
 
@@ -491,9 +481,7 @@ export async function splitSegment(
   splitOffset: number
 ) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   if (!user) return { error: "Musisz być zalogowana" };
 
@@ -557,9 +545,7 @@ export async function importTranscript(
   force = false
 ) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   if (!user) return { error: "Musisz być zalogowana" };
 
@@ -663,9 +649,7 @@ export async function toggleSegmentFlag(
 ) {
   if (!POWODY.includes(powod)) return { error: `Nieznany powód flagi: ${powod}` };
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) return { error: "Musisz być zalogowana" };
 
   const { data: istniejaca } = await supabase

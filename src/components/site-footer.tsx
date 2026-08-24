@@ -1,12 +1,10 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { isAccountBlocked } from "@/lib/blocked-account";
 
 export async function SiteFooter() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   // Prompty czyta się z dysku, nie z bazy, więc RLS ich nie chroni — dla
   // zablokowanego konta odsyłacze muszą zniknąć z menu, tak jak sama treść

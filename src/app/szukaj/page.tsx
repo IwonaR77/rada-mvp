@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { DEFAULT_COUNCIL_ID } from "@/lib/launch-config";
 
 function Highlight({ text }: { text: string }) {
@@ -33,9 +33,7 @@ export default async function SearchPage({
   // Wyszukiwanie to pole tekstowe — sam browse (samo zalogowanie) to za mało,
   // wymagamy co najmniej "vote" (poziom redaktora), tak samo jak przy
   // zakładkach i przypisywaniu mówców.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   const { data: canSearch } = user
     ? await supabase.rpc("user_has_permission", {
         uid: user.id,

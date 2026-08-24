@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 import { SpeakingHeatmap } from "@/components/speaking-heatmap";
 import { SessionTimelinePill } from "@/components/session-timeline-pill";
 import { LiveMeetingRefresh } from "@/components/live-meeting-refresh";
@@ -98,9 +98,7 @@ export default async function CouncilSessionsPage({
 
   const validTermIds = new Set((terms ?? []).map((t) => t.id));
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   let savedTermId: string | null = null;
   // Filtr po temacie niesie parametr URL (?temat=...) — browse nie dostaje

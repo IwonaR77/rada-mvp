@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getUser } from "@/lib/supabase/server";
 
 // Moderators only — moves a proposed matter to approved. RLS silently
 // no-ops the UPDATE if the caller lacks finalize_vote for this matter's
@@ -9,9 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 // (see feedback_rls_silent_denial).
 export async function approveMatter(matterId: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
 
   if (!user) return { error: "Musisz być zalogowana" };
 
@@ -44,9 +42,7 @@ export async function approveMatter(matterId: string) {
 
 async function requireMatterTagPermission(matterId: string) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) return { error: "Musisz być zalogowana" as const, supabase, matter: null };
 
   const { data: matter } = await supabase

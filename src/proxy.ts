@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/proxy";
-import { checkRateLimitDurable, clientIp } from "@/lib/rate-limit";
+import { clientIp } from "@/lib/rate-limit";
 
 const SEARCH_RATE_LIMIT = { limit: 20, windowSeconds: 60 };
 
@@ -39,18 +39,26 @@ const BLOCKED_ALLOWED_PATHS = new Set([
 ]);
 
 export async function proxy(request: NextRequest) {
-  const { response, user, supabase } = await updateSession(request);
   const ip = clientIp(request.headers);
+  const isSzukaj = request.nextUrl.pathname === "/szukaj";
 
   // Trwały (Postgres) licznik, nie w pamięci procesu — na Vercelu każde
   // żądanie może trafić na inną instancję funkcji, więc licznik w pamięci
   // liczyłby osobno na każdej i limit by realnie nie działał. Patrz
-  // `checkRateLimitDurable` w `src/lib/rate-limit.ts`.
-  const general = await checkRateLimitDurable(
-    supabase,
-    `ogolny:${ip}`,
-    GENERAL_RATE_LIMIT
+  // `checkRateLimitDurable` w `src/lib/rate-limit.ts`. Liczone równolegle
+  // z odświeżeniem sesji (`updateSession`), bo żadne z nich nie zależy od
+  // wyniku drugiego.
+  const { response, user, supabase, rateLimitResults } = await updateSession(
+    request,
+    [
+      { key: `ogolny:${ip}`, config: GENERAL_RATE_LIMIT },
+      ...(isSzukaj
+        ? [{ key: `szukaj:${ip}`, config: SEARCH_RATE_LIMIT }]
+        : []),
+    ]
   );
+  const [general, search] = rateLimitResults;
+
   if (!general.allowed) {
     return new NextResponse(
       "Zbyt wiele żądań w krótkim czasie. Spróbuj ponownie za chwilę.",
@@ -61,21 +69,14 @@ export async function proxy(request: NextRequest) {
     );
   }
 
-  if (request.nextUrl.pathname === "/szukaj") {
-    const search = await checkRateLimitDurable(
-      supabase,
-      `szukaj:${ip}`,
-      SEARCH_RATE_LIMIT
+  if (isSzukaj && search && !search.allowed) {
+    return new NextResponse(
+      "Zbyt wiele wyszukiwań w krótkim czasie. Spróbuj ponownie za chwilę.",
+      {
+        status: 429,
+        headers: { "Retry-After": String(search.retryAfterSeconds) },
+      }
     );
-    if (!search.allowed) {
-      return new NextResponse(
-        "Zbyt wiele wyszukiwań w krótkim czasie. Spróbuj ponownie za chwilę.",
-        {
-          status: 429,
-          headers: { "Retry-After": String(search.retryAfterSeconds) },
-        }
-      );
-    }
   }
 
   if (!user && !PUBLIC_PATHS.has(request.nextUrl.pathname)) {
