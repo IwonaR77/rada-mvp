@@ -289,6 +289,17 @@ export async function CouncilorProfile({
   const council = termRow?.term?.council;
   const party = termRow?.party ?? null;
 
+  // Zakładki niosą wolny tekst (notatka) — sam browse (samo zalogowanie) to
+  // za mało, wymagamy co najmniej "vote" (poziom redaktora), tak jak przy
+  // przypisywaniu mówców w transkrypcjach.
+  const { data: canBookmark } = user
+    ? await supabase.rpc("user_has_permission", {
+        uid: user.id,
+        perm: "vote",
+        target_council_id: council?.id,
+      })
+    : { data: false };
+
   const sortedVotes = [...votes]
     .filter((v) => v.resolution)
     .sort((a, b) =>
@@ -941,7 +952,7 @@ export async function CouncilorProfile({
             councilorId={id}
             councilorName={councilor.full_name}
             bookmarks={bookmarks}
-            canBookmark={Boolean(user)}
+            canBookmark={Boolean(canBookmark)}
             canDownloadAudio={AUDIO_CUT_ENABLED}
           />
         </aside>

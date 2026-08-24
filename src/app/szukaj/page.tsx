@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { DEFAULT_COUNCIL_ID } from "@/lib/launch-config";
 
 function Highlight({ text }: { text: string }) {
   const parts = text.split("§§§");
@@ -28,6 +29,38 @@ export default async function SearchPage({
 }) {
   const { q, councilId } = await searchParams;
   const supabase = await createClient();
+
+  // Wyszukiwanie to pole tekstowe — sam browse (samo zalogowanie) to za mało,
+  // wymagamy co najmniej "vote" (poziom redaktora), tak samo jak przy
+  // zakładkach i przypisywaniu mówców.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: canSearch } = user
+    ? await supabase.rpc("user_has_permission", {
+        uid: user.id,
+        perm: "vote",
+        target_council_id: DEFAULT_COUNCIL_ID,
+      })
+    : { data: false };
+
+  if (!canSearch) {
+    return (
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 px-6 py-16">
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+          Szukaj w transkrypcjach
+        </h1>
+        <p className="text-zinc-500">
+          Wyszukiwanie wymaga wyższego poziomu dostępu niż podstawowe
+          przeglądanie.{" "}
+          <Link href="/dostep" className="underline">
+            Poproś o dostęp
+          </Link>
+          .
+        </p>
+      </div>
+    );
+  }
 
   const [{ data: results }, { data: council }] = await Promise.all([
     q

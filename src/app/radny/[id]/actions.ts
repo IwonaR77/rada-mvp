@@ -45,7 +45,9 @@ export async function saveBookmark({
 
   const { data: segment, error: segmentError } = await supabase
     .from("segment")
-    .select("id, meeting_id, start_time, confirmed_councilor_id")
+    .select(
+      "id, meeting_id, start_time, confirmed_councilor_id, meeting:meeting_id(term:term_id(council_id))"
+    )
     .eq("id", segmentId)
     .maybeSingle();
   if (segmentError) return { error: segmentError.message };
@@ -53,6 +55,15 @@ export async function saveBookmark({
   if (segment.confirmed_councilor_id !== councilorId) {
     return { error: "Ta wypowiedź nie należy do tego radnego" };
   }
+
+  // Zakładka niesie wolny tekst (notatka) — sam login to za mało, ta sama
+  // bramka co po stronie UI (councilor-profile.tsx: canBookmark).
+  const { data: canBookmark } = await supabase.rpc("user_has_permission", {
+    uid: user.id,
+    perm: "vote",
+    target_council_id: segment.meeting?.term?.council_id,
+  });
+  if (!canBookmark) return { error: "Brak uprawnień do zapisywania zakładek" };
 
   // Limit slotów pilnowany też tutaj, nie tylko w pasku: pasek pokazuje stan
   // sprzed akcji, a dwie karty otwarte obok siebie widzą różne stany.

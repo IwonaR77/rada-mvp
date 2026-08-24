@@ -223,11 +223,25 @@ export async function assignSegments(
   // no-ops an UPDATE whose target status doesn't match what the caller's
   // permission allows, so sending the wrong one looks like success but
   // changes nothing (see feedback_rls_silent_denial).
-  const { data: canFinalize } = await supabase.rpc("user_has_permission", {
-    uid: user.id,
-    perm: "finalize_vote",
-    target_council_id: councilId ?? undefined,
-  });
+  const [{ data: canFinalize }, { data: canVote }] = await Promise.all([
+    supabase.rpc("user_has_permission", {
+      uid: user.id,
+      perm: "finalize_vote",
+      target_council_id: councilId ?? undefined,
+    }),
+    supabase.rpc("user_has_permission", {
+      uid: user.id,
+      perm: "vote",
+      target_council_id: councilId ?? undefined,
+    }),
+  ]);
+  // RLS już odrzuca zapis bez "vote"/"finalize_vote" (count === 0 niżej), ale
+  // jawny check tutaj nie zależy od tego, że polityka RLS jest akurat
+  // poprawnie skonfigurowana — ten sam wzorzec co w sprawy/actions.ts i
+  // admin/konta/actions.ts.
+  if (!canVote && !canFinalize) {
+    return { error: "Brak uprawnień do przypisywania mówców" };
+  }
   const targetStatus = canFinalize ? "finalized" : "proposed";
 
   // Stan sprzed zapisu, czytany PRZED UPDATE — to jedyny moment, w którym

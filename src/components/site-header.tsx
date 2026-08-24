@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { LogoutLink } from "@/components/logout-link";
 import { AdminMenu } from "@/components/admin-menu";
 import { isAccountBlocked } from "@/lib/blocked-account";
+import { DEFAULT_COUNCIL_ID } from "@/lib/launch-config";
 
 export async function SiteHeader() {
   const supabase = await createClient();
@@ -13,20 +14,29 @@ export async function SiteHeader() {
   let favoriteCouncil: { id: string; name: string } | null = null;
   let manager = false;
   let pendingRequestCount = 0;
+  let canSearch = false;
   // Zablokowane konto ma ważną sesję, więc bez tego sprawdzenia dostawało
   // pełne menu — a każdy odsyłacz w nim odbijał się od bramki w proxy.
   const blocked = user ? await isAccountBlocked(supabase, user.id) : false;
   if (user && !blocked) {
-    const [{ data: appUser }, { data: isManager }] = await Promise.all([
-      supabase
-        .from("app_user")
-        .select("favorite_council:favorite_council_id(id, name)")
-        .eq("id", user.id)
-        .maybeSingle(),
-      supabase.rpc("is_manager", { uid: user.id }),
-    ]);
+    const [{ data: appUser }, { data: isManager }, { data: hasVote }] =
+      await Promise.all([
+        supabase
+          .from("app_user")
+          .select("favorite_council:favorite_council_id(id, name)")
+          .eq("id", user.id)
+          .maybeSingle(),
+        supabase.rpc("is_manager", { uid: user.id }),
+        // Szukaj to pole tekstowe — sam browse to za mało, patrz szukaj/page.tsx.
+        supabase.rpc("user_has_permission", {
+          uid: user.id,
+          perm: "vote",
+          target_council_id: DEFAULT_COUNCIL_ID,
+        }),
+      ]);
     favoriteCouncil = appUser?.favorite_council ?? null;
     manager = isManager ?? false;
+    canSearch = hasVote ?? false;
 
     if (manager) {
       const { count } = await supabase
@@ -46,7 +56,7 @@ export async function SiteHeader() {
         >
           Home
         </Link>
-        {!blocked && (
+        {!blocked && canSearch && (
           <>
             <span className="text-zinc-300 dark:text-zinc-700">·</span>
             <Link
@@ -59,16 +69,6 @@ export async function SiteHeader() {
         )}
         {favoriteCouncil && !blocked && (
           <>
-            {/* Dla kogoś z ulubioną radą "Home" prowadzi już do niej, nie na
-                mapę — bez tego wejścia mapa zostałaby bez żadnego linku. Komu
-                ulubiona nie jest ustawiona, temu mapę daje samo "Home". */}
-            <span className="text-zinc-300 dark:text-zinc-700">·</span>
-            <Link
-              href="/mapa"
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-            >
-              Mapa
-            </Link>
             <span className="text-zinc-300 dark:text-zinc-700">·</span>
             <Link
               href={`/rada/${favoriteCouncil.id}`}

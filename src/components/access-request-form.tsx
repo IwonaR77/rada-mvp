@@ -3,12 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { submitAccessRequest } from "@/app/dostep/actions";
-import {
-  ACCESS_LEVELS,
-  MESSAGE_MAX_LENGTH,
-  tierChipClass,
-  type AccessLevel,
-} from "@/lib/access-levels";
+import { ACCESS_LEVELS, tierChipClass, type AccessLevel } from "@/lib/access-levels";
 
 export function AccessRequestForm({
   councils,
@@ -19,7 +14,6 @@ export function AccessRequestForm({
 }) {
   const [level, setLevel] = useState<AccessLevel>(availableLevels[0]);
   const [councilId, setCouncilId] = useState(councils[0]?.id ?? "");
-  const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
@@ -34,11 +28,7 @@ export function AccessRequestForm({
         e.preventDefault();
         setError(null);
         startTransition(async () => {
-          const result = await submitAccessRequest(
-            level,
-            councilId || null,
-            message
-          );
+          const result = await submitAccessRequest(level, councilId || null, "");
           if (result.error) setError(result.error);
           else router.refresh();
         });
@@ -88,20 +78,6 @@ export function AccessRequestForm({
           </select>
         </label>
       )}
-
-      <label className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-600 dark:text-zinc-400">
-          Wiadomość (opcjonalnie)
-        </span>
-        <textarea
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          maxLength={MESSAGE_MAX_LENGTH}
-          rows={3}
-          placeholder="Np. dlaczego chcesz pomóc, czy masz już doświadczenie..."
-          className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-        />
-      </label>
 
       {error && (
         <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>

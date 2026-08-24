@@ -2,11 +2,12 @@ import Image from "next/image";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
+import { DEFAULT_COUNCIL_ID } from "@/lib/launch-config";
 
 // "/" jest rozjazdem, nie treścią: niezalogowany dostaje stronę powitalną z
-// logowaniem (mapa i tak nic by mu nie pokazała — treść serwisu jest za
-// bramką), a zalogowany trafia od razu do swojej ulubionej rady albo, gdy jej
-// nie wybrał, na mapę pod /mapa.
+// logowaniem, a zalogowany trafia od razu do swojej ulubionej rady albo, gdy
+// jej nie wybrał, do jedynej publicznie widocznej rady (mapa/wybór miasta są
+// celowo ukryte, patrz launch-config.ts).
 //
 // Callback OAuth celowo nie powiela tego wyboru — kieruje na "/" i to ten
 // rozjazd decyduje. Wcześniej logika ulubionej rady siedziała wyłącznie w
@@ -27,7 +28,7 @@ export default async function Home() {
     redirect(
       appUser?.favorite_council_id
         ? `/rada/${appUser.favorite_council_id}`
-        : "/mapa"
+        : `/rada/${DEFAULT_COUNCIL_ID}`
     );
   }
 
