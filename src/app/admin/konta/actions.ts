@@ -1,11 +1,84 @@
 "use server";
 
+/**
+ * @module
+ * Server actions ("use server") behind `/admin/konta` — zatwierdzanie próśb o
+ * dostęp, nadawanie/zmiana poziomu uprawnień, blokowanie kont, cofanie
+ * dostępu. To jest granica podnoszenia uprawnień (elevation of privilege) w
+ * całej aplikacji: stąd jedyna droga, żeby cokolwiek zyskało `full_access`.
+ *
+ * @remarks Granica zaufania
+ * Next.js Server Actions są wywoływalne bezpośrednio (POST na ID akcji) przez
+ * dowolnego zalogowanego klienta, z pominięciem strony `/admin/konta` i jej
+ * warunków renderowania UI. Dlatego każda eksportowana funkcja w tym pliku
+ * sama, od nowa, sprawdza uprawnienia przez {@link requireManager} — nic nie
+ * jest tu bezpieczne tylko dlatego, że panel nie pokazuje przycisku.
+ * Argumenty wywołania (`targetAppUserId`, `level`, `councilId`, `requestId`)
+ * są więc niezaufanym wejściem od zalogowanego, ale dowolnego użytkownika, aż
+ * do potwierdzenia `requireManager()` — i każdy z nich jest dodatkowo
+ * weryfikowany względem bazy (odczyt istniejącego wiersza), a nie przyjmowany
+ * w ciemno.
+ *
+ * @remarks STRIDE
+ * - **Spoofing**: nie dotyczy — tożsamość wywołującego pochodzi z sesji
+ *   Supabase po stronie serwera (`supabase.auth.getUser()`), nie z pola
+ *   podanego przez klienta.
+ * - **Tampering**: każda funkcja odczytuje docelowy wiersz z bazy przed
+ *   zapisem (np. `approveAccessRequest` czyta `access_request` zamiast
+ *   ufać przekazanemu statusowi) i warunkuje `UPDATE` przez `.eq("status",
+ *   "pending")` — dwóch managerów zatwierdzających tę samą prośbę
+ *   równocześnie: drugi zapis trafia na `count === 0` i dostaje czytelny
+ *   błąd zamiast po cichu nadpisać już rozpatrzoną prośbę.
+ * - **Repudiation**: każda zmiana stanu leci do `access_audit_log` przez
+ *   {@link logAudit} (kto, kogo, jaka akcja, jaki zakres, wolny tekst) — to
+ *   log na poziomie aplikacji, nie wyzwalacz bazy danych, więc każda przyszła
+ *   ścieżka zapisu, która pominie `logAudit()`, nie zostawi śladu.
+ * - **Information disclosure**: funkcje zwracają na sukces tylko `{ error:
+ *   null }` — treść wierszy nie wraca do klienta. Komunikaty błędu (np.
+ *   `roleWrite.error.message`) przepuszczają surowy tekst błędu
+ *   Postgresa/RPC do przeglądarki; ryzyko niskie, bo wywołujący i tak musiał
+ *   przejść `requireManager()`, ale warto o tym pamiętać, zanim ta bramka
+ *   kiedyś zostanie poluzowana.
+ * - **Denial of service**: brak limitu częstotliwości na tych akcjach — celowo,
+ *   bo pula wywołujących jest już ograniczona do managerów (w odróżnieniu od
+ *   tras publicznych, patrz `src/lib/rate-limit.ts`).
+ * - **Elevation of privilege**: sedno tego modułu. {@link requireManager}
+ *   sprawdza `is_manager(uid)` — `role = 'manager' AND permissions @>
+ *   ['full_access'] AND app_user.blocked_at IS NULL`
+ *   (`scripts/migrate-block-account.sql`). Samo-celowanie jest osobno
+ *   zablokowane w {@link setAccessLevel}, {@link setAccountBlocked} i
+ *   {@link revokeUserRole} — jedyny manager nie może się sam zablokować ani
+ *   przypadkiem obniżyć sobie uprawnień z tego panelu. `setAccountBlocked`
+ *   idzie dodatkowo przez funkcję SQL `set_account_blocked`
+ *   (`SECURITY DEFINER`), która powtarza *ten sam* test
+ *   `user_has_permission(..., 'full_access')` i blokadę samo-celowania na
+ *   poziomie bazy — obrona w głąb, a nie poleganie wyłącznie na tym pliku.
+ *
+ * @remarks Nieprzeweryfikowane w tym repo
+ * Polityki RLS dla `user_role`, `access_request` i `access_audit_log` nie są
+ * zdefiniowane w skryptach SQL tego repo (w odróżnieniu od jawnej definicji
+ * `set_account_blocked`) — nie da się ich więc potwierdzić samą lekturą kodu.
+ * Brak/błędna polityka nie rzuca błędu, tylko po cichu zapisuje 0 wierszy
+ * (patrz `feedback_rls_silent_denial`), dlatego każdy zapis w tym pliku
+ * sprawdza `count === 0`, nie tylko `error`.
+ */
+
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ADMIN_LEVELS, type AdminLevel } from "@/lib/access-levels";
 import type { Database } from "@/lib/supabase/database.types";
 
+/**
+ * Bramka autoryzacji wywoływana na początku każdej eksportowanej akcji w tym
+ * pliku — patrz sekcja „Elevation of privilege” w dokumentacji modułu.
+ *
+ * @returns `{ error: null, supabase, userId }` gdy wywołujący jest
+ *   zalogowanym managerem; w przeciwnym razie `{ error: <komunikat po
+ *   polsku>, supabase, userId: null }`. `supabase` wraca zawsze (potrzebny
+ *   nawet przy błędzie do ewentualnych dalszych operacji), `userId` tylko
+ *   przy sukcesie.
+ */
 async function requireManager() {
   const supabase = await createClient();
   const {
@@ -23,6 +96,24 @@ async function requireManager() {
   return { error: null, supabase, userId: user.id };
 }
 
+/**
+ * Zapisuje jeden wiersz do `access_audit_log` — jedyny mechanizm
+ * niezaprzeczalności (repudiation) w tym module, patrz dokumentacja modułu.
+ * Wywołanie jest "fire and forget": błąd zapisu audytu nie jest sprawdzany
+ * ani propagowany, więc nieudany zapis audytu nie cofa i nie blokuje już
+ * wykonanej zmiany uprawnień/blokady.
+ *
+ * @param supabase - klient z sesją wywołującego (RLS na `access_audit_log`
+ *   działa w jego imieniu, nie jako serwis).
+ * @param actorId - `id` managera wykonującego akcję (`app_user.id`).
+ * @param targetAppUserId - `id` konta, którego dotyczy akcja.
+ * @param action - etykieta zdarzenia, np. `"role_updated"`,
+ *   `"account_blocked"` — wolny tekst, bez wyliczenia typu; niespójna nazwa
+ *   tutaj nie jest wykrywana statycznie.
+ * @param scopeCouncilId - zakres (rada), którego dotyczy zmiana, albo `null`
+ *   dla zmian globalnych.
+ * @param details - opis zdarzenia po polsku do wyświetlenia w panelu audytu.
+ */
 async function logAudit(
   supabase: SupabaseClient<Database>,
   actorId: string,
@@ -40,14 +131,31 @@ async function logAudit(
   });
 }
 
-// Shared by approveAccessRequest and grantAccess — a user can hold at most
-// one user_role row per scope in practice today (nothing else writes this
-// table), so this unions permissions on re-grant rather than clobbering an
-// earlier one. Crucially, a target's global (scope=null) row is also where
-// their auto-granted "browse" permission lives (see grant_browse_permission
-// in /auth/callback) — merging into it rather than replacing preserves
-// browse instead of silently taking away basic access while adding a
-// contribution tier.
+/**
+ * Współdzielone przez {@link approveAccessRequest} — scala uprawnienia z
+ * nowego poziomu do istniejącego wiersza `user_role` zamiast go nadpisywać.
+ *
+ * @remarks Algorytm
+ * Użytkownik może dziś mieć co najwyżej jeden wiersz `user_role` na zakres
+ * (nic innego nie zapisuje do tej tabeli), więc funkcja robi sumę zbiorów
+ * (`Set` z połączenia starych i nowych `permissions`) zamiast zastąpienia.
+ * Wiersz globalny (`scope_council_id IS NULL`) celu jest też miejscem, gdzie
+ * żyje automatycznie nadawane `"browse"` (patrz `grant_browse_permission()`
+ * wywoływane z `/auth/callback`) — scalanie zamiast zastępowania zachowuje
+ * `browse`, zamiast po cichu odbierać podstawowy dostęp przy nadawaniu
+ * wyższego poziomu.
+ *
+ * @param supabase - klient z sesją wywołującego (już zweryfikowanego jako
+ *   manager przez {@link requireManager} u wywołującego tę funkcję).
+ * @param targetAppUserId - `id` konta, które ma otrzymać uprawnienia.
+ * @param levelDef - definicja poziomu z {@link ADMIN_LEVELS} (tylko pole
+ *   `permissions` jest tu używane).
+ * @param councilId - zakres nadania, albo `null` dla wiersza globalnego.
+ * @returns wynik zapytania Supabase `update`/`insert` z `{ count: "exact" }},
+ *   albo `{ error, count: null }` jeśli wcześniejszy odczyt istniejącego
+ *   wiersza się nie powiódł (patrz uwaga o unikalnym indeksie w kodzie
+ *   poniżej).
+ */
 async function mergeUserRoleGrant(
   supabase: SupabaseClient<Database>,
   targetAppUserId: string,
@@ -94,6 +202,28 @@ async function mergeUserRoleGrant(
       );
 }
 
+/**
+ * Zatwierdza prośbę o dostęp: nadaje uprawnienia (przez
+ * {@link mergeUserRoleGrant}, sumujące, nie zastępujące) i oznacza prośbę
+ * jako `"approved"`.
+ *
+ * @remarks Bezpieczeństwo współbieżności
+ * `UPDATE ... WHERE id = requestId AND status = 'pending'` działa jako
+ * optymistyczna blokada: jeśli dwóch managerów zatwierdzi tę samą prośbę
+ * niemal równocześnie, drugi zapis trafi na `count === 0` i dostanie błąd
+ * „Prośba została już rozpatrzona przez kogoś innego” zamiast po cichu
+ * nadać uprawnienia po raz drugi lub nadpisać `decided_by`.
+ *
+ * @param requestId - `id` wiersza `access_request` (`status` musi być
+ *   `"pending"`, inaczej funkcja zwraca błąd bez żadnego zapisu).
+ * @param overrideLevel - poziom do faktycznego nadania; może różnić się od
+ *   `requested_level` w bazie (manager koryguje prośbę w dół/górę) — wtedy
+ *   różnica jest zapisywana w `decision_note`.
+ * @param overrideCouncilId - zakres do faktycznego nadania; jak wyżej, może
+ *   różnić się od pierwotnie wnioskowanego.
+ * @returns `{ error: null }` na sukces; w przeciwnym razie `{ error:
+ *   <komunikat po polsku lub tekst błędu Postgresa> }`.
+ */
 export async function approveAccessRequest(
   requestId: string,
   overrideLevel: AdminLevel,
@@ -170,6 +300,25 @@ export async function approveAccessRequest(
   return { error: null };
 }
 
+/**
+ * Odrzuca prośbę o dostęp — nie nadaje żadnych uprawnień, tylko zmienia
+ * `access_request.status` na `"denied"` z opcjonalną notatką.
+ *
+ * @remarks Bezpieczeństwo współbieżności
+ * Tak samo jak {@link approveAccessRequest}: warunek `.eq("status",
+ * "pending")` w `UPDATE` chroni przed podwójnym rozpatrzeniem tej samej
+ * prośby przez dwóch managerów naraz — w odróżnieniu od `approveAccessRequest`
+ * ten plik NIE sprawdza tu statusu przed zapisem (brak wcześniejszego
+ * odczytu `request.status`), więc jedynym zabezpieczeniem jest warunek w
+ * samym `UPDATE`.
+ *
+ * @param requestId - `id` wiersza `access_request`.
+ * @param note - wolny tekst powodu odrzucenia; puste/białe znaki zapisują się
+ *   jako `null` (`note.trim() || null`), ale do audytu i tak trafia
+ *   zastępczy tekst „Odrzucono bez podania powodu”.
+ * @returns `{ error: null }` na sukces; w przeciwnym razie `{ error:
+ *   <komunikat po polsku lub tekst błędu Postgresa> }`.
+ */
 export async function denyAccessRequest(requestId: string, note: string) {
   const { error: permError, supabase, userId } = await requireManager();
   if (permError) return { error: permError };
@@ -225,9 +374,22 @@ export async function denyAccessRequest(requestId: string, note: string) {
  * Sumowanie zostaje tam, gdzie jest na miejscu: przy zatwierdzaniu próśb
  * o dostęp (`approveAccessRequest`), gdzie nikt niczego nie obniża.
  *
+ * @remarks Bezpieczeństwo
+ * Blokuje samo-celowanie (`targetAppUserId === userId`) — patrz sekcja
+ * „Elevation of privilege” w dokumentacji modułu: bez tego jedyny manager
+ * mógłby sobie odebrać `full_access` i zamknąć się poza `/admin/konta`.
+ *
+ * @param targetAppUserId - `id` konta, którego poziom jest ustawiany; musi
+ *   różnić się od `id` wywołującego (patrz „Bezpieczeństwo” wyżej).
  * @param level Poziom docelowy; `browse` (nadawane automatycznie przy
  *   pierwszym logowaniu) przetrwa niezależnie od wyboru — zmieniamy szczebel
  *   współtworzenia, nie odbieramy podstawowego dostępu.
+ * @param councilId - zakres, w którym poziom jest ustawiany, albo `null` dla
+ *   wiersza globalnego.
+ * @returns `{ error: null }` na sukces; w przeciwnym razie `{ error:
+ *   <komunikat po polsku lub tekst błędu Postgresa> }` — w tym przypadek
+ *   `count === 0`, gdy RLS po cichu odrzuciło zapis (patrz
+ *   `feedback_rls_silent_denial` w dokumentacji modułu).
  */
 export async function setAccessLevel(
   targetAppUserId: string,
@@ -315,6 +477,21 @@ export async function setAccessLevel(
  *
  * Zapis idzie przez funkcję `set_account_blocked` (SECURITY DEFINER):
  * managerowie nie mają prawa zapisu do `app_user` i celowo tak zostaje.
+ *
+ * @remarks Bezpieczeństwo — obrona w głąb
+ * Samo-blokada (`targetAppUserId === userId`) jest odrzucana zarówno tutaj,
+ * jak i wewnątrz `set_account_blocked` na poziomie bazy — druga warstwa
+ * działa nawet gdyby ta funkcja kiedyś przestała wywoływać ten warunek.
+ *
+ * @param targetAppUserId - `id` konta do zablokowania/odblokowania; musi
+ *   różnić się od `id` wywołującego.
+ * @param blocked - `true` blokuje konto, `false` odblokowuje.
+ * @param reason - powód blokady (po polsku, max 500 znaków); ignorowany przy
+ *   odblokowaniu (`set_account_blocked` dostaje wtedy pusty string, a
+ *   `app_user.blocked_reason` jest czyszczone niezależnie od tego, co tu
+ *   podano).
+ * @returns `{ error: null }` na sukces; w przeciwnym razie `{ error:
+ *   <komunikat po polsku lub tekst błędu RPC> }`.
  */
 export async function setAccountBlocked(
   targetAppUserId: string,
@@ -356,6 +533,28 @@ export async function setAccountBlocked(
   return { error: null };
 }
 
+/**
+ * Cofa jedno przyznane uprawnienie (jeden wiersz `user_role`).
+ *
+ * @remarks Algorytm
+ * Nie zawsze jest to `DELETE`: jeśli wiersz niesie też automatycznie nadane
+ * `"browse"` (bazowy dostęp do przeglądania), pełne usunięcie zabrałoby też
+ * możliwość przeglądania serwisu, a nie tylko cofany szczebel
+ * współtworzenia. W takim przypadku wiersz zostaje zaktualizowany do samego
+ * `["browse"]` zamiast usunięty. Wiersz bez `"browse"` (typowy przypadek:
+ * nadanie na poziomie jednej rady) nie ma nic do zachowania, więc idzie
+ * zwykły `DELETE`.
+ *
+ * @remarks Bezpieczeństwo
+ * Blokuje cofnięcie własnego uprawnienia (`existing.app_user_id === userId`)
+ * z tego samego powodu co {@link setAccessLevel} — patrz „Elevation of
+ * privilege” w dokumentacji modułu.
+ *
+ * @param roleId - `id` wiersza `user_role` do cofnięcia (nie `app_user_id` —
+ *   jeden użytkownik może mieć kilka wierszy, po jednym na zakres).
+ * @returns `{ error: null }` na sukces; w przeciwnym razie `{ error:
+ *   <komunikat po polsku lub tekst błędu Postgresa> }`.
+ */
 export async function revokeUserRole(roleId: string) {
   const { error: permError, supabase, userId } = await requireManager();
   if (permError) return { error: permError };
