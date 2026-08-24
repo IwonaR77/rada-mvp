@@ -103,13 +103,32 @@ export default async function CouncilSessionsPage({
   } = await supabase.auth.getUser();
 
   let savedTermId: string | null = null;
+  // Filtr po temacie niesie parametr URL (?temat=...) — browse nie dostaje
+  // klikalnego linku (sesje/[id]/page.tsx) i sam adres wpisany wprost też
+  // nic nie zmienia: browse nie ma "uprawnień do podawania parametrów",
+  // więc serwer ignoruje ?temat= niezależnie od tego, skąd przyszedł.
+  let canFilterTopics = false;
   if (user) {
-    const { data: appUser } = await supabase
-      .from("app_user")
-      .select("last_viewed_term_id")
-      .eq("id", user.id)
-      .maybeSingle();
+    const [{ data: appUser }, { data: canVote }, { data: canFinalize }] =
+      await Promise.all([
+        supabase
+          .from("app_user")
+          .select("last_viewed_term_id")
+          .eq("id", user.id)
+          .maybeSingle(),
+        supabase.rpc("user_has_permission", {
+          uid: user.id,
+          perm: "vote",
+          target_council_id: councilId,
+        }),
+        supabase.rpc("user_has_permission", {
+          uid: user.id,
+          perm: "finalize_vote",
+          target_council_id: councilId,
+        }),
+      ]);
     savedTermId = appUser?.last_viewed_term_id ?? null;
+    canFilterTopics = Boolean(canVote) || Boolean(canFinalize);
   }
 
   const selectedTermId =
@@ -212,7 +231,8 @@ export default async function CouncilSessionsPage({
     allTags = [
       ...new Set(meetings.flatMap((m) => m.topics ?? [])),
     ].sort((a, b) => a.localeCompare(b, "pl"));
-    selectedTag = temat && allTags.includes(temat) ? temat : null;
+    selectedTag =
+      canFilterTopics && temat && allTags.includes(temat) ? temat : null;
 
     councilors = activity.councilors;
     heatmapMatrix = activity.heatmapMatrix;
@@ -312,6 +332,16 @@ export default async function CouncilSessionsPage({
               <div className="flex flex-wrap gap-2">
                 {allTags.map((tag) => {
                   const isActive = tag === selectedTag;
+                  if (!canFilterTopics) {
+                    return (
+                      <span
+                        key={tag}
+                        className="rounded-full border border-zinc-300 px-3 py-1 text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-400"
+                      >
+                        {tag}
+                      </span>
+                    );
+                  }
                   const params = new URLSearchParams();
                   if (selectedTermId) params.set("kadencja", selectedTermId);
                   if (!isActive) params.set("temat", tag);

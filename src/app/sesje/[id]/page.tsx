@@ -139,6 +139,9 @@ export default async function SessionPage({
 
   let isAdmin = false;
   let canAssign = false;
+  // Pastylki tematów niosą parametr URL (?temat=...) — sam browse nie
+  // dostaje klikalnego linku, patrz rada/[councilId]/sesje/page.tsx.
+  let canFilterTopics = false;
   let finalizePermission = false;
   let canDownloadTranscript = false;
   // Wgrywanie podsumowań (manager) i zgłaszanie uwag do nich (moderator) to
@@ -182,6 +185,7 @@ export default async function SessionPage({
         }),
       ]);
     canAssign = Boolean(canVote) || Boolean(canFinalize);
+    canFilterTopics = Boolean(canVote) || Boolean(canFinalize);
     finalizePermission = Boolean(canFinalize);
     canDownloadTranscript = Boolean(canDownload);
 
@@ -294,16 +298,25 @@ export default async function SessionPage({
         <p className="text-zinc-500">{meeting.date}</p>
         {council && meeting.topics && meeting.topics.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {meeting.topics.map((tag) => (
-              <Link
-                key={tag}
-                href={`/rada/${council.id}?temat=${encodeURIComponent(tag)}`}
-                prefetch={false}
-                className="rounded-full border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
-              >
-                {tag}
-              </Link>
-            ))}
+            {meeting.topics.map((tag) =>
+              canFilterTopics ? (
+                <Link
+                  key={tag}
+                  href={`/rada/${council.id}/sesje?temat=${encodeURIComponent(tag)}`}
+                  prefetch={false}
+                  className="rounded-full border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                >
+                  {tag}
+                </Link>
+              ) : (
+                <span
+                  key={tag}
+                  className="rounded-full border border-zinc-300 px-3 py-1 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-400"
+                >
+                  {tag}
+                </span>
+              )
+            )}
           </div>
         )}
       </div>
