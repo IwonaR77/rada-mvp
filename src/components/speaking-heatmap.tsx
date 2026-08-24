@@ -61,6 +61,18 @@ function formatDuration(totalSeconds: number) {
   return `${seconds} s`;
 }
 
+// Widok tabeli, w przeciwieństwie do etykiety pod kursorem, jest kolumną liczb
+// do porównywania wzrokiem — stąd jeden format godz:min:sek (jak w Excelu),
+// zawsze trzyczłonowy i zawsze wyrównany co do cyfry, zamiast "X godz. Y min"
+// / "Y min Z s" / "Z s" mieszanych w zależności od wielkości wartości.
+function formatDurationTable(totalSeconds: number) {
+  const total = Math.max(0, Math.round(totalSeconds));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 function formatShortDate(dateStr: string) {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("pl-PL", {
     day: "numeric",
@@ -370,14 +382,14 @@ export function SpeakingHeatmap({
                 <th scope="col" className="border-b border-zinc-200 p-2 text-left dark:border-zinc-800">
                   Radny
                 </th>
-                <th scope="col" className="border-b border-zinc-200 p-2 text-left font-normal text-zinc-500 dark:border-zinc-800">
+                <th scope="col" className="border-b border-zinc-200 p-2 text-right font-normal text-zinc-500 dark:border-zinc-800">
                   Razem
                 </th>
                 {orderedMeetings.map((m) => (
                   <th
                     key={m.id}
                     scope="col"
-                    className="border-b border-zinc-200 p-2 text-left font-normal text-zinc-500 dark:border-zinc-800"
+                    className="whitespace-nowrap border-b border-zinc-200 p-2 text-right font-normal text-zinc-500 dark:border-zinc-800"
                   >
                     {formatShortDate(m.date)}
                   </th>
@@ -405,15 +417,15 @@ export function SpeakingHeatmap({
                         c.fullName
                       )}
                     </th>
-                    <td className={`${rowBorder} p-2 font-medium text-zinc-700 dark:text-zinc-300`}>
-                      {formatDuration(totalFor(c))}
+                    <td className={`${rowBorder} p-2 text-right font-medium tabular-nums text-zinc-700 dark:text-zinc-300`}>
+                      {formatDurationTable(totalFor(c))}
                     </td>
                     {orderedMeetings.map((m) => (
                       <td
                         key={m.id}
-                        className={`${rowBorder} p-2 text-zinc-600 dark:text-zinc-400`}
+                        className={`${rowBorder} p-2 text-right tabular-nums text-zinc-600 dark:text-zinc-400`}
                       >
-                        {formatDuration(matrix[c.id]?.[m.id] ?? 0)}
+                        {formatDurationTable(matrix[c.id]?.[m.id] ?? 0)}
                       </td>
                     ))}
                   </tr>
