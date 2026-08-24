@@ -1,8 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/proxy";
-import { checkRateLimit, clientIp } from "@/lib/rate-limit";
+import { checkRateLimitDurable, clientIp } from "@/lib/rate-limit";
 
-const SEARCH_RATE_LIMIT = { limit: 20, windowMs: 60_000 };
+const SEARCH_RATE_LIMIT = { limit: 20, windowSeconds: 60 };
+
+// Nie o pojedyncze żądanie chodzi, tylko o to, żeby masowe ściąganie
+// otagowanych ręcznie danych (przypisania segmentów do mówców, sprawy —
+// to jest faktyczna praca redakcji, nie tylko jawny zapis sesji) kosztowało
+// więcej niż jest warte. Próg celowo szeroki: człowiek klikający po stronie
+// normalnie nigdy go nie dotknie, bot ściągający wszystko po kolei — tak.
+const GENERAL_RATE_LIMIT = { limit: 300, windowSeconds: 300 };
 
 // Pages reachable without a session — everything else requires login.
 // Browsing itself now requires the auto-granted "browse" permission (see
@@ -32,24 +39,44 @@ const BLOCKED_ALLOWED_PATHS = new Set([
 ]);
 
 export async function proxy(request: NextRequest) {
+  const { response, user, supabase } = await updateSession(request);
+  const ip = clientIp(request.headers);
+
+  // Trwały (Postgres) licznik, nie w pamięci procesu — na Vercelu każde
+  // żądanie może trafić na inną instancję funkcji, więc licznik w pamięci
+  // liczyłby osobno na każdej i limit by realnie nie działał. Patrz
+  // `checkRateLimitDurable` w `src/lib/rate-limit.ts`.
+  const general = await checkRateLimitDurable(
+    supabase,
+    `ogolny:${ip}`,
+    GENERAL_RATE_LIMIT
+  );
+  if (!general.allowed) {
+    return new NextResponse(
+      "Zbyt wiele żądań w krótkim czasie. Spróbuj ponownie za chwilę.",
+      {
+        status: 429,
+        headers: { "Retry-After": String(general.retryAfterSeconds) },
+      }
+    );
+  }
+
   if (request.nextUrl.pathname === "/szukaj") {
-    const key = `szukaj:${clientIp(request.headers)}`;
-    const { allowed, retryAfterSeconds } = checkRateLimit(
-      key,
+    const search = await checkRateLimitDurable(
+      supabase,
+      `szukaj:${ip}`,
       SEARCH_RATE_LIMIT
     );
-    if (!allowed) {
+    if (!search.allowed) {
       return new NextResponse(
         "Zbyt wiele wyszukiwań w krótkim czasie. Spróbuj ponownie za chwilę.",
         {
           status: 429,
-          headers: { "Retry-After": String(retryAfterSeconds) },
+          headers: { "Retry-After": String(search.retryAfterSeconds) },
         }
       );
     }
   }
-
-  const { response, user, supabase } = await updateSession(request);
 
   if (!user && !PUBLIC_PATHS.has(request.nextUrl.pathname)) {
     return NextResponse.redirect(new URL("/", request.url));
