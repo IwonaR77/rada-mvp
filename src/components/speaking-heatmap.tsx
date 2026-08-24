@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 
 type HeatmapMeeting = {
@@ -197,6 +197,8 @@ export function SpeakingHeatmap({
 }) {
   const [active, setActive] = useState<ActiveCell | null>(null);
   const [showTable, setShowTable] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const tableRef = useRef<HTMLTableElement>(null);
 
   const max = Math.max(
     0,
@@ -223,6 +225,41 @@ export function SpeakingHeatmap({
   const maxTotal = Math.max(0, ...orderedCouncilors.map(totalFor));
   const kolorSumyDla = (total: number) =>
     total > 0 ? colorFor(total, maxTotal) : null;
+
+  // Zaznaczenie myszką tabeli szerszej niż okno (kilkadziesiąt kolumn sesji
+  // w poziomo przewijanym kontenerze) jest w przeglądarce zawodne — dociągnięcie
+  // kursora do krawędzi nie przewija samego kontenera. Schowek wypełniamy więc
+  // wprost: TSV jako text/plain (działa wszędzie) i outerHTML tabeli jako
+  // text/html (Excel/Sheets odtworzą z niego realną siatkę komórek), więc
+  // wklejenie działa bez ręcznego zaznaczania.
+  async function copyTableToClipboard() {
+    const header = ["Radny", "Razem", ...orderedMeetings.map((m) => formatShortDate(m.date))];
+    const rows = orderedCouncilors.map((c) => [
+      c.fullName,
+      formatDurationTable(totalFor(c)),
+      ...orderedMeetings.map((m) => formatDurationTable(matrix[c.id]?.[m.id] ?? 0)),
+    ]);
+    const tsv = [header, ...rows].map((r) => r.join("\t")).join("\n");
+
+    try {
+      const html = tableRef.current?.outerHTML;
+      if (html && typeof ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": new Blob([tsv], { type: "text/plain" }),
+            "text/html": new Blob([html], { type: "text/html" }),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(tsv);
+      }
+      setCopyState("copied");
+    } catch {
+      setCopyState("error");
+    } finally {
+      setTimeout(() => setCopyState("idle"), 2000);
+    }
+  }
 
   if (meetings.length === 0 || councilors.length === 0) {
     return (
@@ -255,13 +292,28 @@ export function SpeakingHeatmap({
           <span>więcej ({formatDuration(max)})</span>
           <span className="text-zinc-400">skala logarytmiczna</span>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowTable((v) => !v)}
-          className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
-        >
-          {showTable ? "Ukryj widok tabeli" : "Pokaż jako tabelę"}
-        </button>
+        <div className="flex items-center gap-3">
+          {showTable && (
+            <button
+              type="button"
+              onClick={copyTableToClipboard}
+              className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
+            >
+              {copyState === "copied"
+                ? "Skopiowano — wklej w Excelu/Arkuszach"
+                : copyState === "error"
+                  ? "Nie udało się skopiować"
+                  : "Kopiuj tabelę"}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowTable((v) => !v)}
+            className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
+          >
+            {showTable ? "Ukryj widok tabeli" : "Pokaż jako tabelę"}
+          </button>
+        </div>
       </div>
 
       <div
@@ -373,23 +425,30 @@ export function SpeakingHeatmap({
 
       {showTable && (
         <div className="mt-2 overflow-x-auto">
-          <table className="min-w-full border-collapse text-sm">
+          {/* Pełna siatka (border na każdej komórce, nie tylko border-b) i
+              jedna stała grubość wszędzie — poprzednia wersja pogrubiała
+              obramowanie ostatniego wiersza radnych, żeby zaznaczyć granicę
+              przed urzędnikami, ale przy border-collapse to zmieniało
+              wysokość akurat tego wiersza. Granicę sekcji zaznacza teraz samo
+              tło wiersza (bg na <tr> z urzędnikami), więc żadna komórka nie
+              odstaje wysokością. */}
+          <table ref={tableRef} className="min-w-full border-collapse text-sm">
             <caption className="sr-only">
               Czas wypowiedzi radnych w poszczególnych sesjach
             </caption>
             <thead>
               <tr>
-                <th scope="col" className="border-b border-zinc-200 p-2 text-left dark:border-zinc-800">
+                <th scope="col" className="border border-zinc-300 p-2 text-left dark:border-zinc-700">
                   Radny
                 </th>
-                <th scope="col" className="border-b border-zinc-200 p-2 text-right font-normal text-zinc-500 dark:border-zinc-800">
+                <th scope="col" className="border border-zinc-300 p-2 text-right font-normal text-zinc-500 dark:border-zinc-700">
                   Razem
                 </th>
                 {orderedMeetings.map((m) => (
                   <th
                     key={m.id}
                     scope="col"
-                    className="whitespace-nowrap border-b border-zinc-200 p-2 text-right font-normal text-zinc-500 dark:border-zinc-800"
+                    className="whitespace-nowrap border border-zinc-300 p-2 text-right font-normal text-zinc-500 dark:border-zinc-700"
                   >
                     {formatShortDate(m.date)}
                   </th>
@@ -398,17 +457,18 @@ export function SpeakingHeatmap({
             </thead>
             <tbody>
               {orderedCouncilors.map((c, i) => {
-                // Thicker divider on the last radny row, marking the
-                // boundary before the urzędnicy rows begin.
-                const isLastCouncilor =
-                  i === orderedCouncilorRows.length - 1 &&
+                // Granica przed pierwszym wierszem urzędników — jasne tło,
+                // bez zmiany grubości obramowania (patrz komentarz wyżej).
+                const isFirstOfficial =
+                  i === orderedCouncilorRows.length &&
                   orderedOfficialRows.length > 0;
-                const rowBorder = isLastCouncilor
-                  ? "border-b-2 border-zinc-300 dark:border-zinc-700"
-                  : "border-b border-zinc-100 dark:border-zinc-900";
+                const rowBg = isFirstOfficial
+                  ? "bg-zinc-50 dark:bg-zinc-900/50"
+                  : "";
+                const cellBorder = "border border-zinc-300 dark:border-zinc-700";
                 return (
-                  <tr key={c.id}>
-                    <th scope="row" className={`${rowBorder} p-2 text-left font-normal`}>
+                  <tr key={c.id} className={rowBg}>
+                    <th scope="row" className={`${cellBorder} whitespace-nowrap p-2 text-left font-normal`}>
                       {c.href ? (
                         <Link href={c.href} prefetch={false} className="hover:underline">
                           {c.fullName}
@@ -417,13 +477,13 @@ export function SpeakingHeatmap({
                         c.fullName
                       )}
                     </th>
-                    <td className={`${rowBorder} p-2 text-right font-medium tabular-nums text-zinc-700 dark:text-zinc-300`}>
+                    <td className={`${cellBorder} p-2 text-right font-medium tabular-nums text-zinc-700 dark:text-zinc-300`}>
                       {formatDurationTable(totalFor(c))}
                     </td>
                     {orderedMeetings.map((m) => (
                       <td
                         key={m.id}
-                        className={`${rowBorder} p-2 text-right tabular-nums text-zinc-600 dark:text-zinc-400`}
+                        className={`${cellBorder} p-2 text-right tabular-nums text-zinc-600 dark:text-zinc-400`}
                       >
                         {formatDurationTable(matrix[c.id]?.[m.id] ?? 0)}
                       </td>
