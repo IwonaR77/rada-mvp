@@ -36,7 +36,17 @@ export type RenderOpts = {
    * dostęp do jego pełnego opisu.
    */
   historiaPelnychTematow?: Map<string, number>;
+  /** `teza.id` tematów nowych/zaktualizowanych w ostatnim kroku łańcucha — wyróżniane w renderze. */
+  zmienioneTematyIds?: Set<string>;
 };
+
+/**
+ * Niewidoczny znacznik na początku wypunktowania zmienionego tematu (Private
+ * Use Area, nie pojawi się w realnej treści). `li` w UI wykrywa go, ucina i
+ * koloruje cały punkt — bez tego markdown nie ma sposobu przenieść "ten
+ * punkt jest nowy" do renderu inaczej niż przez osobny, drobniejszy parser.
+ */
+export const ZNACZNIK_ZMIANY = "";
 
 function linkujDate(data: string, mapa?: Record<string, string>): string {
   const id = mapa?.[data];
@@ -153,7 +163,8 @@ function zdanieOTemacie(t: Temat, opts: RenderOpts): string {
     ? ` — sprawa „${t.sprawa}" (${ROLA[t.rola_w_sprawie ?? ""] ?? t.rola_w_sprawie ?? "brak roli"})`
     : "";
   const rdzen = t.zdanie ? t.zdanie.charAt(0).toUpperCase() + t.zdanie.slice(1) : `Temat: „${t.teza}"`;
-  return `- ${rdzen} (${daty})${sprawaCzesc}.`;
+  const znacznik = opts.zmienioneTematyIds?.has(t.id) ? ZNACZNIK_ZMIANY : "";
+  return `- ${znacznik}${rdzen} (${daty})${sprawaCzesc}.`;
 }
 
 // Bigramowe podobieństwo (Dice) — lokalna kopia tej samej miary, co w
@@ -247,7 +258,8 @@ function zwiezleOTemacie(t: Temat, opts: RenderOpts): string {
   const daty = linkujListeDat(t.sesje, opts.datyDoSesji);
   const seq = opts.historiaPelnychTematow?.get(t.id);
   const link = seq != null ? ` (pełny opis: [wcześniejsza rewizja](#rewizja-${seq}))` : "";
-  return `- „${t.teza}" (${daty})${link}.`;
+  const znacznik = opts.zmienioneTematyIds?.has(t.id) ? ZNACZNIK_ZMIANY : "";
+  return `- ${znacznik}„${t.teza}" (${daty})${link}.`;
 }
 
 function sekcjaTematy(state: ProfileState, opts: RenderOpts): string {

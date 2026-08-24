@@ -15,6 +15,8 @@ import { clusterByAgreement } from "@/lib/hierarchical-clustering";
 import {
   renderProfile,
   idTematowWWarstwiePelnej,
+  diffStates,
+  ZNACZNIK_ZMIANY,
   type ProfileState,
 } from "@/lib/councilor-profile-state";
 
@@ -76,8 +78,21 @@ async function wczytajProfilIteracyjny(
     }
   }
 
+  // Wyróżnienie "co dodał/zaktualizował ostatni krok" — porównanie tylko z
+  // BEZPOŚREDNIO poprzedzającą rewizją (nie z całą wcześniejszą historią).
+  // Brak poprzedniej rewizji (sam seed, łańcuch dopiero wystartował) celowo
+  // NIE podświetla niczego — "co nowego od ostatniego razu" nie ma sensu bez
+  // "ostatniego razu".
+  const poprzedniaRewizja = rewizje.length >= 2 ? rewizje[rewizje.length - 2] : null;
+  let zmienioneTematyIds: Set<string> | undefined;
+  if (poprzedniaRewizja) {
+    const zmiana = diffStates(poprzedniaRewizja.stan as unknown as ProfileState, stanNajnowszy);
+    zmienioneTematyIds = new Set([...zmiana.nowe, ...zmiana.zmienione.map((z) => z.po)].map((t) => t.id));
+  }
+
   return {
-    notatka: renderProfile(stanNajnowszy, { datyDoSesji, historiaPelnychTematow }),
+    notatka: renderProfile(stanNajnowszy, { datyDoSesji, historiaPelnychTematow, zmienioneTematyIds }),
+    tematyZmienioneWOstatnimKroku: zmienioneTematyIds?.size ?? 0,
     postepProcent,
     sesjePrzetworzone: stanNajnowszy.sesje_przetworzone,
     totalSesji,
@@ -129,6 +144,27 @@ const MARKDOWN_LINK_COMPONENT = {
       className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-900 hover:decoration-zinc-500 dark:decoration-zinc-700 dark:hover:text-zinc-100"
     />
   ),
+};
+
+// Punkty tematów dodanych/zaktualizowanych w ostatnim kroku łańcucha
+// (zob. ZNACZNIK_ZMIANY w councilor-profile-state.ts) — sam renderProfile
+// wstawia niewidoczny znacznik na początku takiego punktu w markdownie,
+// tutaj wykrywamy go w pierwszym dziecku <li> i zamieniamy na kolor,
+// zamiast dopuszczać surowe HTML w markdownie (rehype-raw) tylko dla tego.
+const NOWY_TEMAT_LI_COMPONENT = {
+  li: (props: React.ComponentPropsWithoutRef<"li">) => {
+    const kids = Array.isArray(props.children) ? props.children : [props.children];
+    const pierwsze = kids[0];
+    if (typeof pierwsze === "string" && pierwsze.startsWith(ZNACZNIK_ZMIANY)) {
+      return (
+        <li className="text-blue-900 dark:text-blue-300">
+          {pierwsze.slice(ZNACZNIK_ZMIANY.length)}
+          {kids.slice(1)}
+        </li>
+      );
+    }
+    return <li {...props} />;
+  },
 };
 
 const MATTER_ROLE_LABEL: Record<string, string> = {
@@ -626,11 +662,17 @@ export async function CouncilorProfile({
                   jednorazowo.
                 </p>
               )}
+              {profilIteracyjny.tematyZmienioneWOstatnimKroku > 0 && (
+                <p className="mb-2 text-xs text-blue-900 dark:text-blue-300">
+                  Na granatowo: tematy dodane lub zaktualizowane w ostatnim kroku.
+                </p>
+              )}
               <div className="rounded-2xl border border-zinc-200 p-4 text-sm leading-relaxed text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
                 <ReactMarkdown
                   components={{
                     ...MARKDOWN_LIST_COMPONENTS,
                     ...MARKDOWN_LINK_COMPONENT,
+                    ...NOWY_TEMAT_LI_COMPONENT,
                     p: (props) => <p className="mb-2 last:mb-0" {...props} />,
                   }}
                 >
