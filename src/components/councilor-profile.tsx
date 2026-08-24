@@ -108,12 +108,21 @@ async function wczytajProfilIteracyjny(
         const poprzednia = i > 0 ? (rewizje[i - 1].stan as unknown as ProfileState) : null;
         const sesjaOd = (poprzednia?.sesje_przetworzone ?? 0) + 1;
         const sesjaDo = stanRewizji.sesje_przetworzone;
+        // Ten sam diff co przy bieżącym opisie, tylko przesunięty o jeden
+        // krok wstecz w łańcuchu — dzięki temu podświetlenie "co zmienił ten
+        // krok" zostaje przy wpisie na stałe, gdy zsunie się do historii,
+        // zamiast znikać w momencie, gdy przestaje być najnowszy.
+        const zmiana = poprzednia ? diffStates(poprzednia, stanRewizji) : null;
+        const zmienioneTematyIds = zmiana
+          ? new Set([...zmiana.nowe, ...zmiana.zmienione.map((z) => z.po)].map((t) => t.id))
+          : undefined;
         return {
           seq: r.seq,
           createdAt: r.created_at,
           sesjaOd,
           sesjaDo,
-          notatka: renderProfile(stanRewizji, { datyDoSesji }),
+          tematyZmienioneWTymKroku: zmienioneTematyIds?.size ?? 0,
+          notatka: renderProfile(stanRewizji, { datyDoSesji, zmienioneTematyIds }),
         };
       })
       .reverse(), // najnowsza z historycznych na górze listy rozwijanej
@@ -698,10 +707,16 @@ export async function CouncilorProfile({
                           — {formatDate(r.createdAt)}
                         </summary>
                         <div className="mt-2 text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
+                          {r.tematyZmienioneWTymKroku > 0 && (
+                            <p className="mb-2 text-xs text-blue-900 dark:text-blue-300">
+                              Na granatowo: tematy dodane lub zaktualizowane w tym kroku.
+                            </p>
+                          )}
                           <ReactMarkdown
                             components={{
                               ...MARKDOWN_LIST_COMPONENTS,
                               ...MARKDOWN_LINK_COMPONENT,
+                              ...NOWY_TEMAT_LI_COMPONENT,
                               p: (props) => <p className="mb-2 last:mb-0" {...props} />,
                             }}
                           >
