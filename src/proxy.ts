@@ -52,19 +52,6 @@ const BLOCKED_ALLOWED_PATHS = new Set([
 ]);
 
 export async function proxy(request: NextRequest) {
-  // Zamyka ominięcie Cloudflare (a przez to Bot Fight Mode i regułę rate
-  // limiting) przez uderzenie prosto w surowy adres *.vercel.app originu.
-  // Cloudflare dokleja ten nagłówek Transform Rule; zmienna jest ustawiona
-  // tylko w środowisku Production w Vercelu, więc lokalny `next dev` i
-  // deploye Preview (bez Cloudflare przed sobą) przechodzą bez zmian. 404,
-  // nie 403 — nie zdradzać, że blokada w ogóle istnieje.
-  if (
-    process.env.CF_ORIGIN_SECRET &&
-    request.headers.get("x-origin-secret") !== process.env.CF_ORIGIN_SECRET
-  ) {
-    return new NextResponse("Not found", { status: 404 });
-  }
-
   const ip = clientIp(request.headers);
   const isSzukaj = request.nextUrl.pathname === "/szukaj";
 
