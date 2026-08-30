@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { LogoutLink } from "@/components/logout-link";
 import { AdminMenu } from "@/components/admin-menu";
+import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { isAccountBlocked } from "@/lib/blocked-account";
 import { DEFAULT_COUNCIL_ID } from "@/lib/launch-config";
 
@@ -152,12 +153,10 @@ export async function SiteHeader() {
             <LogoutLink className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100" />
           </>
         ) : (
-          <Link
-            href="/"
+          <GoogleSignInButton
             className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-          >
-            Kontynuuj z Google
-          </Link>
+            label="Zaloguj"
+          />
         )}
       </nav>
     </header>
