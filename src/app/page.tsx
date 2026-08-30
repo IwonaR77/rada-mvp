@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
@@ -59,8 +60,8 @@ export default async function Home() {
         </div>
 
         <p className="text-sm text-zinc-500">
-          Serwis dostępny wyłącznie dla zarejestrowanych użytkowników.
-          Rejestracja jest darmowa i taka pozostanie.
+          Przeglądanie jest dostępne bez konta. Logowanie potrzebne jest do
+          współtworzenia — przypisywania wypowiedzi, zatwierdzania spraw.
         </p>
 
         <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
@@ -69,6 +70,13 @@ export default async function Home() {
             Wkrótce: więcej sposobów logowania.
           </p>
         </div>
+
+        <Link
+          href={`/rada/${DEFAULT_COUNCIL_ID}`}
+          className="text-sm text-zinc-600 underline hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+        >
+          Przeglądaj bez logowania →
+        </Link>
 
         <p className="text-xs italic leading-relaxed text-zinc-400">
           Certified Human-Cruelty-Free

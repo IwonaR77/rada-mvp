@@ -58,10 +58,9 @@ export default async function DostepPage() {
             Dostęp do współtworzenia
           </h1>
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            Przeglądanie Serwisu wymaga zalogowania — konto od razu otrzymuje
-            podstawowy dostęp do przeglądania. Współtworzenie — przypisywanie
-            wypowiedzi mówcom, zatwierdzanie spraw, pobieranie transkryptów —
-            wymaga dodatkowo zatwierdzonej prośby o dostęp.
+            Przeglądanie Serwisu jest dostępne bez logowania. Współtworzenie —
+            przypisywanie wypowiedzi mówcom, zatwierdzanie spraw, pobieranie
+            transkryptów — wymaga konta i zatwierdzonej prośby o dostęp.
           </p>
         </div>
         <section>

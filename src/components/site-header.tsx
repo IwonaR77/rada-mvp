@@ -16,6 +16,19 @@ export async function SiteHeader() {
   // Zablokowane konto ma ważną sesję, więc bez tego sprawdzenia dostawało
   // pełne menu — a każdy odsyłacz w nim odbijał się od bramki w proxy.
   const blocked = user ? await isAccountBlocked(supabase, user.id) : false;
+  // Anonimowy nie ma ulubionej rady, ale RLS już wpuszcza go do jedynej
+  // publicznej — pokazujemy tę samą nawigację co zalogowanemu z ulubioną,
+  // tylko bez serca (to nie jest "ulubiona", to jedyna dostępna) i bez
+  // Szukaj (canSearch zostaje false, wymaga zalogowania z vote).
+  let anonCouncilName: string | null = null;
+  if (!user) {
+    const { data: council } = await supabase
+      .from("council")
+      .select("name")
+      .eq("id", DEFAULT_COUNCIL_ID)
+      .maybeSingle();
+    anonCouncilName = council?.name ?? null;
+  }
   if (user && !blocked) {
     const [{ data: appUser }, { data: isManager }, { data: hasVote }] =
       await Promise.all([
@@ -65,45 +78,53 @@ export async function SiteHeader() {
             </Link>
           </>
         )}
-        {favoriteCouncil && !blocked && (
-          <>
-            <span className="text-zinc-300 dark:text-zinc-700">·</span>
-            <Link
-              href={`/rada/${favoriteCouncil.id}`}
-              className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-            >
-              ♥ {favoriteCouncil.name}
-            </Link>
-            <span className="text-zinc-300 dark:text-zinc-700">·</span>
-            <Link
-              href={`/rada/${favoriteCouncil.id}/radni`}
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-            >
-              Radni
-            </Link>
-            <span className="text-zinc-300 dark:text-zinc-700">·</span>
-            <Link
-              href="/sprawy"
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-            >
-              Sprawy
-            </Link>
-            <span className="text-zinc-300 dark:text-zinc-700">·</span>
-            <Link
-              href={`/rada/${favoriteCouncil.id}/sesje`}
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-            >
-              Sesje
-            </Link>
-            <span className="text-zinc-300 dark:text-zinc-700">·</span>
-            <Link
-              href={`/rada/${favoriteCouncil.id}/glosy`}
-              className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-            >
-              Głosy
-            </Link>
-          </>
-        )}
+        {(() => {
+          const navCouncil = favoriteCouncil
+            ? { ...favoriteCouncil, isFavorite: true }
+            : !user && anonCouncilName
+              ? { id: DEFAULT_COUNCIL_ID, name: anonCouncilName, isFavorite: false }
+              : null;
+          if (!navCouncil || blocked) return null;
+          return (
+            <>
+              <span className="text-zinc-300 dark:text-zinc-700">·</span>
+              <Link
+                href={`/rada/${navCouncil.id}`}
+                className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+              >
+                {navCouncil.isFavorite ? `♥ ${navCouncil.name}` : navCouncil.name}
+              </Link>
+              <span className="text-zinc-300 dark:text-zinc-700">·</span>
+              <Link
+                href={`/rada/${navCouncil.id}/radni`}
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+              >
+                Radni
+              </Link>
+              <span className="text-zinc-300 dark:text-zinc-700">·</span>
+              <Link
+                href="/sprawy"
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+              >
+                Sprawy
+              </Link>
+              <span className="text-zinc-300 dark:text-zinc-700">·</span>
+              <Link
+                href={`/rada/${navCouncil.id}/sesje`}
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+              >
+                Sesje
+              </Link>
+              <span className="text-zinc-300 dark:text-zinc-700">·</span>
+              <Link
+                href={`/rada/${navCouncil.id}/glosy`}
+                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+              >
+                Głosy
+              </Link>
+            </>
+          );
+        })()}
       </div>
 
       <nav className="flex items-center gap-4 text-sm">

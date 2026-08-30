@@ -23,7 +23,20 @@ const PUBLIC_PATHS = new Set([
   "/logout",
   "/regulamin",
   "/polityka-prywatnosci",
+  // /dostep ma pełną, bezpieczną gałąź dla !user (poziomy dostępu + login),
+  // patrz src/app/dostep/page.tsx.
+  "/dostep",
 ]);
+
+// Strony browse-tier: czytelne bez konta, bo RLS daje teraz 'browse'
+// anonimowym (scripts/migrate-anon-browse.sql — perm='browse' i uid is null
+// zwraca prawdę). Dopasowanie po prefiksie, bo to segmenty dynamiczne.
+// /szukaj i /admin/* CELOWO tu nie są — nadal wymagają logowania.
+const BROWSE_PATH_PREFIXES = ["/rada/", "/sesje/", "/radny/", "/sprawy"];
+
+function isBrowsePath(pathname: string) {
+  return BROWSE_PATH_PREFIXES.some((p) => pathname.startsWith(p));
+}
 
 // Ścieżki, które widzi także zablokowane konto (Regulamin §5.6). Regulamin i
 // polityka zostają celowo: są publiczne dla niezalogowanych, więc odcinanie
@@ -39,6 +52,19 @@ const BLOCKED_ALLOWED_PATHS = new Set([
 ]);
 
 export async function proxy(request: NextRequest) {
+  // Zamyka ominięcie Cloudflare (a przez to Bot Fight Mode i regułę rate
+  // limiting) przez uderzenie prosto w surowy adres *.vercel.app originu.
+  // Cloudflare dokleja ten nagłówek Transform Rule; zmienna jest ustawiona
+  // tylko w środowisku Production w Vercelu, więc lokalny `next dev` i
+  // deploye Preview (bez Cloudflare przed sobą) przechodzą bez zmian. 404,
+  // nie 403 — nie zdradzać, że blokada w ogóle istnieje.
+  if (
+    process.env.CF_ORIGIN_SECRET &&
+    request.headers.get("x-origin-secret") !== process.env.CF_ORIGIN_SECRET
+  ) {
+    return new NextResponse("Not found", { status: 404 });
+  }
+
   const ip = clientIp(request.headers);
   const isSzukaj = request.nextUrl.pathname === "/szukaj";
 
@@ -79,7 +105,11 @@ export async function proxy(request: NextRequest) {
     );
   }
 
-  if (!user && !PUBLIC_PATHS.has(request.nextUrl.pathname)) {
+  if (
+    !user &&
+    !PUBLIC_PATHS.has(request.nextUrl.pathname) &&
+    !isBrowsePath(request.nextUrl.pathname)
+  ) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
