@@ -43,12 +43,21 @@ function wyciagnijSporyDlaRadnego(summary, pelneNazwisko) {
 /**
  * Pobiera z bazy wszystko, czego potrzeba do zbudowania wsadu dla jednego
  * radnego jednej kadencji: dane radnego, sesje (zwyczajna/nadzwyczajna) po
- * kolei, wszystkie segmenty tych sesji, mapę mówców, sprawy i interpelacje.
- * Jedno miejsce zapytań, niezależnie od tego, czy wywołujący zapisuje wynik
- * do plików (eksport-wsadu.mjs) czy woła `claude -p` wprost (wdroz-
- * produkcyjnie.mjs).
+ * kolei, segmenty tych sesji, mapę mówców, sprawy i interpelacje. Jedno
+ * miejsce zapytań, niezależnie od tego, czy wywołujący zapisuje wynik do
+ * plików (eksport-wsadu.mjs, potrzebuje całej historii) czy woła `claude -p`
+ * wprost na jednej nowej sesji (wdroz-produkcyjnie.mjs, krok iteracyjny).
+ *
+ * `wymaganeIdx`: opcjonalna lista indeksów (0-based, do tablicy `meetings`
+ * posortowanej po dacie) sesji, których segmenty faktycznie trafią do
+ * promptu tego wywołania — `trescSesji()` i tak filtruje segmenty do
+ * pojedynczej sesji, więc przy kroku iteracyjnym (jedna nowa sesja) ściąganie
+ * segmentów wszystkich sesji kadencji jest zmarnowanym zapytaniem (i realnym
+ * źródłem zerwań SSL poola przy długich łańcuchach, np. 33 sesje Niedbały —
+ * patrz [[feedback_supabase_pooler_ssl_drops]]). `null` (domyślnie) = jak
+ * dawniej, wszystkie sesje kadencji.
  */
-export function zbudujDaneRadnego(nazwaRady, wzorzecRadnego) {
+export function zbudujDaneRadnego(nazwaRady, wzorzecRadnego, wymaganeIdx = null) {
   const [councilor] = supabaseQuery(`
     select c.id, c.full_name
     from councilor c
@@ -72,18 +81,27 @@ export function zbudujDaneRadnego(nazwaRady, wzorzecRadnego) {
     limit 1
   `);
 
-  const meetings = supabaseQuery(`
-    select id, date, title, esesja_id, source_id, summary
+  // `summary` (podsumowanie sesji AI) trzymane osobno od reszty metadanych —
+  // per radny/krok liczy się tylko dla sesji z `wymaganeIdx` (średnio ~8 tys.
+  // znaków/sesja, przy 33 sesjach kadencji to już ~257 tys. znaków ściąganych
+  // niepotrzebnie co krok, gdyby lecieć jednym zapytaniem jak dawniej).
+  const meetingsMeta = supabaseQuery(`
+    select id, date, title, esesja_id, source_id
     from meeting
     where term_id = '${termRow.term_id}'
       and meeting_type in ('zwyczajna', 'nadzwyczajna')
     order by date asc
   `);
-  if (meetings.length === 0) {
+  if (meetingsMeta.length === 0) {
     throw new Error(`Brak sesji (zwyczajna/nadzwyczajna) dla kadencji ${termRow.label}.`);
   }
 
-  const meetingIds = meetings.map((m) => `'${m.id}'`).join(",");
+  const meetingsPotrzebne = wymaganeIdx ? wymaganeIdx.map((i) => meetingsMeta[i]) : meetingsMeta;
+  const meetingIds = meetingsPotrzebne.map((m) => `'${m.id}'`).join(",");
+
+  const summaries = supabaseQuery(`select id, summary from meeting where id in (${meetingIds})`);
+  const summaryByI = new Map(summaries.map((s) => [s.id, s.summary]));
+  const meetings = meetingsMeta.map((m) => ({ ...m, summary: summaryByI.get(m.id) ?? null }));
   const allSegments = supabaseQuery(`
     select id, meeting_id, start_time, end_time, text,
            confirmed_councilor_id, confirmed_official_id
@@ -121,6 +139,56 @@ export function zbudujDaneRadnego(nazwaRady, wzorzecRadnego) {
   `);
 
   return { nazwaRady, councilor, termRow, meetings, allSegments, nazwaOsoby, matterRows, interpelacje };
+}
+
+/**
+ * Dogrywa `segment.start_time` do każdej kotwicy (dosłowny cytat) w stanie
+ * zwróconym przez model — pozwala rendererowi (`councilor-profile-state.ts`)
+ * linkować wprost do fragmentu nagrania (`/sesje/[id]?t=...`) zamiast do
+ * początku sesji. Dopasowanie: `kotwica.sesja` (data) → `meeting.id` (przez
+ * `dane.meetings`) → segment tej sesji zawierający `cytat` jako podciąg
+ * (przez `dane.allSegments`). Działa WYŁĄCZNIE dla sesji, których segmenty
+ * akurat są wczytane w `dane` (czyli, po zawężeniu zapytań do
+ * `wymaganeIdx`, zwykle tylko sesja właśnie przetwarzana w tym kroku) —
+ * kotwice do starszych sesji zostają nierozstrzygnięte (`segment_start_time`
+ * nieustawione), render wtedy po prostu linkuje samą datę, jak dotąd. Mutuje
+ * `stan` w miejscu i go zwraca.
+ */
+export function dograjCzasySegmentow(stan, dane) {
+  const meetingIdByDate = new Map(dane.meetings.map((m) => [m.date, m.id]));
+
+  function znajdzCzas(sesja, cytat) {
+    if (!cytat || !sesja) return null;
+    const meetingId = meetingIdByDate.get(sesja);
+    if (!meetingId) return null;
+    const segment = dane.allSegments.find(
+      (s) => s.meeting_id === meetingId && s.text.includes(cytat)
+    );
+    return segment ? Number(segment.start_time) : null;
+  }
+
+  for (const t of stan.tematy ?? []) {
+    if (t.kotwica?.cytat) {
+      const czas = znajdzCzas(t.kotwica.sesja, t.kotwica.cytat);
+      if (czas !== null) t.kotwica.segment_start_time = czas;
+    }
+  }
+  for (const m of stan.mieszkancy ?? []) {
+    const czas = znajdzCzas(m.sesja, m.kotwica);
+    if (czas !== null) m.kotwica_segment_start_time = czas;
+  }
+  for (const s of stan.spory ?? []) {
+    const czas = znajdzCzas(s.sesja, s.kotwica);
+    if (czas !== null) s.kotwica_segment_start_time = czas;
+  }
+  for (const forma of Object.values(stan.udzial_forma ?? {})) {
+    for (const p of forma?.przyklady ?? []) {
+      const czas = znajdzCzas(p.sesja, p.kotwica);
+      if (czas !== null) p.kotwica_segment_start_time = czas;
+    }
+  }
+
+  return stan;
 }
 
 /**

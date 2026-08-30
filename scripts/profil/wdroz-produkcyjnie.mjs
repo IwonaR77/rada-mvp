@@ -41,7 +41,12 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { REPO_ROOT, supabaseQuery, supabaseExec } from "../lib/db.mjs";
-import { zbudujDaneRadnego, trescSesji, pobierzRankingAktywnosci } from "../lib/profil-eksport.mjs";
+import {
+  zbudujDaneRadnego,
+  trescSesji,
+  pobierzRankingAktywnosci,
+  dograjCzasySegmentow,
+} from "../lib/profil-eksport.mjs";
 
 const NAZWA_RADY = "Rada Miejska w Grójcu";
 const PROMPT_VERSION = 7;
@@ -64,7 +69,7 @@ function wywolajClaude(promptText, cwd) {
   const out = execFileSync(
     "claude",
     ["-p", "--output-format", "json", "--model", "sonnet", "--allowedTools", ""],
-    { input: promptText, encoding: "utf8", cwd, maxBuffer: 64 * 1024 * 1024, timeout: 600000 }
+    { input: promptText, encoding: "utf8", cwd, maxBuffer: 64 * 1024 * 1024, timeout: 900000 }
   );
   return JSON.parse(out);
 }
@@ -145,7 +150,11 @@ function main() {
       continue;
     }
 
-    const dane = zbudujDaneRadnego(NAZWA_RADY, radny.full_name);
+    const wymaganeIdx =
+      krok.method === "seed-jednorazowa"
+        ? Array.from({ length: krok.doIdxWlacznie - krok.odIdx + 1 }, (_, i) => krok.odIdx + i)
+        : [krok.idx];
+    const dane = zbudujDaneRadnego(NAZWA_RADY, radny.full_name, wymaganeIdx);
     const scratchCwd = path.join("/tmp", `profil-runner-${radny.councilor_id}`);
     mkdirSync(scratchCwd, { recursive: true });
 
@@ -172,6 +181,7 @@ function main() {
     const czas = Math.round((Date.now() - start) / 1000);
     console.log(`  gotowe w ${czas}s, koszt: $${(odpowiedz.total_cost_usd ?? 0).toFixed(3)}`);
     const stan = wyciagnijJson(odpowiedz.result);
+    dograjCzasySegmentow(stan, dane);
 
     // Dollar-quoting zamiast ręcznego escapowania cudzysłowów/backslashy —
     // JSON od modelu jest zbyt zmienny, by bezpiecznie polegać na sqlEscape.

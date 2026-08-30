@@ -17,7 +17,15 @@
 // wymusza jednego czasownika na wszystko (to drugie było usterką
 // wcześniejszego pola `po_mowil_o`, zawężonego wyłącznie pod "Mówił o ___").
 
-export type Kotwica = { sesja: string; cytat: string | null } | null;
+/**
+ * `segment_start_time` (sekundy, dogrywane po fakcie w `scripts/lib/profil-
+ * eksport.mjs:dograjCzasySegmentow`, nie przez model) — gdy obecne, render
+ * linkuje wprost do fragmentu nagrania (`/sesje/[id]?t=...`) zamiast do
+ * początku sesji. Może brakować (starsze rewizje sprzed tej funkcji, albo
+ * sesje spoza aktualnie wczytanego zakresu) — wtedy link i tak działa,
+ * tylko bez doskoku do konkretnego miejsca.
+ */
+export type Kotwica = { sesja: string; cytat: string | null; segment_start_time?: number | null } | null;
 
 /**
  * Opcje renderu, wszystkie opcjonalne (dane zewnętrzne wobec `ProfileState`,
@@ -48,13 +56,25 @@ export type RenderOpts = {
  */
 export const ZNACZNIK_ZMIANY = "";
 
-function linkujDate(data: string, mapa?: Record<string, string>): string {
+function linkujDate(data: string, mapa?: Record<string, string>, startTime?: number | null): string {
   const id = mapa?.[data];
-  return id ? `[${data}](/sesje/${id})` : data;
+  if (!id) return data;
+  const kotwicaCzasowa = startTime != null ? `?t=${Math.floor(startTime)}` : "";
+  return `[${data}](/sesje/${id}${kotwicaCzasowa})`;
 }
 
-function linkujListeDat(daty: string[], mapa?: Record<string, string>): string {
-  return daty.map((d) => linkujDate(d, mapa)).join(", ");
+// `kotwicaSesja`/`kotwicaStart`: gdy jedna z dat na liście odpowiada sesji,
+// dla której mamy rozstrzygnięty `segment_start_time` (dosłowny cytat), tylko
+// TA data dostaje doskok do konkretnego miejsca w nagraniu — pozostałe
+// (radny wracał do tematu bez zapisanego cytatu z tamtej sesji) linkują jak
+// dotąd do początku sesji.
+function linkujListeDat(
+  daty: string[],
+  mapa?: Record<string, string>,
+  kotwicaSesja?: string,
+  kotwicaStart?: number | null
+): string {
+  return daty.map((d) => linkujDate(d, mapa, d === kotwicaSesja ? kotwicaStart : undefined)).join(", ");
 }
 
 export type Zasieg = "wzmianka" | "wypowiedz" | "dyskusja";
@@ -74,7 +94,12 @@ export type Temat = {
   rola_w_sprawie: string | null;
 };
 
-export type PrzykladUdzialu = { opis: string; sesja: string; kotwica: string | null };
+export type PrzykladUdzialu = {
+  opis: string;
+  sesja: string;
+  kotwica: string | null;
+  kotwica_segment_start_time?: number | null;
+};
 
 export type UdzialForma = {
   wystapil: boolean;
@@ -87,9 +112,14 @@ export type UdzialForma = {
 // interpolacji, wycinamy wpisy, których nie da się bezpiecznie odczytać.
 function bezpiecznyOpisPrzykladu(p: unknown, datyDoSesji?: Record<string, string>): string | null {
   if (p && typeof p === "object" && "opis" in p && "sesja" in p) {
-    const { opis, sesja } = p as { opis: unknown; sesja: unknown };
+    const { opis, sesja, kotwica_segment_start_time } = p as {
+      opis: unknown;
+      sesja: unknown;
+      kotwica_segment_start_time?: unknown;
+    };
     if (typeof opis === "string" && typeof sesja === "string") {
-      return `${opis} (${linkujDate(sesja, datyDoSesji)})`;
+      const czas = typeof kotwica_segment_start_time === "number" ? kotwica_segment_start_time : undefined;
+      return `${opis} (${linkujDate(sesja, datyDoSesji, czas)})`;
     }
   }
   if (typeof p === "string") return p;
@@ -102,6 +132,7 @@ export type Mieszkaniec = {
   temat: string;
   zrodlo: string;
   kotwica: string;
+  kotwica_segment_start_time?: number | null;
 };
 
 export type InterpelacjaPowiazana = {
@@ -118,6 +149,7 @@ export type Spor = {
   temat: string;
   stanowiska: string;
   kotwica: string;
+  kotwica_segment_start_time?: number | null;
 };
 
 export type ProfileState = {
@@ -158,7 +190,7 @@ const ROLA: Record<string, string> = {
 // w mianowniku, żeby nigdy nie wymusić błędnego przypadka — czytelniej
 // "Temat: X" niż gramatycznie zepsute "Mówił o X" (X w mianowniku po "o").
 function zdanieOTemacie(t: Temat, opts: RenderOpts): string {
-  const daty = linkujListeDat(t.sesje, opts.datyDoSesji);
+  const daty = linkujListeDat(t.sesje, opts.datyDoSesji, t.kotwica?.sesja, t.kotwica?.segment_start_time);
   const sprawaCzesc = t.sprawa
     ? ` — sprawa „${t.sprawa}" (${ROLA[t.rola_w_sprawie ?? ""] ?? t.rola_w_sprawie ?? "brak roli"})`
     : "";
@@ -255,7 +287,7 @@ export function idTematowWWarstwiePelnej(state: ProfileState, ostatnieSesje?: st
 // inaczej jego pełny opis staje się bezpowrotnie niedostępny, mimo że kiedyś
 // był na profilu w całości.
 function zwiezleOTemacie(t: Temat, opts: RenderOpts): string {
-  const daty = linkujListeDat(t.sesje, opts.datyDoSesji);
+  const daty = linkujListeDat(t.sesje, opts.datyDoSesji, t.kotwica?.sesja, t.kotwica?.segment_start_time);
   const seq = opts.historiaPelnychTematow?.get(t.id);
   const link = seq != null ? ` (pełny opis: [wcześniejsza rewizja](#rewizja-${seq}))` : "";
   const znacznik = opts.zmienioneTematyIds?.has(t.id) ? ZNACZNIK_ZMIANY : "";
@@ -440,7 +472,10 @@ function sekcjaMieszkancy(state: ProfileState, opts: RenderOpts): string {
     return "Brak w materiale wypowiedzi, w której radny powołuje się na zgłoszenie mieszkańców.";
   }
   return state.mieszkancy
-    .map((m) => `- ${linkujDate(m.sesja, opts.datyDoSesji)}: ${m.temat} (zgłaszający: ${m.zrodlo})`)
+    .map(
+      (m) =>
+        `- ${linkujDate(m.sesja, opts.datyDoSesji, m.kotwica_segment_start_time)}: ${m.temat} (zgłaszający: ${m.zrodlo})`
+    )
     .join("\n");
 }
 
@@ -456,7 +491,9 @@ function sekcjaPowroty(state: ProfileState, opts: RenderOpts): string {
   }
   const linie: string[] = [];
   for (const t of wracajace) {
-    linie.push(`- temat wracający: „${t.teza}" (${linkujListeDat(t.sesje, opts.datyDoSesji)})`);
+    linie.push(
+      `- temat wracający: „${t.teza}" (${linkujListeDat(t.sesje, opts.datyDoSesji, t.kotwica?.sesja, t.kotwica?.segment_start_time)})`
+    );
   }
   for (const i of state.interpelacje_powiazane) {
     // Data interpelacji celowo NIE jest linkiem do sesji — interpelacja to
@@ -473,7 +510,10 @@ function sekcjaSpory(state: ProfileState, opts: RenderOpts): string {
     return "Nie zanotowano sporów z udziałem tego radnego w tej kadencji.";
   }
   return state.spory
-    .map((s) => `- ${linkujDate(s.sesja, opts.datyDoSesji)}: ${s.temat} — ${s.stanowiska}`)
+    .map(
+      (s) =>
+        `- ${linkujDate(s.sesja, opts.datyDoSesji, s.kotwica_segment_start_time)}: ${s.temat} — ${s.stanowiska}`
+    )
     .join("\n");
 }
 
