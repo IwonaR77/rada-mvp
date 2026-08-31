@@ -114,6 +114,7 @@ export function SessionPlayer({
   canAssign,
   canFinalize,
   canDownloadTranscript,
+  canFlag,
   flaggedSegments,
   summaryManager,
   taggingProgress,
@@ -145,6 +146,8 @@ export function SessionPlayer({
   canAssign: boolean;
   canFinalize: boolean;
   canDownloadTranscript: boolean;
+  /** Oznaczanie segmentu jako przesuniętego względem nagrania — dla zalogowanych. */
+  canFlag: boolean;
   /**
    * Flagi segmentów: `desync` — przesunięty względem nagrania,
    * `rodzaj-ok` — sprawdzone, mimo sprzecznej końcówki przypisanie jest dobre.
@@ -1124,7 +1127,9 @@ export function SessionPlayer({
                     )}
                     {/* Flaga „przesunięty względem nagrania". Widoczna dla
                               każdego zalogowanego, nie tylko dla tagujących:
-                              przesunięcie zauważa ten, kto ogląda.
+                              przesunięcie zauważa ten, kto ogląda. Ukryta dla
+                              niezalogowanych — akcja pisząca do bazy (patrz
+                              toggleSegmentFlag), nie sam odczyt.
 
                               Stan niesie KSZTAŁT, nie sam kolor: wypełniona ⚑
                               włączona, pusta ⚐ wyłączona. Sam kolor nie
@@ -1136,27 +1141,29 @@ export function SessionPlayer({
                               text-xs, bo znak flagi rysuje się w polu
                               wyraźnie mniejszym niż cyfra tej samej
                               wielkości. */}
-                          <button
-                            onClick={() => przelaczFlage(s.id)}
-                            disabled={isPending}
-                            title={
-                              flagi.has(s.id)
-                                ? "Zdejmij oznaczenie przesunięcia w czasie"
-                                : "Oznacz: segment przesunięty względem nagrania"
-                            }
-                            aria-pressed={flagi.has(s.id)}
-                            className={`shrink-0 rounded px-1.5 py-0.5 text-base leading-none disabled:opacity-40 ${
-                              flagi.has(s.id)
-                                ? isActive
-                                  ? "bg-red-500/25 text-red-300 dark:bg-red-500/20 dark:text-red-700"
-                                  : "bg-red-100 text-red-600 dark:bg-red-950/60 dark:text-red-400"
-                                : isActive
-                                  ? "text-zinc-400 hover:text-red-300 dark:text-zinc-500 dark:hover:text-red-700"
-                                  : "text-zinc-400 hover:bg-zinc-200 hover:text-red-600 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-red-400"
-                            }`}
-                          >
-                            {flagi.has(s.id) ? "⚑" : "⚐"}
-                          </button>
+                          {canFlag && (
+                            <button
+                              onClick={() => przelaczFlage(s.id)}
+                              disabled={isPending}
+                              title={
+                                flagi.has(s.id)
+                                  ? "Zdejmij oznaczenie przesunięcia w czasie"
+                                  : "Oznacz: segment przesunięty względem nagrania"
+                              }
+                              aria-pressed={flagi.has(s.id)}
+                              className={`shrink-0 rounded px-1.5 py-0.5 text-base leading-none disabled:opacity-40 ${
+                                flagi.has(s.id)
+                                  ? isActive
+                                    ? "bg-red-500/25 text-red-300 dark:bg-red-500/20 dark:text-red-700"
+                                    : "bg-red-100 text-red-600 dark:bg-red-950/60 dark:text-red-400"
+                                  : isActive
+                                    ? "text-zinc-400 hover:text-red-300 dark:text-zinc-500 dark:hover:text-red-700"
+                                    : "text-zinc-400 hover:bg-zinc-200 hover:text-red-600 dark:text-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-red-400"
+                              }`}
+                            >
+                              {flagi.has(s.id) ? "⚑" : "⚐"}
+                            </button>
+                          )}
                           {canFinalize && (
                             <button
                               onClick={() => setSplittingId(s.id)}

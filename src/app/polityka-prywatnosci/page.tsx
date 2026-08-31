@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Polityka Prywatności — Rada" };
 const DOC_PATH = path.join(
   process.cwd(),
   "regulaminy",
-  "Polityka_Prywatnosci_Rada_v1.9.md"
+  "Polityka_Prywatnosci_Rada_v1.10.md"
 );
 
 export default function PolitykaPrywatnosciPage() {

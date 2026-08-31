@@ -951,6 +951,7 @@ export async function CouncilorProfile({
             councilorName={councilor.full_name}
             bookmarks={bookmarks}
             canBookmark={Boolean(canBookmark)}
+            canCopy={Boolean(user)}
             canDownloadAudio={AUDIO_CUT_ENABLED}
           />
         </aside>

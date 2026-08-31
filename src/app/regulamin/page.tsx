@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Regulamin — Rada" };
 const DOC_PATH = path.join(
   process.cwd(),
   "regulaminy",
-  "Regulamin_Rada_v1.7.md"
+  "Regulamin_Rada_v1.8.md"
 );
 
 export default function RegulaminPage() {

@@ -37,6 +37,7 @@ export function CouncilorSpeeches({
   councilorName,
   bookmarks,
   canBookmark,
+  canCopy,
   canDownloadAudio,
 }: {
   sessions: SpeechSession[];
@@ -44,6 +45,7 @@ export function CouncilorSpeeches({
   councilorName: string;
   bookmarks: Bookmark[];
   canBookmark: boolean;
+  canCopy: boolean;
   canDownloadAudio: boolean;
 }) {
   const totalBlocks = sessions.reduce((n, s) => n + s.blocks.length, 0);
@@ -54,6 +56,7 @@ export function CouncilorSpeeches({
       councilorName={councilorName}
       bookmarks={bookmarks}
       canBookmark={canBookmark}
+      canCopy={canCopy}
       canDownloadAudio={canDownloadAudio}
     >
       <section>

@@ -8,8 +8,10 @@ type BookmarksValue = {
   councilorName: string;
   /** Wszystkie zakładki tego użytkownika przy tym radnym, chronologicznie. */
   bookmarks: Bookmark[];
-  /** Niezalogowany widzi bloki, ale nie ma czym oznaczać — zostaje kopiowanie. */
+  /** Niezalogowany widzi bloki, ale nie ma czym oznaczać. */
   canBookmark: boolean;
+  /** Kopiowanie cytatu do schowka — dla zalogowanych, tak jak zakładki. */
+  canCopy: boolean;
   /** Czy to wdrożenie ma ffmpeg — patrz AUDIO_CUT_ENABLED. */
   canDownloadAudio: boolean;
 };
