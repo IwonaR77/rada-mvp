@@ -517,6 +517,19 @@ function sekcjaSpory(state: ProfileState, opts: RenderOpts): string {
     .join("\n");
 }
 
+// `ostatnia_sesja` istnieje w schemacie stanu od promptu v7 (zawsze
+// ustawiane przy każdej aktualizacji — zob. Prompt_Profil_Radnego_
+// Iteracyjny_v7.md, "REGUŁY AKTUALIZACJI"), ale starsze rewizje sprzed tej
+// wersji promptu mogą go nie mieć — stąd `null`-check zamiast założenia, że
+// pole zawsze istnieje. Rewizje bez tego pola po prostu nie dostają tej
+// linijki; gdy taki radny doczeka się kolejnej rewizji (nowy prompt), pole
+// się pojawi i linijka wyrenderuje się sama, bez ręcznej ingerencji w bazę.
+function sekcjaZakresSesji(state: ProfileState): string | null {
+  if (!state.ostatnia_sesja) return null;
+  const { data, id } = state.ostatnia_sesja;
+  return `_Opis uwzględnia wypowiedzi radnego do sesji z dnia [${data}](/sesje/${id}) włącznie._`;
+}
+
 /**
  * Renderuje pełną notatkę Markdown ze stanu — jedyne miejsce, gdzie stan
  * staje się prozą.
@@ -528,7 +541,9 @@ function sekcjaSpory(state: ProfileState, opts: RenderOpts): string {
  * Bez nich renderProfile nadal działa poprawnie — po prostu bez linków.
  */
 export function renderProfile(state: ProfileState, opts: RenderOpts = {}): string {
+  const zakresSesji = sekcjaZakresSesji(state);
   return [
+    ...(zakresSesji ? [zakresSesji, ""] : []),
     "**Tematy wypowiedzi na sesjach:**",
     "",
     sekcjaTematy(state, opts),
