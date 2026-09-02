@@ -44,7 +44,9 @@ export type RenderOpts = {
    * dostęp do jego pełnego opisu.
    */
   historiaPelnychTematow?: Map<string, number>;
-  /** `teza.id` tematów nowych/zaktualizowanych w ostatnim kroku łańcucha — wyróżniane w renderze. */
+  /** `teza.id` tematów całkowicie NOWYCH w ostatnim kroku łańcucha — pogrubione wyróżnienie w renderze. */
+  noweTematyIds?: Set<string>;
+  /** `teza.id` tematów ZAKTUALIZOWANYCH (nie nowych) w ostatnim kroku łańcucha — wyróżniane w renderze. */
   zmienioneTematyIds?: Set<string>;
 };
 
@@ -55,6 +57,14 @@ export type RenderOpts = {
  * punkt jest nowy" do renderu inaczej niż przez osobny, drobniejszy parser.
  */
 export const ZNACZNIK_ZMIANY = "";
+
+/**
+ * Jak `ZNACZNIK_ZMIANY`, ale dla tematów całkowicie NOWYCH w ostatnim
+ * kroku łańcucha (nie zaktualizowanych) — osobny znacznik PUA, żeby render
+ * mógł odróżnić "nowy" (pogrubienie + kolor) od "zaktualizowany" (sam
+ * kolor).
+ */
+export const ZNACZNIK_NOWY = "";
 
 function linkujDate(data: string, mapa?: Record<string, string>, startTime?: number | null): string {
   const id = mapa?.[data];
@@ -182,6 +192,14 @@ const ROLA: Record<string, string> = {
   zaangażowany: "zaangażowany",
 };
 
+// Nowy ma pierwszeństwo nad zaktualizowanym — temat, który dopiero powstał
+// w tym kroku, z definicji nie mógł być wcześniej zaktualizowany.
+function znacznikDlaTematu(t: Temat, opts: RenderOpts): string {
+  if (opts.noweTematyIds?.has(t.id)) return ZNACZNIK_NOWY;
+  if (opts.zmienioneTematyIds?.has(t.id)) return ZNACZNIK_ZMIANY;
+  return "";
+}
+
 // Bez statusu sprawy: sprawa niezatwierdzona jest niewidoczna dla
 // użytkownika, więc każda, którą w ogóle widzi, jest zatwierdzona z definicji
 // — dopisywanie tego słowa nic nie mówi, tylko sugeruje istnienie innego,
@@ -195,7 +213,7 @@ function zdanieOTemacie(t: Temat, opts: RenderOpts): string {
     ? ` — sprawa „${t.sprawa}" (${ROLA[t.rola_w_sprawie ?? ""] ?? t.rola_w_sprawie ?? "brak roli"})`
     : "";
   const rdzen = t.zdanie ? t.zdanie.charAt(0).toUpperCase() + t.zdanie.slice(1) : `Temat: „${t.teza}"`;
-  const znacznik = opts.zmienioneTematyIds?.has(t.id) ? ZNACZNIK_ZMIANY : "";
+  const znacznik = znacznikDlaTematu(t, opts);
   return `- ${znacznik}${rdzen} (${daty})${sprawaCzesc}.`;
 }
 
@@ -290,7 +308,7 @@ function zwiezleOTemacie(t: Temat, opts: RenderOpts): string {
   const daty = linkujListeDat(t.sesje, opts.datyDoSesji, t.kotwica?.sesja, t.kotwica?.segment_start_time);
   const seq = opts.historiaPelnychTematow?.get(t.id);
   const link = seq != null ? ` (pełny opis: [wcześniejsza rewizja](#rewizja-${seq}))` : "";
-  const znacznik = opts.zmienioneTematyIds?.has(t.id) ? ZNACZNIK_ZMIANY : "";
+  const znacznik = znacznikDlaTematu(t, opts);
   return `- ${znacznik}„${t.teza}" (${daty})${link}.`;
 }
 

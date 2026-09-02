@@ -17,6 +17,7 @@ import {
   idTematowWWarstwiePelnej,
   diffStates,
   ZNACZNIK_ZMIANY,
+  ZNACZNIK_NOWY,
   type ProfileState,
 } from "@/lib/councilor-profile-state";
 
@@ -84,15 +85,22 @@ async function wczytajProfilIteracyjny(
   // NIE podświetla niczego — "co nowego od ostatniego razu" nie ma sensu bez
   // "ostatniego razu".
   const poprzedniaRewizja = rewizje.length >= 2 ? rewizje[rewizje.length - 2] : null;
+  let noweTematyIds: Set<string> | undefined;
   let zmienioneTematyIds: Set<string> | undefined;
   if (poprzedniaRewizja) {
     const zmiana = diffStates(poprzedniaRewizja.stan as unknown as ProfileState, stanNajnowszy);
-    zmienioneTematyIds = new Set([...zmiana.nowe, ...zmiana.zmienione.map((z) => z.po)].map((t) => t.id));
+    noweTematyIds = new Set(zmiana.nowe.map((t) => t.id));
+    zmienioneTematyIds = new Set(zmiana.zmienione.map((z) => z.po.id));
   }
 
   return {
-    notatka: renderProfile(stanNajnowszy, { datyDoSesji, historiaPelnychTematow, zmienioneTematyIds }),
-    tematyZmienioneWOstatnimKroku: zmienioneTematyIds?.size ?? 0,
+    notatka: renderProfile(stanNajnowszy, {
+      datyDoSesji,
+      historiaPelnychTematow,
+      noweTematyIds,
+      zmienioneTematyIds,
+    }),
+    tematyZmienioneWOstatnimKroku: (noweTematyIds?.size ?? 0) + (zmienioneTematyIds?.size ?? 0),
     postepProcent,
     sesjePrzetworzone: stanNajnowszy.sesje_przetworzone,
     totalSesji,
@@ -113,16 +121,15 @@ async function wczytajProfilIteracyjny(
         // krok" zostaje przy wpisie na stałe, gdy zsunie się do historii,
         // zamiast znikać w momencie, gdy przestaje być najnowszy.
         const zmiana = poprzednia ? diffStates(poprzednia, stanRewizji) : null;
-        const zmienioneTematyIds = zmiana
-          ? new Set([...zmiana.nowe, ...zmiana.zmienione.map((z) => z.po)].map((t) => t.id))
-          : undefined;
+        const noweTematyIds = zmiana ? new Set(zmiana.nowe.map((t) => t.id)) : undefined;
+        const zmienioneTematyIds = zmiana ? new Set(zmiana.zmienione.map((z) => z.po.id)) : undefined;
         return {
           seq: r.seq,
           createdAt: r.created_at,
           sesjaOd,
           sesjaDo,
-          tematyZmienioneWTymKroku: zmienioneTematyIds?.size ?? 0,
-          notatka: renderProfile(stanRewizji, { datyDoSesji, zmienioneTematyIds }),
+          tematyZmienioneWTymKroku: (noweTematyIds?.size ?? 0) + (zmienioneTematyIds?.size ?? 0),
+          notatka: renderProfile(stanRewizji, { datyDoSesji, noweTematyIds, zmienioneTematyIds }),
         };
       })
       .reverse(), // najnowsza z historycznych na górze listy rozwijanej
@@ -155,15 +162,24 @@ const MARKDOWN_LINK_COMPONENT = {
   ),
 };
 
-// Punkty tematów dodanych/zaktualizowanych w ostatnim kroku łańcucha
-// (zob. ZNACZNIK_ZMIANY w councilor-profile-state.ts) — sam renderProfile
-// wstawia niewidoczny znacznik na początku takiego punktu w markdownie,
-// tutaj wykrywamy go w pierwszym dziecku <li> i zamieniamy na kolor,
-// zamiast dopuszczać surowe HTML w markdownie (rehype-raw) tylko dla tego.
-const NOWY_TEMAT_LI_COMPONENT = {
+// Punkty tematów dodanych/zaktualizowanych w ostatnim kroku łańcucha (zob.
+// ZNACZNIK_NOWY/ZNACZNIK_ZMIANY w councilor-profile-state.ts) — sam
+// renderProfile wstawia niewidoczny znacznik na początku takiego punktu w
+// markdownie, tutaj wykrywamy go w pierwszym dziecku <li> i zamieniamy na
+// styl, zamiast dopuszczać surowe HTML w markdownie (rehype-raw) tylko dla
+// tego. Nowy temat = pogrubienie + kolor, zaktualizowany = sam kolor.
+const TEMAT_WYROZNIONY_LI_COMPONENT = {
   li: (props: React.ComponentPropsWithoutRef<"li">) => {
     const kids = Array.isArray(props.children) ? props.children : [props.children];
     const pierwsze = kids[0];
+    if (typeof pierwsze === "string" && pierwsze.startsWith(ZNACZNIK_NOWY)) {
+      return (
+        <li className="font-semibold text-blue-900 dark:text-blue-300">
+          {pierwsze.slice(ZNACZNIK_NOWY.length)}
+          {kids.slice(1)}
+        </li>
+      );
+    }
     if (typeof pierwsze === "string" && pierwsze.startsWith(ZNACZNIK_ZMIANY)) {
       return (
         <li className="text-blue-900 dark:text-blue-300">
@@ -682,7 +698,7 @@ export async function CouncilorProfile({
               )}
               {profilIteracyjny.tematyZmienioneWOstatnimKroku > 0 && (
                 <p className="mb-2 text-xs text-blue-900 dark:text-blue-300">
-                  Na granatowo: tematy dodane lub zaktualizowane w ostatnim kroku.
+                  Na granatowo i pogrubione: tematy całkowicie nowe. Na granatowo: tematy zaktualizowane w ostatnim kroku.
                 </p>
               )}
               <div className="rounded-2xl border border-zinc-200 p-4 text-sm leading-relaxed text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
@@ -690,7 +706,7 @@ export async function CouncilorProfile({
                   components={{
                     ...MARKDOWN_LIST_COMPONENTS,
                     ...MARKDOWN_LINK_COMPONENT,
-                    ...NOWY_TEMAT_LI_COMPONENT,
+                    ...TEMAT_WYROZNIONY_LI_COMPONENT,
                     p: (props) => <p className="mb-2 last:mb-0" {...props} />,
                   }}
                 >
@@ -718,14 +734,14 @@ export async function CouncilorProfile({
                         <div className="mt-2 text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
                           {r.tematyZmienioneWTymKroku > 0 && (
                             <p className="mb-2 text-xs text-blue-900 dark:text-blue-300">
-                              Na granatowo: tematy dodane lub zaktualizowane w tym kroku.
+                              Na granatowo i pogrubione: tematy całkowicie nowe. Na granatowo: tematy zaktualizowane w tym kroku.
                             </p>
                           )}
                           <ReactMarkdown
                             components={{
                               ...MARKDOWN_LIST_COMPONENTS,
                               ...MARKDOWN_LINK_COMPONENT,
-                              ...NOWY_TEMAT_LI_COMPONENT,
+                              ...TEMAT_WYROZNIONY_LI_COMPONENT,
                               p: (props) => <p className="mb-2 last:mb-0" {...props} />,
                             }}
                           >
