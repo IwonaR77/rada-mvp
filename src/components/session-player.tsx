@@ -54,6 +54,13 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
+// Odtwarzanie nagrań wstrzymane do czasu odpowiedzi eSesja.tv (MWC Sp. z o.o.)
+// na pytanie o zgodność naszego sposobu embedowania/pobierania nagrań z ich
+// regulaminem (§ 5, zob. notatki/mail-esesja-regulamin-nagran-2026-09-02.txt).
+// Mechanizm odtwarzacza jest gotowy technicznie — flaga tylko chowa go w
+// interfejsie, nie usuwa kodu — więc włączenie z powrotem to jedna linia.
+const ODTWARZANIE_WSTRZYMANE = true;
+
 // Short attribution for an embedded third-party video, per the site's own
 // terms of use for embedding — the registrable domain (e.g. "esesja.tv"),
 // not the full CDN URL with its per-session path.
@@ -732,24 +739,39 @@ export function SessionPlayer({
             szerokości i mają ten sam stosunek boków. */}
         <div className="flex flex-col gap-6 lg:flex-row">
           <div className="flex w-full flex-col gap-6 lg:w-1/2">
-            <ReactPlayer
-              ref={videoRef}
-              src={videoUrl}
-              controls
-              onTimeUpdate={(e) => handleTimeUpdate(e.currentTarget.currentTime)}
-              onSeeked={() => {
-                // Ręczne przewinięcie suwakiem kasuje zaplanowane
-                // zatrzymanie — kto sam szuka miejsca, chce słuchać dalej.
-                if (przewijamySamiRef.current) przewijamySamiRef.current = false;
-                else stopAtRef.current = null;
-              }}
-              onLoadedMetadata={handleLoadedMetadata}
-              style={{ width: "100%", height: "auto", aspectRatio: "16/9" }}
-            />
-            {videoSourceLabel(videoUrl) && (
-              <p className="-mt-4 text-xs text-zinc-400">
-                Źródło: {videoSourceLabel(videoUrl)}
-              </p>
+            {ODTWARZANIE_WSTRZYMANE ? (
+              <div
+                className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400"
+                style={{ aspectRatio: "16/9" }}
+              >
+                <p>Odtwarzanie nagrania jest tymczasowo wyłączone.</p>
+                <p className="text-xs text-zinc-400 dark:text-zinc-500">
+                  Wznowimy je po wyjaśnieniu z dostawcą transmisji zasad
+                  korzystania z nagrań.
+                </p>
+              </div>
+            ) : (
+              <>
+                <ReactPlayer
+                  ref={videoRef}
+                  src={videoUrl}
+                  controls
+                  onTimeUpdate={(e) => handleTimeUpdate(e.currentTarget.currentTime)}
+                  onSeeked={() => {
+                    // Ręczne przewinięcie suwakiem kasuje zaplanowane
+                    // zatrzymanie — kto sam szuka miejsca, chce słuchać dalej.
+                    if (przewijamySamiRef.current) przewijamySamiRef.current = false;
+                    else stopAtRef.current = null;
+                  }}
+                  onLoadedMetadata={handleLoadedMetadata}
+                  style={{ width: "100%", height: "auto", aspectRatio: "16/9" }}
+                />
+                {videoSourceLabel(videoUrl) && (
+                  <p className="-mt-4 text-xs text-zinc-400">
+                    Źródło: {videoSourceLabel(videoUrl)}
+                  </p>
+                )}
+              </>
             )}
 
             {/* Wyszukiwarka, filtry, skoki i pobieranie stoją pod
