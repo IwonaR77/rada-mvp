@@ -509,7 +509,10 @@ function sekcjaSpory(state: ProfileState, opts: RenderOpts): string {
   if (state.spory.length === 0) {
     return "Nie zanotowano sporów z udziałem tego radnego w tej kadencji.";
   }
-  return state.spory
+  // Najnowszy spór na górze (jak w pozostałych widokach chronologicznych),
+  // mimo że w `state.spory` trzymamy kolejność dodawania (sesja po sesji).
+  return [...state.spory]
+    .sort((a, b) => b.sesja.localeCompare(a.sesja))
     .map(
       (s) =>
         `- ${linkujDate(s.sesja, opts.datyDoSesji, s.kotwica_segment_start_time)}: ${s.temat} — ${s.stanowiska}`
