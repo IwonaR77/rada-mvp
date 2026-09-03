@@ -93,6 +93,15 @@ async function wczytajProfilIteracyjny(
     zmienioneTematyIds = new Set(zmiana.zmienione.map((z) => z.po.id));
   }
 
+  const tematyZmienioneWOstatnimKroku = (noweTematyIds?.size ?? 0) + (zmienioneTematyIds?.size ?? 0);
+  // Radny czasem nie zabiera głosu na sesji (albo wypowiada się wyłącznie o
+  // sprawach już opisanych) — wtedy diff wychodzi pusty i notatka nie ma ani
+  // jednego wyróżnienia na granatowo. Bez osobnego komunikatu czytelnik nie
+  // ma jak odróżnić "nic nowego w tym kroku" od "coś tu jest nie tak" —
+  // stąd krótka notka, tylko gdy jest w ogóle z czym porównywać (nie przy
+  // samym seedzie, gdzie "nic nowego od ostatniego razu" nie ma sensu).
+  const brakNowosciWOstatnimKroku = Boolean(poprzedniaRewizja) && tematyZmienioneWOstatnimKroku === 0;
+
   return {
     notatka: renderProfile(stanNajnowszy, {
       datyDoSesji,
@@ -100,7 +109,8 @@ async function wczytajProfilIteracyjny(
       noweTematyIds,
       zmienioneTematyIds,
     }),
-    tematyZmienioneWOstatnimKroku: (noweTematyIds?.size ?? 0) + (zmienioneTematyIds?.size ?? 0),
+    tematyZmienioneWOstatnimKroku,
+    brakNowosciWOstatnimKroku,
     postepProcent,
     sesjePrzetworzone: stanNajnowszy.sesje_przetworzone,
     totalSesji,
@@ -123,12 +133,14 @@ async function wczytajProfilIteracyjny(
         const zmiana = poprzednia ? diffStates(poprzednia, stanRewizji) : null;
         const noweTematyIds = zmiana ? new Set(zmiana.nowe.map((t) => t.id)) : undefined;
         const zmienioneTematyIds = zmiana ? new Set(zmiana.zmienione.map((z) => z.po.id)) : undefined;
+        const tematyZmienioneWTymKroku = (noweTematyIds?.size ?? 0) + (zmienioneTematyIds?.size ?? 0);
         return {
           seq: r.seq,
           createdAt: r.created_at,
           sesjaOd,
           sesjaDo,
-          tematyZmienioneWTymKroku: (noweTematyIds?.size ?? 0) + (zmienioneTematyIds?.size ?? 0),
+          tematyZmienioneWTymKroku,
+          brakNowosciWTymKroku: Boolean(poprzednia) && tematyZmienioneWTymKroku === 0,
           notatka: renderProfile(stanRewizji, { datyDoSesji, noweTematyIds, zmienioneTematyIds }),
         };
       })
@@ -701,6 +713,11 @@ export async function CouncilorProfile({
                   Na granatowo i pogrubione: tematy całkowicie nowe. Na granatowo: tematy zaktualizowane w ostatnim kroku.
                 </p>
               )}
+              {profilIteracyjny.brakNowosciWOstatnimKroku && (
+                <p className="mb-2 text-xs text-zinc-500">
+                  W porównaniu do poprzedniej sesji nic nowego nie doszło.
+                </p>
+              )}
               <div className="rounded-2xl border border-zinc-200 p-4 text-sm leading-relaxed text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
                 <ReactMarkdown
                   components={{
@@ -735,6 +752,11 @@ export async function CouncilorProfile({
                           {r.tematyZmienioneWTymKroku > 0 && (
                             <p className="mb-2 text-xs text-blue-900 dark:text-blue-300">
                               Na granatowo i pogrubione: tematy całkowicie nowe. Na granatowo: tematy zaktualizowane w tym kroku.
+                            </p>
+                          )}
+                          {r.brakNowosciWTymKroku && (
+                            <p className="mb-2 text-xs text-zinc-500">
+                              W porównaniu do poprzedniej sesji nic nowego nie doszło.
                             </p>
                           )}
                           <ReactMarkdown

@@ -489,7 +489,10 @@ function sekcjaMieszkancy(state: ProfileState, opts: RenderOpts): string {
   if (state.mieszkancy.length === 0) {
     return "Brak w materiale wypowiedzi, w której radny powołuje się na zgłoszenie mieszkańców.";
   }
-  return state.mieszkancy
+  // Najnowsze zgłoszenie na górze — ta sama reguła co przy sporach niżej i
+  // wszędzie indziej w serwisie, gdzie lista ma naturalny porządek chronologiczny.
+  return [...state.mieszkancy]
+    .sort((a, b) => b.sesja.localeCompare(a.sesja))
     .map(
       (m) =>
         `- ${linkujDate(m.sesja, opts.datyDoSesji, m.kotwica_segment_start_time)}: ${m.temat} (zgłaszający: ${m.zrodlo})`
@@ -503,8 +506,13 @@ const KOLEJNOSC_LABEL: Record<string, string> = {
 };
 
 function sekcjaPowroty(state: ProfileState, opts: RenderOpts): string {
-  const wracajace = state.tematy.filter((t) => t.sesje.length >= 2);
-  if (wracajace.length === 0 && state.interpelacje_powiazane.length === 0) {
+  // Najnowszy powrót/najnowsza interpelacja na górze w obu podlistach —
+  // wg `ostatnia`/`sesja`, ta sama reguła chronologiczna co reszta profilu.
+  const wracajace = state.tematy
+    .filter((t) => t.sesje.length >= 2)
+    .sort((a, b) => b.ostatnia.localeCompare(a.ostatnia));
+  const interpelacje = [...state.interpelacje_powiazane].sort((a, b) => b.sesja.localeCompare(a.sesja));
+  if (wracajace.length === 0 && interpelacje.length === 0) {
     return "Brak w materiale powrotu do wcześniej poruszonego tematu ani interpelacji nawiązującej do dyskusji na sesji.";
   }
   const linie: string[] = [];
@@ -513,7 +521,7 @@ function sekcjaPowroty(state: ProfileState, opts: RenderOpts): string {
       `- temat wracający: „${t.teza}" (${linkujListeDat(t.sesje, opts.datyDoSesji, t.kotwica?.sesja, t.kotwica?.segment_start_time)})`
     );
   }
-  for (const i of state.interpelacje_powiazane) {
+  for (const i of interpelacje) {
     // Data interpelacji celowo NIE jest linkiem do sesji — interpelacja to
     // osobny rekord (`interpellation`), nie posiedzenie, nie ma meeting.id.
     linie.push(
@@ -545,10 +553,17 @@ function sekcjaSpory(state: ProfileState, opts: RenderOpts): string {
 // pole zawsze istnieje. Rewizje bez tego pola po prostu nie dostają tej
 // linijki; gdy taki radny doczeka się kolejnej rewizji (nowy prompt), pole
 // się pojawi i linijka wyrenderuje się sama, bez ręcznej ingerencji w bazę.
-function sekcjaZakresSesji(state: ProfileState): string | null {
+// `state.ostatnia_sesja.id` NIE jest wiarygodnym meeting.id — model dostaje w
+// promptcie `identyfikator: meeting.esesja_id ?? meeting.source_id ?? meeting.id`
+// (zob. scripts/lib/profil-eksport.mjs) i zwykle odbija ten identyfikator
+// esesja, a trasa `/sesje/[id]` oczekuje prawdziwego meeting.id z bazy — stąd
+// link przez surowe `id` z modelu kończył się 404-ką. Tak jak wszystkie inne
+// linki w tym pliku, rozwiązujemy datę przez `datyDoSesji` (data → realne
+// meeting.id z bazy), ignorując `id` zwrócone przez model.
+function sekcjaZakresSesji(state: ProfileState, opts: RenderOpts): string | null {
   if (!state.ostatnia_sesja) return null;
-  const { data, id } = state.ostatnia_sesja;
-  return `_Opis uwzględnia wypowiedzi radnego do sesji z dnia [${data}](/sesje/${id}) włącznie._`;
+  const { data } = state.ostatnia_sesja;
+  return `_Opis uwzględnia wypowiedzi radnego do sesji z dnia ${linkujDate(data, opts.datyDoSesji)} włącznie._`;
 }
 
 /**
@@ -562,7 +577,7 @@ function sekcjaZakresSesji(state: ProfileState): string | null {
  * Bez nich renderProfile nadal działa poprawnie — po prostu bez linków.
  */
 export function renderProfile(state: ProfileState, opts: RenderOpts = {}): string {
-  const zakresSesji = sekcjaZakresSesji(state);
+  const zakresSesji = sekcjaZakresSesji(state, opts);
   return [
     ...(zakresSesji ? [zakresSesji, ""] : []),
     "**Tematy wypowiedzi na sesjach:**",
