@@ -13,7 +13,7 @@
 // Uruchamiany automatycznie przez .github/workflows/transcribe-groq.yml
 // (krok przed pipeline-groq.mjs) — albo ręcznie: node scripts/discover-new-sessions.mjs
 
-import { supabaseQuery, sqlEscape } from "./lib/db.mjs";
+import { supabaseQuery, supabaseExec, sqlEscape } from "./lib/db.mjs";
 import { parsePolishDateFromSlug, fetchDecoded, sleep } from "./lib/pl.mjs";
 
 const BASE = "https://grojec.esesja.pl";
@@ -76,7 +76,7 @@ async function main() {
       // 'nadzwyczajna', 'komisja') — wcześniej szło tu na sztywno 'sesja',
       // co odrzuciłoby każdą nową sesję przy pierwszym realnym trafieniu.
       // source/source_id to klucz naturalny wspólny z radami spoza esesja.pl.
-      supabaseQuery(
+      supabaseExec(
         `insert into meeting (term_id, meeting_type, source, source_id, esesja_id, date, title, video_url) values ` +
           `('${TERM_ID}', '${meetingType(title)}', '${SOURCE}', '${sqlEscape(l.esesjaId)}', '${sqlEscape(l.esesjaId)}', '${date}', ` +
           `${title ? `'${sqlEscape(title)}'` : "null"}, ` +
