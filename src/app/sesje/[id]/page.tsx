@@ -340,6 +340,7 @@ export default async function SessionPage({
         canFinalize={finalizePermission}
         canDownloadTranscript={canDownloadTranscript}
         canFlag={Boolean(user)}
+        canPlayRecording={Boolean(user)}
         flaggedSegments={flaggedSegments}
         taggingProgress={
           // Liczone z segmentów już pobranych na tę stronę — postęp tej jednej

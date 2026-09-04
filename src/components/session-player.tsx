@@ -54,12 +54,13 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-// Odtwarzanie nagrań wstrzymane do czasu odpowiedzi eSesja.tv (MWC Sp. z o.o.)
-// na pytanie o zgodność naszego sposobu embedowania/pobierania nagrań z ich
-// regulaminem (§ 5, zob. notatki/mail-esesja-regulamin-nagran-2026-09-02.txt).
-// Mechanizm odtwarzacza jest gotowy technicznie — flaga tylko chowa go w
-// interfejsie, nie usuwa kodu — więc włączenie z powrotem to jedna linia.
-const ODTWARZANIE_WSTRZYMANE = true;
+// Odtwarzanie nagrań dla anonimowych wstrzymane do czasu odpowiedzi eSesja.tv
+// (MWC Sp. z o.o.) na pytanie o zgodność naszego sposobu embedowania/
+// pobierania nagrań z ich regulaminem (§ 5, zob.
+// notatki/mail-esesja-regulamin-nagran-2026-09-02.txt). Zalogowani widzą
+// nagranie już teraz (prop canPlayRecording) — to węższe, identyfikowalne
+// grono, mniejsze ryzyko niż udostępnianie ogółowi odwiedzających.
+const ODTWARZANIE_WSTRZYMANE_ANONIMOWYM = true;
 
 // Short attribution for an embedded third-party video, per the site's own
 // terms of use for embedding — the registrable domain (e.g. "esesja.tv"),
@@ -122,6 +123,7 @@ export function SessionPlayer({
   canFinalize,
   canDownloadTranscript,
   canFlag,
+  canPlayRecording,
   flaggedSegments,
   summaryManager,
   taggingProgress,
@@ -155,6 +157,13 @@ export function SessionPlayer({
   canDownloadTranscript: boolean;
   /** Oznaczanie segmentu jako przesuniętego względem nagrania — dla zalogowanych. */
   canFlag: boolean;
+  /**
+   * Odtwarzanie nagrania jest wstrzymane dla anonimowych do czasu odpowiedzi
+   * eSesja.tv (zob. ODTWARZANIE_WSTRZYMANE_ANONIMOWYM) — zalogowani mogą je
+   * oglądać już teraz, bo to węższe, dające się zidentyfikować grono niż ogół
+   * odwiedzających.
+   */
+  canPlayRecording: boolean;
   /**
    * Flagi segmentów: `desync` — przesunięty względem nagrania,
    * `rodzaj-ok` — sprawdzone, mimo sprzecznej końcówki przypisanie jest dobre.
@@ -739,15 +748,15 @@ export function SessionPlayer({
             szerokości i mają ten sam stosunek boków. */}
         <div className="flex flex-col gap-6 lg:flex-row">
           <div className="flex w-full flex-col gap-6 lg:w-1/2">
-            {ODTWARZANIE_WSTRZYMANE ? (
+            {ODTWARZANIE_WSTRZYMANE_ANONIMOWYM && !canPlayRecording ? (
               <div
                 className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-6 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400"
                 style={{ aspectRatio: "16/9" }}
               >
-                <p>Odtwarzanie nagrania jest tymczasowo wyłączone.</p>
+                <p>Odtwarzanie nagrania jest tymczasowo wyłączone dla niezalogowanych.</p>
                 <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                  Wznowimy je po wyjaśnieniu z dostawcą transmisji zasad
-                  korzystania z nagrań.
+                  Zaloguj się, by je obejrzeć — dla wszystkich wznowimy po
+                  wyjaśnieniu z dostawcą transmisji zasad korzystania z nagrań.
                 </p>
               </div>
             ) : (
