@@ -1,8 +1,17 @@
 #!/usr/bin/env node
 // Runner produkcyjny przyrostowego profilu radnego — jeden krok (jedna
 // sesja) na uruchomienie, dla każdego radnego aktualnie w "puli aktywnych".
-// Zob. plan .claude/plans/wracamy-do-idei-iteracyjnego-staged-dongarra.md
-// i notatkę project_produkcyjne_wdrozenie_profilu w pamięci.
+// Zob. plan .claude/plans/tranquil-wibbling-lerdorf.md (Wariant 2 — delta) i
+// notatkę project_profil_skalowanie_kroku w pamięci.
+//
+// Od promptu v8 (2026-09-06) krok iteracyjny NIE wstrzykuje już pełnego
+// poprzedniego stanu do promptu ani nie każe modelowi zwracać całego nowego
+// stanu — model dostaje skrócony indeks istniejących tematów
+// (buildShortIndex) i zwraca wyłącznie deltę (co się wydarzyło w tej sesji);
+// `applyDelta()` w src/lib/councilor-profile-delta.ts stosuje ją
+// deterministycznie do pełnego stanu. Krok "seed-jednorazowa" (pierwsze
+// sesje kadencji, bez poprzedniego stanu do porównania) zostaje bez zmian —
+// zwraca od razu pełny stan, jak dotąd.
 //
 // W przeciwieństwie do scripts/profil/uruchom-iteracje.mjs (eksperymentalny,
 // pliki pośrednie w groq/work/profil/, tylko jeden radny na raz) ten skrypt:
@@ -24,7 +33,14 @@
 // pierwszych min(3, liczba_sesji) sesji kadencji (method='seed-jednorazowa',
 // pierwsze sesje kadencji są czysto proceduralne). Kolejne kroki to jedna
 // sesja iteracyjnie (method='iteracyjna'), aż `stan.sesje_przetworzone`
-// (utrzymywane przez sam model wg promptu) dogoni liczbę sesji kadencji.
+// (utrzymywane przez applyDelta, nie przez model) dogoni liczbę sesji
+// kadencji.
+//
+// Jeśli model zwróci NIEJEDNOZNACZNE dopasowanie tematu (dwóch kandydatów
+// pasuje podobnie dobrze) — krok tego radnego jest WSTRZYMYWANY (nic nie
+// zapisujemy, `seq` się nie przesuwa), do ręcznego rozstrzygnięcia przez
+// scripts/profil/zastosuj-delte-reczna.mjs. Bezstanowa pula sama gwarantuje,
+// że ten sam krok zostanie ponowiony przy kolejnym uruchomieniu.
 //
 // Użycie:
 //   node scripts/profil/wdroz-produkcyjnie.mjs [--szerokosc-puli 2] [--sucho] [--tylko-radny "Imię Nazwisko"]
@@ -34,8 +50,9 @@
 //
 // --tylko-radny: krok wyłącznie dla jednego radnego (musi już być w puli wg
 // rankingu, w zakresie --szerokosc-puli) — do dokończenia przerwanego kroku
-// (np. po zerwaniu połączenia z bazą) bez ponownego, niezamierzonego
-// przesuwania pozostałych radnych z puli o kolejny krok w tym samym uruchomieniu.
+// (np. po zerwaniu połączenia z bazą, albo po ręcznym rozstrzygnięciu
+// NIEJEDNOZNACZNE) bez ponownego, niezamierzonego przesuwania pozostałych
+// radnych z puli o kolejny krok w tym samym uruchomieniu.
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
@@ -47,9 +64,11 @@ import {
   pobierzRankingAktywnosci,
   dograjCzasySegmentow,
 } from "../lib/profil-eksport.mjs";
+import { buildShortIndex } from "../../src/lib/councilor-profile-index.ts";
+import { applyDelta, validateDelta } from "../../src/lib/councilor-profile-delta.ts";
 
 const NAZWA_RADY = "Rada Miejska w Grójcu";
-const PROMPT_VERSION = 7;
+const PROMPT_VERSION = 8;
 
 function parseArgs(argv) {
   const args = { szerokoscPuli: 2, sucho: false, tylkoRadny: null };
@@ -80,6 +99,34 @@ function wyciagnijJson(tekst) {
   return JSON.parse(dopasowanie[1]);
 }
 
+// Mikro-wywołania LLM, tylko o parę scalanych tematów/sporów (nie cały
+// stan) — wołane przez applyDelta() wyłącznie przy przekroczeniu limitu
+// (rzadko, raz na dziesiątki sesji per radny). Zachowują dzisiejszą jakość
+// prozy scalonej etykiety zamiast mechanicznej konkatenacji.
+function budujPromptScalaniaTematow(a, b) {
+  return `Dwa tematy z profilu radnego reprezentują w istocie tę samą, szerszą tematykę i mają zostać scalone w jeden wpis. Napisz wspólną etykietę (\`teza\`, mianownik) i wspólne \`zdanie\` (zaczyna się małą literą, bez kropki na końcu, czasownik czynności dobrany swobodnie do treści obu — bez przymiotników/rzeczowników oceniających), obejmujące oba dotychczasowe tematy.
+
+Temat A: teza="${a.teza}"${a.zdanie ? `, zdanie="${a.zdanie}"` : ""}
+Temat B: teza="${b.teza}"${b.zdanie ? `, zdanie="${b.zdanie}"` : ""}
+
+Zwróć WYŁĄCZNIE jeden blok:
+\`\`\`json
+{ "teza": "...", "zdanie": "..." }
+\`\`\``;
+}
+
+function budujPromptScalaniaSporow(a, b) {
+  return `Dwa spory z profilu radnego dotyczą w istocie tej samej sprawy i mają zostać scalone w jeden wpis. Napisz wspólny opis przedmiotu (\`temat\`) i wspólny opis stanowisk (\`stanowiska\`) obejmujący oba — bez oceny, kto miał rację.
+
+Spór A: temat="${a.temat}", stanowiska="${a.stanowiska}"
+Spór B: temat="${b.temat}", stanowiska="${b.stanowiska}"
+
+Zwróć WYŁĄCZNIE jeden blok:
+\`\`\`json
+{ "temat": "...", "stanowiska": "..." }
+\`\`\``;
+}
+
 // Oba pliki promptów kończą się szablonem do ręcznego wklejania — tu go
 // odcinamy i doklejamy realne dane (ten sam wzorzec co uruchom-iteracje.mjs).
 function bazowyPrompt(nazwaPliku) {
@@ -103,7 +150,7 @@ function ostatniaRewizja(councilorId, termId) {
  * Kolejny krok w łańcuchu danego radnego — `null`, gdy radny już dogonił
  * najnowszą sesję swojej kadencji (nie zajmuje wtedy miejsca w puli).
  * `sesje_przetworzone` w ostatniej rewizji jest źródłem prawdy (utrzymywane
- * przez sam model wg promptu, nie przeliczane tutaj), więc kolejna sesja do
+ * przez applyDelta wg promptu, nie przeliczane tutaj), więc kolejna sesja do
  * przetworzenia to zawsze indeks 0-based = `sesje_przetworzone`.
  */
 function nastepnyKrok(ostatnia, liczbaSesji) {
@@ -116,14 +163,14 @@ function nastepnyKrok(ostatnia, liczbaSesji) {
   return { seq: ostatnia.seq + 1, method: "iteracyjna", idx: sesjePrzetworzonePrzed };
 }
 
-function main() {
+async function main() {
   const { szerokoscPuli, sucho, tylkoRadny } = parseArgs(process.argv.slice(2));
   if (sucho) console.log("Tryb --sucho: bez wywołań claude -p i bez zapisu do bazy.\n");
   if (tylkoRadny) console.log(`Tryb --tylko-radny: krok wyłącznie dla "${tylkoRadny}", reszta puli pomijana.\n`);
 
   const ranking = pobierzRankingAktywnosci(NAZWA_RADY);
-  const promptJednorazowy = bazowyPrompt("Prompt_Profil_Radnego_Jednorazowy_v7.md");
-  const promptIteracyjny = bazowyPrompt("Prompt_Profil_Radnego_Iteracyjny_v7.md");
+  const promptJednorazowy = bazowyPrompt("Prompt_Profil_Radnego_Jednorazowy_v8.md");
+  const promptIteracyjny = bazowyPrompt("Prompt_Profil_Radnego_Iteracyjny_v8.md");
 
   let wPuli = 0;
 
@@ -160,6 +207,7 @@ function main() {
 
     let wejscie;
     let meetingIdRewizji;
+    let index = null; // tylko dla iteracyjna — skrócony indeks wysłany modelowi, potrzebny też do validateDelta
     if (krok.method === "seed-jednorazowa") {
       const corpus = [];
       for (let idx = krok.odIdx; idx <= krok.doIdxWlacznie; idx++) corpus.push(trescSesji(dane, idx).tresc);
@@ -168,19 +216,65 @@ function main() {
     } else {
       const { tresc } = trescSesji(dane, krok.idx);
       meetingIdRewizji = dane.meetings[krok.idx].id;
-      wejscie = `${promptIteracyjny}\n\n---\n\nRadny: ${dane.councilor.full_name}\nKadencja: ${dane.termRow.label}\n\nPoprzedni stan:\n\n${JSON.stringify(ostatnia.stan, null, 2)}\n\nNowa sesja (dane pełne — wypowiedzi, spory, sprawy, interpelacje, jeśli występują):\n\n${tresc}`;
+      index = buildShortIndex(ostatnia.stan);
+      wejscie = `${promptIteracyjny}\n\n---\n\nRadny: ${dane.councilor.full_name}\nKadencja: ${dane.termRow.label}\n\nIndeks istniejących tematów:\n\n${JSON.stringify(index, null, 2)}\n\nNowa sesja (dane pełne — wypowiedzi, spory, sprawy, interpelacje, jeśli występują):\n\n${tresc}`;
     }
 
     if (sucho) {
-      console.log(`  wejście: ${Math.round(wejscie.length / 1000)} tys. znaków, meeting_id rewizji: ${meetingIdRewizji}`);
+      const indexInfo = index ? `, w tym indeks: ${Math.round(JSON.stringify(index).length / 1000)} tys. znaków (${index.tematy.length} tematów)` : "";
+      console.log(`  wejście: ${Math.round(wejscie.length / 1000)} tys. znaków${indexInfo}, meeting_id rewizji: ${meetingIdRewizji}`);
       continue;
     }
 
     const start = Date.now();
     const odpowiedz = wywolajClaude(wejscie, scratchCwd);
     const czas = Math.round((Date.now() - start) / 1000);
-    console.log(`  gotowe w ${czas}s, koszt: $${(odpowiedz.total_cost_usd ?? 0).toFixed(3)}`);
-    const stan = wyciagnijJson(odpowiedz.result);
+    const kosztGlowny = odpowiedz.total_cost_usd ?? 0;
+    console.log(`  główne wywołanie gotowe w ${czas}s`);
+
+    // Mikro-wywołania scalania (przy przekroczeniu limitu tematów/sporów)
+    // każde kosztują osobno — bez tego licznika ten koszt ginął całkowicie
+    // z logów (zaobserwowane 2026-09-06 na pierwszym realnym kroku v8 dla
+    // Kozłowskiej: ~13 mikro-wywołań na krok, zero widoczności kosztu).
+    const kosztScalen = { suma: 0, liczba: 0 };
+    function sledzKosztScalenia(odp) {
+      kosztScalen.suma += odp.total_cost_usd ?? 0;
+      kosztScalen.liczba++;
+      return odp;
+    }
+
+    let stan;
+    if (krok.method === "seed-jednorazowa") {
+      stan = wyciagnijJson(odpowiedz.result);
+    } else {
+      const delta = wyciagnijJson(odpowiedz.result);
+      const walidacja = validateDelta(delta, index);
+      if (walidacja.ostrzezenia.length > 0) {
+        console.log("  ostrzeżenia walidacji delty:");
+        for (const o of walidacja.ostrzezenia) console.log(`    - ${o}`);
+      }
+      if (walidacja.niejednoznaczne.length > 0) {
+        console.log(`  NIEJEDNOZNACZNE (${walidacja.niejednoznaczne.length}) — krok wstrzymany, NIC nie zapisano do bazy:`);
+        for (const n of walidacja.niejednoznaczne) {
+          console.log(`    kandydaci: ${n.kandydaci.join(", ")} — ${n.uzasadnienie}`);
+          console.log(`    treść zgłoszona przez model: ${JSON.stringify(n.dane)}`);
+        }
+        console.log(
+          `  Rozstrzygnij ręcznie (scripts/profil/zastosuj-delte-reczna.mjs), potem ponów: ` +
+            `node scripts/profil/wdroz-produkcyjnie.mjs --tylko-radny "${radny.full_name}"`
+        );
+        continue;
+      }
+      const ctx = {
+        sesjaData: dane.meetings[krok.idx].date,
+        meetingId: meetingIdRewizji,
+        generujWspolnaTeze: async (a, b) =>
+          wyciagnijJson(sledzKosztScalenia(wywolajClaude(budujPromptScalaniaTematow(a, b), scratchCwd)).result),
+        generujWspolnySpor: async (a, b) =>
+          wyciagnijJson(sledzKosztScalenia(wywolajClaude(budujPromptScalaniaSporow(a, b), scratchCwd)).result),
+      };
+      stan = await applyDelta(ostatnia.stan, walidacja.delta, ctx);
+    }
     dograjCzasySegmentow(stan, dane);
 
     // Dollar-quoting zamiast ręcznego escapowania cudzysłowów/backslashy —
@@ -189,10 +283,16 @@ function main() {
       insert into councilor_profile_revision (councilor_id, term_id, seq, meeting_id, method, stan, prompt_version)
       values ('${radny.councilor_id}', '${radny.term_id}', ${krok.seq}, '${meetingIdRewizji}', '${krok.method}', $cpr_json$${JSON.stringify(stan)}$cpr_json$::jsonb, ${PROMPT_VERSION})
     `);
+    const kosztLacznie = kosztGlowny + kosztScalen.suma;
+    const opisScalen = kosztScalen.liczba > 0 ? ` + scalanie (${kosztScalen.liczba}×): $${kosztScalen.suma.toFixed(3)}` : "";
+    console.log(`  koszt: główne $${kosztGlowny.toFixed(3)}${opisScalen} = razem $${kosztLacznie.toFixed(3)}`);
     console.log(`  zapisano rewizję seq=${krok.seq} do councilor_profile_revision`);
   }
 
   if (wPuli === 0) console.log("Nikt w puli — wszyscy w zakresie --szerokosc-puli już dogonili bieżącą sesję.");
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

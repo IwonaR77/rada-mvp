@@ -96,3 +96,7 @@ __pycache__/
 # deleted, so they stay out of git while under review
 .remove_*
 wnioski/
+
+# .claude-tmp/: Claude Code's own scratch space for this project (temp logs,
+# one-off debug dumps) — never committed, never outside the project.
+/.claude-tmp

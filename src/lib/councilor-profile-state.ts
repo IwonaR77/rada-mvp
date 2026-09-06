@@ -217,28 +217,16 @@ function zdanieOTemacie(t: Temat, opts: RenderOpts): string {
   return `- ${znacznik}${rdzen} (${daty})${sprawaCzesc}.`;
 }
 
-// Bigramowe podobieństwo (Dice) — lokalna kopia tej samej miary, co w
-// scripts/profil/porownaj-stan.mjs. Tu służy do (miękkiego) dopasowania
-// zgłoszenia mieszkańców do tematu bez nowego pola łączącego oba wpisy —
-// ten sam kompromis, którym świadomie pominęliśmy analogiczne pole dla
-// sporów (koszt osobnej infrastruktury nieuzasadniony przy garstce trafień).
-function bigramy(tekst: string): Set<string> {
-  const znorm = tekst.toLocaleLowerCase("pl-PL").replace(/\s+/g, " ").trim();
-  const zestaw = new Set<string>();
-  for (let i = 0; i < znorm.length - 1; i++) zestaw.add(znorm.slice(i, i + 2));
-  return zestaw;
-}
+// Dice na bigramach znakowych — scentralizowane w src/lib/text-similarity.ts
+// (dawniej lokalna kopia tu i w scripts/profil/porownaj-stan.mjs). Tu służy
+// do (miękkiego) dopasowania zgłoszenia mieszkańców do tematu bez nowego pola
+// łączącego oba wpisy.
+import { dice } from "./text-similarity.ts";
 
-function dice(a: string, b: string): number {
-  const ba = bigramy(a);
-  const bb = bigramy(b);
-  if (ba.size === 0 || bb.size === 0) return 0;
-  let wspolne = 0;
-  for (const x of ba) if (bb.has(x)) wspolne++;
-  return (2 * wspolne) / (ba.size + bb.size);
-}
-
-const ZASIEG_WAGA: Record<Zasieg, number> = { wzmianka: 0, wypowiedz: 1, dyskusja: 2 };
+/** Wagi `zasieg` do porównań "który wyższy" — eksportowane, bo
+ * `councilor-profile-delta.ts` musi egzekwować monotoniczność (zasieg może
+ * tylko rosnąć) deterministycznie, tą samą skalą co render. */
+export const ZASIEG_WAGA: Record<Zasieg, number> = { wzmianka: 0, wypowiedz: 1, dyskusja: 2 };
 
 // Priorytet renderu — NIE ocena wagi tematu w jakimkolwiek moralnym/
 // politycznym sensie, wyłącznie sygnał "ile miejsca dostanie w notatce",

@@ -8,8 +8,8 @@ import path from "path";
 // scripts/profil/wdroz-produkcyjnie.mjs.
 //
 // Podbicie wersji = nowa para plików w prompty/ i podmiana obu nazw tutaj.
-export const SEED_PROMPT_FILENAME = "Prompt_Profil_Radnego_Jednorazowy_v7.md";
-export const ITERATIVE_PROMPT_FILENAME = "Prompt_Profil_Radnego_Iteracyjny_v7.md";
+export const SEED_PROMPT_FILENAME = "Prompt_Profil_Radnego_Jednorazowy_v8.md";
+export const ITERATIVE_PROMPT_FILENAME = "Prompt_Profil_Radnego_Iteracyjny_v8.md";
 
 function readPromptFile(filename: string): string {
   return fs.readFileSync(path.join(process.cwd(), "prompty", filename), "utf-8");

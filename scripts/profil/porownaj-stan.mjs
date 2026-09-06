@@ -24,6 +24,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { REPO_ROOT } from "../lib/db.mjs";
+import { dice } from "../../src/lib/text-similarity.ts";
 
 function parseArgs(argv) {
   const args = { radny: null, a: null, b: null, etykietaA: "A", etykietaB: "B", prog: 0.5 };
@@ -48,22 +49,6 @@ function parseArgs(argv) {
 
 function wczytaj(p) {
   return JSON.parse(readFileSync(path.isAbsolute(p) ? p : path.join(REPO_ROOT, p), "utf8"));
-}
-
-function bigramy(tekst) {
-  const znormalizowany = tekst.toLocaleLowerCase("pl-PL").replace(/\s+/g, " ").trim();
-  const zestaw = new Set();
-  for (let i = 0; i < znormalizowany.length - 1; i++) zestaw.add(znormalizowany.slice(i, i + 2));
-  return zestaw;
-}
-
-function dice(a, b) {
-  const ba = bigramy(a);
-  const bb = bigramy(b);
-  if (ba.size === 0 || bb.size === 0) return 0;
-  let wspolne = 0;
-  for (const x of ba) if (bb.has(x)) wspolne++;
-  return (2 * wspolne) / (ba.size + bb.size);
 }
 
 /** Dopasowanie zachłanne: dla każdej tezy z A szuka najlepszej wolnej tezy z B. */
