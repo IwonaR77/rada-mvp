@@ -64,8 +64,25 @@ import {
   pobierzRankingAktywnosci,
   dograjCzasySegmentow,
 } from "../lib/profil-eksport.mjs";
+import { embedPassage, cosineSimilarity } from "../lib/embeddings.mjs";
 import { buildShortIndex } from "../../src/lib/councilor-profile-index.ts";
 import { applyDelta, validateDelta } from "../../src/lib/councilor-profile-delta.ts";
+
+// Podobieństwo semantyczne (embedding lokalny, nie Dice na tekście) dla
+// scalDoLimitu — zob. komentarz przy tej funkcji w councilor-profile-delta.ts.
+// Cache tekst→wektor w domknięciu: te same tezy/tematy bywają porównywane w
+// wielu parach w jednym wywołaniu scalDoLimitu, model liczy się raz na tekst.
+function stworzPodobienstwoEmbeddingowe() {
+  const cache = new Map();
+  async function wektor(tekst) {
+    if (!cache.has(tekst)) cache.set(tekst, await embedPassage(tekst));
+    return cache.get(tekst);
+  }
+  return async (a, b) => {
+    const [va, vb] = await Promise.all([wektor(a), wektor(b)]);
+    return cosineSimilarity(va, vb);
+  };
+}
 
 const NAZWA_RADY = "Rada Miejska w Grójcu";
 const PROMPT_VERSION = 8;
@@ -171,6 +188,7 @@ async function main() {
   const ranking = pobierzRankingAktywnosci(NAZWA_RADY);
   const promptJednorazowy = bazowyPrompt("Prompt_Profil_Radnego_Jednorazowy_v8.md");
   const promptIteracyjny = bazowyPrompt("Prompt_Profil_Radnego_Iteracyjny_v8.md");
+  const podobienstwo = stworzPodobienstwoEmbeddingowe();
 
   let wPuli = 0;
 
@@ -272,6 +290,7 @@ async function main() {
           wyciagnijJson(sledzKosztScalenia(wywolajClaude(budujPromptScalaniaTematow(a, b), scratchCwd)).result),
         generujWspolnySpor: async (a, b) =>
           wyciagnijJson(sledzKosztScalenia(wywolajClaude(budujPromptScalaniaSporow(a, b), scratchCwd)).result),
+        podobienstwo,
       };
       stan = await applyDelta(ostatnia.stan, walidacja.delta, ctx);
     }

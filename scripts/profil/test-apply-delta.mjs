@@ -9,7 +9,7 @@
 //
 // Użycie: node scripts/profil/test-apply-delta.mjs
 
-import { applyDelta, validateDelta, nextId, LIMIT_TEMATOW, LIMIT_SPOROW } from "../../src/lib/councilor-profile-delta.ts";
+import { applyDelta, validateDelta, nextId, scalDoLimitu, LIMIT_TEMATOW, LIMIT_SPOROW } from "../../src/lib/councilor-profile-delta.ts";
 import { buildShortIndex } from "../../src/lib/councilor-profile-index.ts";
 
 let liczbaBledow = 0;
@@ -166,6 +166,79 @@ async function testBrakLancuchowegoScalania() {
   );
 }
 
+async function testKategoriaBlokujeScalanie() {
+  console.log("\n[3c] scalDoLimitu: różna kategoria blokuje scalanie, nawet przy identycznym tekście (naprawa kosza-na-wszystko)");
+  const lista = [
+    { id: "a", v: "ten sam tekst", kat: "X" },
+    { id: "b", v: "zupełnie inny tekst", kat: "Y" },
+    { id: "c", v: "ten sam tekst", kat: "X" },
+  ];
+  const wynik = await scalDoLimitu(
+    lista,
+    2,
+    (x) => x.v,
+    async () => 1, // podobieństwo zawsze maksymalne — bez bloku kategorii scaliłoby się cokolwiek
+    async (x, y) => ({ id: x.id, v: `${x.v}+${y.v}`, kat: x.kat, scalony: true }),
+    (x, y) => x.kat === y.kat
+  );
+  sprawdz("dokładnie 2 wpisy (limit osiągnięty)", wynik.length === 2);
+  sprawdz("b (kategoria Y, jedyny w swojej kategorii) zostaje nietknięty", wynik.some((w) => w.id === "b"));
+  sprawdz("a i c (ta sama kategoria X) scaliły się ze sobą, nie z b", wynik.some((w) => w.v === "ten sam tekst+ten sam tekst"));
+}
+
+async function testScalonyChroniPrzedPonownymScaleniem() {
+  console.log("\n[3d] scalDoLimitu: wpis raz scalony nie jest kandydatem w KOLEJNYM (osobnym) wywołaniu");
+  const pierwszeWywolanie = await scalDoLimitu(
+    [
+      { id: "a", v: "1" },
+      { id: "b", v: "2" },
+      { id: "c", v: "3" },
+    ],
+    2,
+    (x) => x.v,
+    async () => 1,
+    async (x, y) => ({ id: `${x.id}${y.id}`, v: `${x.v}+${y.v}` })
+  );
+  sprawdz("pierwsze wywołanie: 2 wpisy, jeden scalony", pierwszeWywolanie.length === 2);
+  const survivor = pierwszeWywolanie.find((w) => w.scalony);
+  sprawdz("survivor ma scalony=true", survivor?.scalony === true);
+
+  // Symulacja kolejnego, niezależnego kroku iteracyjnego: do listy dochodzą
+  // dwa nowe tematy, znów trzeba scalić do limitu 2 — bez naprawy survivor
+  // (już raz scalony, dłuższy tekst) wygrałby "najbardziej podobny" ponownie.
+  const drugieWywolanie = await scalDoLimitu(
+    [survivor, { id: "d", v: "4" }, { id: "e", v: "5" }],
+    2,
+    (x) => x.v,
+    async () => 1,
+    async (x, y) => ({ id: `${x.id}${y.id}`, v: `${x.v}+${y.v}` })
+  );
+  sprawdz("drugie wywołanie: 2 wpisy", drugieWywolanie.length === 2);
+  sprawdz(
+    "survivor z pierwszego wywołania zostaje NIETKNIĘTY (nie brał udziału w drugim scaleniu)",
+    drugieWywolanie.some((w) => w.id === survivor.id && w.v === survivor.v)
+  );
+  sprawdz(
+    "d i e scaliły się ze sobą (jedyna dostępna, nie-scalona para)",
+    drugieWywolanie.some((w) => w.v === "4+5")
+  );
+}
+
+async function testProgPodobienstwaBlokujeScalanie() {
+  console.log("\n[3e] scalDoLimitu: zbyt niskie podobieństwo nie wymusza scalenia — lista zostaje ponad limitem (fail-open)");
+  const wynik = await scalDoLimitu(
+    [
+      { id: "a", v: "1" },
+      { id: "b", v: "2" },
+    ],
+    1,
+    (x) => x.v,
+    async () => 0.1, // poniżej PROG_PODOBIENSTWA_SCALENIA
+    async (x, y) => ({ id: `${x.id}${y.id}`, v: `${x.v}+${y.v}` })
+  );
+  sprawdz("lista zostaje niezmieniona (2 wpisy, ponad limit 1)", wynik.length === 2);
+}
+
 async function testUdzialForma() {
   console.log("\n[5] udzial_forma — limit 3 przykładów, wystapien liczy dalej");
   const stan = pustyStan();
@@ -231,6 +304,9 @@ async function main() {
   await testDopasowanie();
   await testLimitTematow();
   await testBrakLancuchowegoScalania();
+  await testKategoriaBlokujeScalanie();
+  await testScalonyChroniPrzedPonownymScaleniem();
+  await testProgPodobienstwaBlokujeScalanie();
   await testLimitSporow();
   await testUdzialForma();
   await testValidateOdrzucaHalucynacje();

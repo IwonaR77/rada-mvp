@@ -102,6 +102,12 @@ export type Temat = {
   kotwica: Kotwica;
   sprawa: string | null;
   rola_w_sprawie: string | null;
+  /** `true`, gdy ten wpis jest wynikiem scalenia (`scalDoLimitu` w
+   * councilor-profile-delta.ts) — raz ustawione, blokuje dalsze scalanie
+   * tego wpisu na zawsze (ochrona przed łańcuchowym "koszem na wszystko",
+   * zob. komentarz przy `scalDoLimitu`). `undefined`/brak pola na starszych
+   * danych traktowane jak `false`. */
+  scalony?: boolean;
 };
 
 export type PrzykladUdzialu = {
@@ -160,6 +166,8 @@ export type Spor = {
   stanowiska: string;
   kotwica: string;
   kotwica_segment_start_time?: number | null;
+  /** Jak `Temat.scalony` — blokuje dalsze scalanie tego wpisu. */
+  scalony?: boolean;
 };
 
 export type ProfileState = {

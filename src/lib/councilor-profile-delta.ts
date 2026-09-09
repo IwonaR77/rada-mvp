@@ -80,6 +80,14 @@ export type ApplyDeltaCtx = {
   generujWspolnaTeze: (a: TezaDoScalenia, b: TezaDoScalenia) => Promise<TezaDoScalenia>;
   /** Analogicznie dla `spory` przy przekroczeniu LIMIT_SPOROW. */
   generujWspolnySpor: (a: SporDoScalenia, b: SporDoScalenia) => Promise<SporDoScalenia>;
+  /** Podobieństwo semantyczne dwóch krótkich tekstów (0-1), do wyboru par
+   * kandydatów w `scalDoLimitu` — w produkcji: embedding (lokalny
+   * `Xenova/multilingual-e5-small`, `scripts/lib/embeddings.mjs`), NIE Dice
+   * na tekście (zob. komentarz przy `scalDoLimitu` — Dice na rosnącym,
+   * scalonym tekście był źródłem błędu łańcuchowego scalania). Opcjonalne —
+   * brak pola cofa się do `dice()` z `text-similarity.ts` (stary,
+   * leksykalny fallback), głównie dla testów, które nie chcą ładować modelu. */
+  podobienstwo?: (a: string, b: string) => Promise<number>;
 };
 
 /** `prefix + (max istniejący numer + 1)` — id nadaje wyłącznie kod, nigdy
@@ -101,6 +109,13 @@ function dodajKategorieDoGrupy(state: ProfileState, kategoria: string): void {
   if (!jestWGrupie) state.grupy_kategorii[kategoria] = [kategoria];
 }
 
+/** Poniżej tego podobieństwa para NIE jest scalana, nawet jeśli to jedyny
+ * dostępny kandydat — lepiej tymczasowo przekroczyć `LIMIT_TEMATOW`/
+ * `LIMIT_SPOROW` niż stworzyć zlepek dwóch niepowiązanych tematów (ten sam
+ * fail-open co reszta walidacji w tym module). Wartość wstępna, do
+ * ewentualnego dostrojenia na realnych danych. */
+export const PROG_PODOBIENSTWA_SCALENIA = 0.8;
+
 /**
  * Redukuje listę do `limit` przez dobór ZACHŁANNY NIEROZŁĄCZNYCH par do
  * scalenia na jednej, oryginalnej liście (każdy element bierze udział
@@ -115,23 +130,49 @@ function dodajKategorieDoGrupy(state: ProfileState, kategoria: string): void {
  * jeden wpis wchłonął w jednym wywołaniu kolejno 13 niepowiązanych tematów,
  * dając jeden temat mieszający zadłużenie gminy, oświatę i media
  * społecznościowe pod wspólną etykietą. Wariant nierozłączny ogranicza
- * szkodę do jednego scalenia na element w jednym wywołaniu — kolejne
- * scalenia tego samego wpisu (jeśli w ogóle potrzebne) czekają do
- * następnego wywołania, na świeżo policzonym podobieństwie.
+ * szkodę do jednego scalenia na element w JEDNYM wywołaniu — ale nie chronił
+ * przed tym samym zjawiskiem MIĘDZY wywołaniami (kolejne kroki iteracyjne):
+ * ten sam wpis, raz scalony i przez to dłuższy, wygrywał "najbardziej
+ * podobny do czegoś" krok po kroku, wchłaniając po jednym temacie na
+ * iterację (potwierdzone na Biedrzyckim/Kozłowskiej, 2026-09-09 — 58 i 79
+ * wystąpień w jednym temacie po kilkudziesięciu iteracjach). Trzy niezależne
+ * bezpieczniki naprawiają to teraz:
+ * 1. `scalony` (pole na `T`) — wpis raz scalony NIGDY więcej nie jest
+ *    kandydatem (ani jako `a`, ani jako `b`) w żadnym kolejnym wywołaniu,
+ *    w żadnym kroku. Ucina łańcuchowanie MIĘDZY wywołaniami całkowicie, bez
+ *    potrzeby kalibrowania progu/licznika.
+ * 2. `zgodne(a, b)` — twardy warunek (np. ta sama `kategoria_obszaru`),
+ *    para niespełniająca go w ogóle nie trafia na listę kandydatów.
+ * 3. `podobienstwo(a, b)` — semantyczne (embedding), nie leksykalne (Dice)
+ *    na rosnącym tekście; pary poniżej `PROG_PODOBIENSTWA_SCALENIA` są
+ *    odrzucane, nawet kosztem tymczasowego przekroczenia `limit`.
  */
-async function scalDoLimitu<T extends { id: string }>(
+/** Eksportowana też dla testów (`test-apply-delta.mjs`) — pozwala testować
+ * mechanikę doboru par na małych, kontrolowanych listach zamiast konstruować
+ * fikstury na 40+ elementach za każdym razem. */
+export async function scalDoLimitu<T extends { id: string; scalony?: boolean }>(
   lista: T[],
   limit: number,
   kluczPodobienstwa: (item: T) => string,
-  scal: (a: T, b: T) => Promise<T>
+  podobienstwo: (a: string, b: string) => Promise<number>,
+  scal: (a: T, b: T) => Promise<T>,
+  zgodne: (a: T, b: T) => boolean = () => true
 ): Promise<T[]> {
   const nadmiar = lista.length - limit;
   if (nadmiar <= 0) return lista;
 
+  const kandydaciIdx = lista
+    .map((_, idx) => idx)
+    .filter((idx) => !lista[idx].scalony);
+
   const pary: { i: number; j: number; wynik: number }[] = [];
-  for (let i = 0; i < lista.length; i++) {
-    for (let j = i + 1; j < lista.length; j++) {
-      pary.push({ i, j, wynik: dice(kluczPodobienstwa(lista[i]), kluczPodobienstwa(lista[j])) });
+  for (const i of kandydaciIdx) {
+    for (const j of kandydaciIdx) {
+      if (j <= i) continue;
+      if (!zgodne(lista[i], lista[j])) continue;
+      const wynik = await podobienstwo(kluczPodobienstwa(lista[i]), kluczPodobienstwa(lista[j]));
+      if (wynik < PROG_PODOBIENSTWA_SCALENIA) continue;
+      pary.push({ i, j, wynik });
     }
   }
   pary.sort((a, b) => b.wynik - a.wynik);
@@ -146,9 +187,18 @@ async function scalDoLimitu<T extends { id: string }>(
     doScalenia.push(p);
   }
 
+  if (doScalenia.length === 0) {
+    console.warn(
+      `scalDoLimitu: ${nadmiar} wpis(ów) ponad limit ${limit}, ale brak pary spełniającej próg ` +
+        `podobieństwa (${PROG_PODOBIENSTWA_SCALENIA}) i zgodności kategorii wśród nie-scalonych ` +
+        `kandydatów — lista tymczasowo zostaje ponad limitem zamiast wymuszać niepowiązane scalenie.`
+    );
+    return lista;
+  }
+
   const scalone: T[] = [];
   for (const { i, j } of doScalenia) {
-    scalone.push(await scal(lista[i], lista[j]));
+    scalone.push({ ...(await scal(lista[i], lista[j])), scalony: true });
   }
   const nietkniete = lista.filter((_, idx) => !uzyte.has(idx));
   return [...nietkniete, ...scalone];
@@ -179,6 +229,10 @@ function scalTematy(ctx: Pick<ApplyDeltaCtx, "generujWspolnaTeze">) {
   };
 }
 
+function tematyZgodne(a: Temat, b: Temat): boolean {
+  return a.kategoria_obszaru === b.kategoria_obszaru;
+}
+
 function scalSpory(ctx: Pick<ApplyDeltaCtx, "generujWspolnySpor">) {
   return async (a: Spor, b: Spor): Promise<Spor> => {
     const { temat, stanowiska } = await ctx.generujWspolnySpor(
@@ -195,6 +249,11 @@ function scalSpory(ctx: Pick<ApplyDeltaCtx, "generujWspolnySpor">) {
       kotwica_segment_start_time: nowszy.kotwica_segment_start_time,
     };
   };
+}
+
+/** `ctx.podobienstwo` gdy podane, inaczej `dice()` (stary fallback leksykalny). */
+function podobienstwoZCtx(ctx: Pick<ApplyDeltaCtx, "podobienstwo">): (a: string, b: string) => Promise<number> {
+  return ctx.podobienstwo ?? (async (a, b) => dice(a, b));
 }
 
 /**
@@ -260,8 +319,15 @@ export async function applyDelta(
 
   while (next.tematy.length > LIMIT_TEMATOW) {
     const przed = next.tematy.length;
-    next.tematy = await scalDoLimitu(next.tematy, LIMIT_TEMATOW, (t) => t.teza, scalTematy(ctx));
-    if (next.tematy.length === przed) break; // bezpiecznik: brak dostępnych par (nie powinno wystąpić przy limit>=2)
+    next.tematy = await scalDoLimitu(
+      next.tematy,
+      LIMIT_TEMATOW,
+      (t) => t.teza,
+      podobienstwoZCtx(ctx),
+      scalTematy(ctx),
+      tematyZgodne
+    );
+    if (next.tematy.length === przed) break; // bezpiecznik: brak dostępnych par (próg podobieństwa/scalony/kategoria)
   }
 
   for (const s of delta.spory_nowe) {
@@ -275,7 +341,7 @@ export async function applyDelta(
   }
   while (next.spory.length > LIMIT_SPOROW) {
     const przed = next.spory.length;
-    next.spory = await scalDoLimitu(next.spory, LIMIT_SPOROW, (s) => s.temat, scalSpory(ctx));
+    next.spory = await scalDoLimitu(next.spory, LIMIT_SPOROW, (s) => s.temat, podobienstwoZCtx(ctx), scalSpory(ctx));
     if (next.spory.length === przed) break;
   }
 
@@ -316,17 +382,24 @@ export async function applyDelta(
  */
 export async function wymusLimity(
   state: ProfileState,
-  ctx: Pick<ApplyDeltaCtx, "generujWspolnaTeze" | "generujWspolnySpor">
+  ctx: Pick<ApplyDeltaCtx, "generujWspolnaTeze" | "generujWspolnySpor" | "podobienstwo">
 ): Promise<ProfileState> {
   const next: ProfileState = structuredClone(state);
   while (next.tematy.length > LIMIT_TEMATOW) {
     const przed = next.tematy.length;
-    next.tematy = await scalDoLimitu(next.tematy, LIMIT_TEMATOW, (t) => t.teza, scalTematy(ctx));
+    next.tematy = await scalDoLimitu(
+      next.tematy,
+      LIMIT_TEMATOW,
+      (t) => t.teza,
+      podobienstwoZCtx(ctx),
+      scalTematy(ctx),
+      tematyZgodne
+    );
     if (next.tematy.length === przed) break;
   }
   while (next.spory.length > LIMIT_SPOROW) {
     const przed = next.spory.length;
-    next.spory = await scalDoLimitu(next.spory, LIMIT_SPOROW, (s) => s.temat, scalSpory(ctx));
+    next.spory = await scalDoLimitu(next.spory, LIMIT_SPOROW, (s) => s.temat, podobienstwoZCtx(ctx), scalSpory(ctx));
     if (next.spory.length === przed) break;
   }
   return next;

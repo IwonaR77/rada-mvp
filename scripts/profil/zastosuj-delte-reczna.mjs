@@ -22,8 +22,22 @@ import { readFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { supabaseQuery, supabaseExec } from "../lib/db.mjs";
 import { zbudujDaneRadnego, trescSesji, dograjCzasySegmentow } from "../lib/profil-eksport.mjs";
+import { embedPassage, cosineSimilarity } from "../lib/embeddings.mjs";
 import { buildShortIndex } from "../../src/lib/councilor-profile-index.ts";
 import { applyDelta, validateDelta } from "../../src/lib/councilor-profile-delta.ts";
+
+// Ten sam mechanizm co wdroz-produkcyjnie.mjs — zob. komentarz tam.
+function stworzPodobienstwoEmbeddingowe() {
+  const cache = new Map();
+  async function wektor(tekst) {
+    if (!cache.has(tekst)) cache.set(tekst, await embedPassage(tekst));
+    return cache.get(tekst);
+  }
+  return async (a, b) => {
+    const [va, vb] = await Promise.all([wektor(a), wektor(b)]);
+    return cosineSimilarity(va, vb);
+  };
+}
 
 const NAZWA_RADY = "Rada Miejska w Grójcu";
 const PROMPT_VERSION = 8;
@@ -151,6 +165,7 @@ async function main() {
       wyciagnijJson(sledzKosztScalenia(wywolajClaude(budujPromptScalaniaTematow(a, b), scratchCwd)).result),
     generujWspolnySpor: async (a, b) =>
       wyciagnijJson(sledzKosztScalenia(wywolajClaude(budujPromptScalaniaSporow(a, b), scratchCwd)).result),
+    podobienstwo: stworzPodobienstwoEmbeddingowe(),
   };
   const stan = await applyDelta(ostatnia.stan, walidacja.delta, ctx);
   dograjCzasySegmentow(stan, dane);
