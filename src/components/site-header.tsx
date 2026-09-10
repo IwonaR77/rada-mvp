@@ -2,9 +2,9 @@ import Link from "next/link";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { LogoutLink } from "@/components/logout-link";
 import { AdminMenu } from "@/components/admin-menu";
-import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { isAccountBlocked } from "@/lib/blocked-account";
 import { DEFAULT_COUNCIL_ID } from "@/lib/launch-config";
+import { isOwner } from "@/lib/site-lockdown";
 
 export async function SiteHeader() {
   const supabase = await createClient();
@@ -14,22 +14,15 @@ export async function SiteHeader() {
   let manager = false;
   let pendingRequestCount = 0;
   let canSearch = false;
+  // Serwis wstrzymany dla wszystkich poza właścicielką (zob.
+  // site-lockdown.ts) — proxy.ts i tak odsyła każdego innego z powrotem na
+  // "/", które samo pokazuje jedyny dozwolony link (logowanie). Pasek na
+  // górze nie ma tu więc czego pokazywać.
+  if (!isOwner(user?.email)) return null;
+
   // Zablokowane konto ma ważną sesję, więc bez tego sprawdzenia dostawało
   // pełne menu — a każdy odsyłacz w nim odbijał się od bramki w proxy.
   const blocked = user ? await isAccountBlocked(supabase, user.id) : false;
-  // Anonimowy nie ma ulubionej rady, ale RLS już wpuszcza go do jedynej
-  // publicznej — pokazujemy tę samą nawigację co zalogowanemu z ulubioną,
-  // tylko bez serca (to nie jest "ulubiona", to jedyna dostępna) i bez
-  // Szukaj (canSearch zostaje false, wymaga zalogowania z vote).
-  let anonCouncilName: string | null = null;
-  if (!user) {
-    const { data: council } = await supabase
-      .from("council")
-      .select("name")
-      .eq("id", DEFAULT_COUNCIL_ID)
-      .maybeSingle();
-    anonCouncilName = council?.name ?? null;
-  }
   if (user && !blocked) {
     const [{ data: appUser }, { data: isManager }, { data: hasVote }] =
       await Promise.all([
@@ -82,9 +75,7 @@ export async function SiteHeader() {
         {(() => {
           const navCouncil = favoriteCouncil
             ? { ...favoriteCouncil, isFavorite: true }
-            : !user && anonCouncilName
-              ? { id: DEFAULT_COUNCIL_ID, name: anonCouncilName, isFavorite: false }
-              : null;
+            : null;
           if (!navCouncil || blocked) return null;
           return (
             <>
@@ -129,35 +120,24 @@ export async function SiteHeader() {
       </div>
 
       <nav className="flex items-center gap-4 text-sm">
-        {user ? (
-          <>
-            <span className="hidden text-zinc-500 sm:inline">
-              {user.email}
-            </span>
-            {blocked && (
-              <span className="rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
-                konto zablokowane
-              </span>
-            )}
-            {manager && <AdminMenu pendingRequestCount={pendingRequestCount} />}
-            {/* Wnioskowanie o uprawnienia jest dla zablokowanego konta
-                bez sensu — akcja i tak je odrzuci. */}
-            {!blocked && (
-              <Link
-                href="/dostep"
-                className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              >
-                Uprawnienia
-              </Link>
-            )}
-            <LogoutLink className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100" />
-          </>
-        ) : (
-          <GoogleSignInButton
-            className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-            label="Zaloguj"
-          />
+        <span className="hidden text-zinc-500 sm:inline">{user!.email}</span>
+        {blocked && (
+          <span className="rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
+            konto zablokowane
+          </span>
         )}
+        {manager && <AdminMenu pendingRequestCount={pendingRequestCount} />}
+        {/* Wnioskowanie o uprawnienia jest dla zablokowanego konta
+            bez sensu — akcja i tak je odrzuci. */}
+        {!blocked && (
+          <Link
+            href="/dostep"
+            className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+          >
+            Uprawnienia
+          </Link>
+        )}
+        <LogoutLink className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100" />
       </nav>
     </header>
   );

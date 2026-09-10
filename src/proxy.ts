@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/proxy";
 import { clientIp } from "@/lib/rate-limit";
+import { isOwner } from "@/lib/site-lockdown";
 
 const SEARCH_RATE_LIMIT = { limit: 20, windowSeconds: 60 };
 
@@ -11,42 +12,19 @@ const SEARCH_RATE_LIMIT = { limit: 20, windowSeconds: 60 };
 // normalnie nigdy go nie dotknie, bot ściągający wszystko po kolei — tak.
 const GENERAL_RATE_LIMIT = { limit: 300, windowSeconds: 300 };
 
-// Pages reachable without a session — everything else requires login.
-// Browsing itself now requires the auto-granted "browse" permission (see
-// grant_browse_permission(), called from /auth/callback), enforced by RLS;
-// this gate just keeps logged-out visitors from reaching pages that would
-// otherwise render empty/broken instead of a proper login prompt.
-const PUBLIC_PATHS = new Set([
+// Serwis wstrzymany dla wszystkich poza właścicielką (zob. site-lockdown.ts).
+// Te ścieżki muszą działać, zanim w ogóle wiadomo, kto pyta: sama strona
+// główna (dla kogoś innego niż właścicielka pokazuje informację o
+// wyłączeniu zamiast normalnej treści — patrz src/app/page.tsx) i cały
+// przepływ logowania/wylogowania.
+const ALWAYS_ALLOWED_PATHS = new Set([
   "/",
   "/auth/callback",
   "/auth/error",
   "/logout",
-  "/regulamin",
-  "/polityka-prywatnosci",
-  // /dostep ma pełną, bezpieczną gałąź dla !user (poziomy dostępu + login),
-  // patrz src/app/dostep/page.tsx.
-  "/dostep",
-]);
-
-// Strony browse-tier: czytelne bez konta, bo RLS daje teraz 'browse'
-// anonimowym (scripts/migrate-anon-browse.sql — perm='browse' i uid is null
-// zwraca prawdę). Dopasowanie po prefiksie, bo to segmenty dynamiczne.
-// /szukaj i /admin/* CELOWO tu nie są — nadal wymagają logowania.
-const BROWSE_PATH_PREFIXES = ["/rada/", "/sesje/", "/radny/", "/sprawy"];
-
-function isBrowsePath(pathname: string) {
-  return BROWSE_PATH_PREFIXES.some((p) => pathname.startsWith(p));
-}
-
-// Ścieżki, które widzi także zablokowane konto (Regulamin §5.6). Regulamin i
-// polityka zostają celowo: są publiczne dla niezalogowanych, więc odcinanie
-// ich zablokowanym niczego nie chroni, a utrudnia sprawdzenie, na jakiej
-// podstawie blokada nastąpiła.
-const BLOCKED_ALLOWED_PATHS = new Set([
-  "/brak-dostepu",
-  "/logout",
-  "/auth/callback",
-  "/auth/error",
+  // Regulamin i polityka prywatności zostają publiczne niezależnie od
+  // wyłączenia — to nie jest treść serwisu, tylko dokumenty, na które ktoś
+  // (np. już zalogowany współpracownik) może chcieć się powołać.
   "/regulamin",
   "/polityka-prywatnosci",
 ]);
@@ -61,7 +39,7 @@ export async function proxy(request: NextRequest) {
   // `checkRateLimitDurable` w `src/lib/rate-limit.ts`. Liczone równolegle
   // z odświeżeniem sesji (`updateSession`), bo żadne z nich nie zależy od
   // wyniku drugiego.
-  const { response, user, supabase, rateLimitResults } = await updateSession(
+  const { response, user, rateLimitResults } = await updateSession(
     request,
     [
       { key: `ogolny:${ip}`, config: GENERAL_RATE_LIMIT },
@@ -93,31 +71,10 @@ export async function proxy(request: NextRequest) {
   }
 
   if (
-    !user &&
-    !PUBLIC_PATHS.has(request.nextUrl.pathname) &&
-    !isBrowsePath(request.nextUrl.pathname)
+    !ALWAYS_ALLOWED_PATHS.has(request.nextUrl.pathname) &&
+    !isOwner(user?.email)
   ) {
     return NextResponse.redirect(new URL("/", request.url));
-  }
-
-  // Blokada musi być egzekwowana tutaj, a nie tylko przez RLS. RLS pilnuje
-  // danych, ale część stron nie czyta z bazy w ogóle — prompty i dokumenty
-  // czytają z dysku, a /dostep pozwalał zablokowanemu kontu wnioskować
-  // o nowe uprawnienia. Proxy jest jedynym miejscem, przez które przechodzi
-  // każde żądanie, więc tu jest granica.
-  //
-  // Kosztuje jedno zapytanie po kluczu głównym na żądanie zalogowanego
-  // użytkownika. Świadomy wybór: sesja nie niesie tej informacji, a blokada
-  // musi działać od razu, nie po wygaśnięciu tokenu.
-  if (user && !BLOCKED_ALLOWED_PATHS.has(request.nextUrl.pathname)) {
-    const { data: account } = await supabase
-      .from("app_user")
-      .select("blocked_at")
-      .eq("id", user.id)
-      .maybeSingle();
-    if (account?.blocked_at) {
-      return NextResponse.redirect(new URL("/brak-dostepu", request.url));
-    }
   }
 
   return response;
