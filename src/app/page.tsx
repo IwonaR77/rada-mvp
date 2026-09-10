@@ -41,7 +41,9 @@ export default async function Home() {
               Rada
             </h1>
             <p className="mt-2 text-zinc-600 dark:text-zinc-400">
-              Serwis wyłączony.
+              {user
+                ? "Serwis jest naprawdę wyłączony. Nie masz tu czego szukać."
+                : "Serwis wyłączony."}
             </p>
           </div>
 
