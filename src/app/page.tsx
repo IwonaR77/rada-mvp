@@ -2,6 +2,7 @@ import Image from "next/image";
 import { redirect } from "next/navigation";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
+import { LogoutLink } from "@/components/logout-link";
 import { DEFAULT_COUNCIL_ID } from "@/lib/launch-config";
 import { isOwner } from "@/lib/site-lockdown";
 
@@ -18,7 +19,12 @@ export default async function Home() {
   if (!user || !isOwner(user.email)) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-12 bg-zinc-50 px-6 py-16 dark:bg-black lg:flex-row lg:gap-16">
-        <div className="w-full max-w-sm overflow-hidden rounded-2xl shadow-lg">
+        {/* Kolejność w DOM odwrócona względem układu na desktopie
+            (`order-*`), żeby na telefonie tekst i przycisk logowania były
+            widoczne bez przewijania, zamiast chować się pod dużą grafiką —
+            to jedyna sprawcza rzecz na stronie, więc nie może wymagać
+            scrollowania. */}
+        <div className="order-2 w-full max-w-sm overflow-hidden rounded-2xl shadow-lg lg:order-1">
           <Image
             src="/homepage-hero.webp"
             alt="Pusta sala obrad rady"
@@ -29,7 +35,7 @@ export default async function Home() {
           />
         </div>
 
-        <div className="flex w-full max-w-md flex-col gap-6">
+        <div className="order-1 flex w-full max-w-md flex-col gap-6 lg:order-2">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
               Rada
@@ -39,10 +45,15 @@ export default async function Home() {
             </p>
           </div>
 
-          {!user && (
+          {!user ? (
             <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
               <GoogleSignInButton />
             </div>
+          ) : (
+            // Zalogowany, ale niewłaściwym kontem (np. właścicielka trafiła
+            // tu z sesją sprzed zmiany) — bez wylogowania nie da się
+            // zalogować ponownie jako ktoś inny.
+            <LogoutLink className="self-start text-sm text-zinc-500 underline hover:text-zinc-900 dark:hover:text-zinc-100" />
           )}
         </div>
       </div>
