@@ -35,9 +35,7 @@ export default async function Home() {
               Rada
             </h1>
             <p className="mt-2 text-zinc-600 dark:text-zinc-400">
-              Serwis jest tymczasowo wyłączony — nie mamy jeszcze
-              potwierdzonej zgody firmy obsługującej esesja.pl na
-              przetwarzanie nagrań sesji, z których korzysta.
+              Serwis wyłączony.
             </p>
           </div>
 

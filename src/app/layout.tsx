@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Rada",
-  description: "Serwis jest tymczasowo wyłączony.",
+  description: "Serwis wyłączony.",
 };
 
 export default function RootLayout({
