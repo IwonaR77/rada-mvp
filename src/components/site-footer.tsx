@@ -1,10 +1,17 @@
 import Link from "next/link";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { isAccountBlocked } from "@/lib/blocked-account";
+import { isOwner } from "@/lib/site-lockdown";
 
 export async function SiteFooter() {
   const supabase = await createClient();
   const user = await getUser();
+
+  // Serwis wstrzymany dla wszystkich poza właścicielką (zob.
+  // site-lockdown.ts) — jedyny dozwolony link na stronie jest logowanie, na
+  // stronie głównej, więc nikt inny nie ma tu dostać żadnego dodatkowego
+  // odsyłacza.
+  if (!isOwner(user?.email)) return null;
 
   // Prompty czyta się z dysku, nie z bazy, więc RLS ich nie chroni — dla
   // zablokowanego konta odsyłacze muszą zniknąć z menu, tak jak sama treść
