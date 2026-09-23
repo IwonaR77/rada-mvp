@@ -119,7 +119,7 @@ function sessionName(m) {
   return `sesja_${sessionKey(m)}_${m.date}`;
 }
 
-async function resolveVideoUrl(esesjaId) {
+async function resolveEsesjaVideoUrl(esesjaId) {
   const listing = await fetch(
     "https://grojec.esesja.pl/transmisje_z_obrad_rady"
   ).then((r) => r.text());
@@ -131,6 +131,28 @@ async function resolveVideoUrl(esesjaId) {
   const page = await fetch(pageUrl).then((r) => r.text());
   const videoMatch = page.match(/videourl='([^']+)'/);
   return videoMatch ? videoMatch[1] : null;
+}
+
+// Powiat (transmisjaobrad.info): slug w URL jest ignorowany przez serwer,
+// liczy się tylko source_id — zweryfikowane ręcznie 2026-09-23 (dwa różne
+// sluga dla tego samego id dały ten sam .m3u8). Dzięki temu nie trzeba
+// pamiętać sluga z odkrycia sesji.
+async function resolvePowiatVideoUrl(sourceId) {
+  const page = await fetch(
+    `https://transmisjaobrad.info/videos/${sourceId}/x`
+  ).then((r) => r.text());
+  const m = page.match(/"src":"([^"]*?\.m3u8)"/);
+  return m ? m[1].replace(/\\\//g, "/") : null;
+}
+
+// Odkrycie sesji (discover-new-sessions.mjs / discover-powiat-sessions.mjs)
+// zwykle już ustawia video_url — to tylko awaryjna ponowna próba, potrzebna
+// gdy nagranie w chwili odkrycia jeszcze nie było przetworzone przez źródło
+// (obserwowane dla świeżo zakończonej sesji powiatu, 2026-09-22/23).
+async function resolveVideoUrl(m) {
+  return m.source === "transmisjaobrad"
+    ? resolvePowiatVideoUrl(m.source_id)
+    : resolveEsesjaVideoUrl(m.esesja_id);
 }
 
 // Archiwalna, wysokiej jakości kopia mp3 (-q:a 0) — niezależna od niskobitowej
@@ -226,7 +248,7 @@ export async function processMeeting(m, importArgs = []) {
   let videoUrl = m.video_url;
   if (!videoUrl) {
     log(`Rozwiązuję video_url dla ${name}...`);
-    videoUrl = await resolveVideoUrl(m.esesja_id);
+    videoUrl = await resolveVideoUrl(m);
     if (!videoUrl) {
       log(`UWAGA: nie znaleziono video_url dla ${name} — pomijam.`);
       return false;
@@ -293,7 +315,7 @@ async function main() {
   // Filtr musi być tutaj, a nie w kolejności kroków workflow: awaria importu
   // napisów i tak oddałaby sesję temu skryptowi.
   const pending = await supabaseQuery(
-    `select id, esesja_id, source_id, date, video_url from meeting where transcript_status != 'rozpisana' and meeting_type != 'komisja' and coalesce(subtitles_available, false) = false order by date asc limit 1;`
+    `select id, esesja_id, source, source_id, date, video_url from meeting where transcript_status != 'rozpisana' and meeting_type != 'komisja' and coalesce(subtitles_available, false) = false order by date asc limit 1;`
   );
 
   if (pending.length === 0) {
